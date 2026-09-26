@@ -20,7 +20,8 @@ OLED                         ENCODER
 | 3 | Matrix scan | Done |
 | 4 | USB HID keyboard | Done |
 | 5 | Rotary encoder + volume/mute | Done |
-| 6+ | OLED, profiles, configurator, PCB, enclosure | Next |
+| 6 | SSD1306 OLED UI | Done |
+| 7+ | Profiles, configurator, PCB, enclosure | Next |
 
 ## Firmware
 
