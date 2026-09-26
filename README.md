@@ -28,9 +28,10 @@ OLED                         ENCODER
 | 11 | Key/encoder action editors | Done |
 | 12 | Profile manager (new / duplicate / delete) | Done |
 | 13 | Macro library editor (host JSON) | Done |
-| 14–17 | Device UI / protocol / storage | Next |
+| 14 | On-device profile select UI | Done |
+| 15–17 | Protocol / storage / polish | Next (Step 15: protocol) |
 
-**Configurator block (Steps 10–13) is complete.**
+**Configurator block (Steps 10–13) is complete.** Firmware Step 14 (encoder OLED profile menu) is done.
 
 ## Profiles
 
@@ -53,7 +54,7 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. USB upload is Steps 14–17.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. USB upload is Steps 15–17.
 
 Headless checks:
 
@@ -68,7 +69,9 @@ python scripts/smoke_macros.py
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers).
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step14.uf2`.
+
+**On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 
 ## Pinout (locked)
 

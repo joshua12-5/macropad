@@ -1,10 +1,34 @@
 # Firmware
 
-RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine · Macro engine
+RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine · Macro engine · On-device profile select
 
-Build target: `macropad_step9.uf2`
+Build target: `macropad_step14.uf2`
 
-## Step 9 — Non-blocking macro engine
+## Step 14 — On-device profile select UI
+
+Long-press the encoder (~800 ms) while idle to open a scrollable profile menu on the OLED. Rotate to move the cursor; short-press to confirm; long-press again or wait ~9 s with no input to cancel. Matrix keys and encoder volume/media actions are muted while the menu is open.
+
+| Module | Role |
+|--------|------|
+| `oled_ui.c` / `oled_ui.h` | `OLED_PAGE_PROFILE_SELECT`, cursor/window, live render from `profiles.h` |
+| `main.c` | Enter / move / confirm / cancel / timeout; UART logs |
+
+### OLED menu
+
+- Title: `PROFILES`
+- Rows: `>2 CODING` (cursor) / ` 3 BROWSER` — inverse bar on selected row
+- ~4 visible lines; window scrolls so the cursor stays on-screen
+
+### UART
+
+```
+Profile select: enter (cursor N)
+Profile select: move -> N
+Profile select: confirm -> [N] NAME
+Profile select: cancel (long-press|timeout)
+```
+
+## Earlier: Step 9 — Non-blocking macro engine
 
 | Module | Role |
 |--------|------|
@@ -28,8 +52,6 @@ Build target: `macropad_step9.uf2`
 - **Coding** key 12 → MACRO select-all + copy (1)
 - **Browser** key 11 URL; key 12 MEDIA next
 
-Hold encoder ~800 ms to cycle profiles.
-
 Step format for a future configurator: [`macros/SCHEMA.md`](../macros/SCHEMA.md).
 
 ### Flash
@@ -38,7 +60,9 @@ Step format for a future configurator: [`macros/SCHEMA.md`](../macros/SCHEMA.md)
 export PICO_SDK_PATH=/path/to/pico-sdk
 cd firmware && mkdir -p build && cd build
 cmake .. && make -j
-# Copy macropad_step9.uf2 to the Pico USB mass-storage bootloader.
+# Copy macropad_step14.uf2 to the Pico USB mass-storage bootloader.
 ```
 
-UART (115200 on GP0/GP1) logs `MACRO start` / `MACRO end` and action typer lines.
+Build may be unverified on this host if Pico SDK is not installed.
+
+UART (115200 on GP0/GP1) logs profile-select lines, `MACRO start` / `MACRO end`, and action typer lines.

@@ -16,14 +16,15 @@
 
 #define UART_ID uart0
 
-/* Hold encoder 800ms → next profile (preview of Step 14; short press still mute). */
-#define ENC_LONG_MS 800
+/* Hold encoder ~800 ms → enter/cancel profile select; short press confirms. */
+#define ENC_LONG_MS        800
+#define SELECT_TIMEOUT_MS  9000
 
 int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 9: Macro Engine ===\n");
+    printf("\n=== Macropad Step 14: Profile Select UI ===\n");
 
     profiles_init();
     actions_init();
@@ -52,6 +53,7 @@ int main(void) {
     bool enc_held = false;
     absolute_time_t enc_press_at;
     bool enc_long_fired = false;
+    absolute_time_t select_deadline = get_absolute_time();
 
     while (true) {
         next_tick = delayed_by_ms(next_tick, 1);
@@ -63,13 +65,22 @@ int main(void) {
         macros_task();
         oled_ui_task();
 
-        /* While typing or playing a macro, skip matrix HID reports so
-         * KEY/SHORTCUT holds don't fight the engine. */
-        if (!actions_busy() && !macros_busy()) {
+        const bool in_select = oled_ui_profile_select_active();
+
+        /* Idle timeout cancels profile select without changing the active slot. */
+        if (in_select &&
+            absolute_time_diff_us(select_deadline, get_absolute_time()) >= 0) {
+            oled_ui_profile_select_exit();
+            printf("Profile select: cancel (timeout)\n");
+        }
+
+        /* While typing/macro OR profile menu open, skip matrix HID reports so
+         * KEY/SHORTCUT holds don't fight the engine / menu. */
+        if (!in_select && !actions_busy() && !macros_busy()) {
             usb_hid_update_from_matrix();
         }
 
-        /* Long-press encoder → next profile (hold); short press → profile press action */
+        /* Long-press encoder → enter select (idle) or cancel (already selecting). */
         if (encoder_switch_pressed()) {
             if (!enc_held) {
                 enc_held = true;
@@ -79,11 +90,15 @@ int main(void) {
                        absolute_time_diff_us(enc_press_at, get_absolute_time()) >=
                            (int64_t)ENC_LONG_MS * 1000) {
                 enc_long_fired = true;
-                profiles_next();
-                p = profiles_active();
-                oled_ui_set_profile_name(p->oled.title);
-                oled_ui_show_toast("PROFILE", p->oled.title, 900);
-                printf("Long-press -> profile %s\n", p->name);
+                if (oled_ui_profile_select_active()) {
+                    oled_ui_profile_select_exit();
+                    printf("Profile select: cancel (long-press)\n");
+                } else {
+                    uint8_t idx = profiles_active_index();
+                    oled_ui_profile_select_enter(idx);
+                    select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
+                    printf("Profile select: enter (cursor %u)\n", idx);
+                }
             }
         } else {
             enc_held = false;
@@ -91,6 +106,10 @@ int main(void) {
 
         matrix_event_t mev;
         while (matrix_pop_event(&mev)) {
+            if (oled_ui_profile_select_active()) {
+                /* Mute key/profile actions while the menu is open. */
+                continue;
+            }
             if (mev.type == MATRIX_EVENT_PRESS) {
                 printf("KEY %u (%s)\n", mev.key_number, profiles_active()->name);
                 oled_ui_notify_key(mev.key_number);
@@ -105,6 +124,43 @@ int main(void) {
 
         encoder_event_t eev;
         while (encoder_pop_event(&eev)) {
+            if (oled_ui_profile_select_active()) {
+                uint8_t count = profiles_count();
+                uint8_t cur = oled_ui_profile_select_cursor();
+                switch (eev.type) {
+                case ENC_EVENT_CW:
+                    if (count > 0) {
+                        cur = (uint8_t)((cur + 1) % count);
+                        oled_ui_profile_select_set_cursor(cur);
+                        select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
+                        printf("Profile select: move -> %u\n", cur);
+                    }
+                    break;
+                case ENC_EVENT_CCW:
+                    if (count > 0) {
+                        cur = (uint8_t)((cur + count - 1) % count);
+                        oled_ui_profile_select_set_cursor(cur);
+                        select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
+                        printf("Profile select: move -> %u\n", cur);
+                    }
+                    break;
+                case ENC_EVENT_PRESS:
+                    if (!enc_long_fired && count > 0) {
+                        profiles_set_active(cur);
+                        p = profiles_active();
+                        oled_ui_profile_select_exit();
+                        oled_ui_set_profile_name(p->oled.title);
+                        oled_ui_show_toast("PROFILE", p->oled.title, 900);
+                        printf("Profile select: confirm -> [%u] %s\n",
+                               cur, p->name);
+                    }
+                    break;
+                default:
+                    break;
+                }
+                continue;
+            }
+
             const profile_t *ap = profiles_active();
             switch (eev.type) {
             case ENC_EVENT_CW:
