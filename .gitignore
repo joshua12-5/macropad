@@ -1,0 +1,28 @@
+# Pico SDK build
+firmware/build/
+**/build/
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python configurator (later)
+__pycache__/
+.venv/
+venv/
+*.pyc
+dist/
+*.egg-info/
+
+# KiCad backups (later)
+*-backups/
+*.kicad_pcb-bak
+*.sch-bak
