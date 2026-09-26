@@ -1,6 +1,8 @@
 #include "config_protocol.h"
 
+#include "oled_ui.h"
 #include "profiles.h"
+#include "storage.h"
 #include "usb_descriptors.h"
 
 #include "tusb.h"
@@ -94,14 +96,18 @@ static void send_or_queue(const uint8_t *resp) {
     pending_valid = true;
 }
 
+static void nak(uint8_t *resp, uint8_t seq, uint8_t err) {
+    uint8_t pl[1] = {err};
+    cfg_frame_build(resp, CFG_CMD_NAK, seq, pl, 1);
+    printf("cfg nak err=%u\n", err);
+}
+
 bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
     uint8_t verr = cfg_frame_validate(req);
     uint8_t seq = req[5];
 
     if (verr != CFG_ERR_OK) {
-        uint8_t pl[1] = {verr};
-        cfg_frame_build(resp, CFG_CMD_NAK, seq, pl, 1);
-        printf("cfg nak err=%u (validate)\n", verr);
+        nak(resp, seq, verr);
         return true;
     }
 
@@ -112,6 +118,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
 
     uint8_t cmd = req[4];
     uint16_t length = rd_u16_le(&req[6]);
+    const uint8_t *payload = &req[8];
 
     switch (cmd) {
     case CFG_CMD_PING: {
@@ -128,21 +135,114 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         pl[2] = CFG_PROTO_VERSION;
         pl[3] = profiles_active_index();
         pl[4] = profiles_count();
-        pl[5] = 0;
+        pl[5] = CFG_INFO_FLAG_STORAGE;
         memcpy(&pl[6], CFG_PRODUCT_TAG, CFG_PRODUCT_TAG_LEN);
         cfg_frame_build(resp, CFG_CMD_GET_INFO, seq, pl, (uint16_t)sizeof(pl));
         printf("cfg info seq=%u\n", seq);
         return true;
     }
     case CFG_CMD_ECHO: {
-        cfg_frame_build(resp, CFG_CMD_ECHO, seq, &req[8], length);
+        cfg_frame_build(resp, CFG_CMD_ECHO, seq, payload, length);
         printf("cfg echo seq=%u len=%u\n", seq, length);
         return true;
     }
+
+    case CFG_CMD_PROFILE_BEGIN: {
+        if (length < 7) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (storage_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        uint8_t slot = payload[0];
+        uint16_t total_len = rd_u16_le(&payload[1]);
+        uint32_t blob_crc = rd_u32_le(&payload[3]);
+        if (!storage_upload_begin(slot, total_len, blob_crc)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_PROFILE_BEGIN, seq, NULL, 0);
+        printf("cfg profile begin slot=%u len=%u\n", slot, total_len);
+        return true;
+    }
+
+    case CFG_CMD_PROFILE_DATA: {
+        if (length < 2) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (!storage_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint16_t offset = rd_u16_le(&payload[0]);
+        uint16_t data_len = (uint16_t)(length - 2u);
+        if (!storage_upload_data(offset, &payload[2], data_len)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_PROFILE_DATA, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_PROFILE_COMMIT: {
+        uint8_t err = storage_upload_commit();
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        /* Refresh OLED title if the active slot was rewritten. */
+        const profile_t *p = profiles_active();
+        if (p != NULL) {
+            oled_ui_set_profile_name(p->oled.title);
+        }
+        cfg_frame_build(resp, CFG_CMD_PROFILE_COMMIT, seq, NULL, 0);
+        printf("cfg profile commit ok\n");
+        return true;
+    }
+
+    case CFG_CMD_PROFILE_ABORT: {
+        storage_upload_abort();
+        cfg_frame_build(resp, CFG_CMD_PROFILE_ABORT, seq, NULL, 0);
+        printf("cfg profile abort\n");
+        return true;
+    }
+
+    case CFG_CMD_PROFILE_GET: {
+        if (length < 1) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t slot = payload[0];
+        uint16_t blen = 0;
+        uint32_t bcrc = 0;
+        if (!storage_profile_meta(slot, &blen, &bcrc)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t pl[7];
+        pl[0] = slot;
+        wr_u16_le(&pl[1], blen);
+        wr_u32_le(&pl[3], bcrc);
+        cfg_frame_build(resp, CFG_CMD_PROFILE_GET, seq, pl, 7);
+        printf("cfg profile get slot=%u\n", slot);
+        return true;
+    }
+
+    case CFG_CMD_MACRO_BEGIN:
+    case CFG_CMD_MACRO_DATA:
+    case CFG_CMD_MACRO_COMMIT:
+    case CFG_CMD_MACRO_ABORT: {
+        /* Full macro-bank flash sync is Step 17. */
+        nak(resp, seq, CFG_ERR_ENOSYS);
+        return true;
+    }
+
     default: {
-        uint8_t pl[1] = {CFG_ERR_EINVAL};
-        cfg_frame_build(resp, CFG_CMD_NAK, seq, pl, 1);
-        printf("cfg nak err=%u (unknown cmd 0x%02X)\n", CFG_ERR_EINVAL, cmd);
+        nak(resp, seq, CFG_ERR_EINVAL);
+        printf("cfg nak unknown cmd 0x%02X\n", cmd);
         return true;
     }
     }
@@ -152,9 +252,7 @@ void config_protocol_on_host_report(const uint8_t *report, uint16_t len) {
     if (report == NULL || len < CFG_REPORT_SIZE) {
         if (report && len >= 6) {
             uint8_t resp[CFG_REPORT_SIZE];
-            uint8_t pl[1] = {CFG_ERR_EBADMSG};
-            cfg_frame_build(resp, CFG_CMD_NAK, report[5], pl, 1);
-            printf("cfg nak err=%u (short)\n", CFG_ERR_EBADMSG);
+            nak(resp, report[5], CFG_ERR_EBADMSG);
             send_or_queue(resp);
         }
         return;

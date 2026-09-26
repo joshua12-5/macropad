@@ -1,4 +1,4 @@
-"""64-byte config protocol frames — pack/unpack + CRC32 (no hardware)."""
+"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15/16)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,18 @@ CFG_FLAG_RESPONSE = 0x01
 CFG_CMD_PING = 0x01
 CFG_CMD_GET_INFO = 0x02
 CFG_CMD_ECHO = 0x03
+CFG_CMD_PROFILE_BEGIN = 0x10
+CFG_CMD_PROFILE_DATA = 0x11
+CFG_CMD_PROFILE_COMMIT = 0x12
+CFG_CMD_PROFILE_ABORT = 0x13
+CFG_CMD_PROFILE_GET = 0x14
+CFG_CMD_MACRO_BEGIN = 0x20
+CFG_CMD_MACRO_DATA = 0x21
+CFG_CMD_MACRO_COMMIT = 0x22
+CFG_CMD_MACRO_ABORT = 0x23
 CFG_CMD_NAK = 0x7F
+
+CFG_INFO_FLAG_STORAGE = 0x01
 
 CFG_ERR_OK = 0
 CFG_ERR_EINVAL = 1

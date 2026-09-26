@@ -1,13 +1,21 @@
-"""USB config protocol framing (Step 15)."""
+"""USB config protocol framing + profile blob (Step 15/16)."""
 
 from .frames import (
     CFG_CMD_ECHO,
     CFG_CMD_GET_INFO,
     CFG_CMD_NAK,
     CFG_CMD_PING,
+    CFG_CMD_PROFILE_ABORT,
+    CFG_CMD_PROFILE_BEGIN,
+    CFG_CMD_PROFILE_COMMIT,
+    CFG_CMD_PROFILE_DATA,
+    CFG_CMD_PROFILE_GET,
     CFG_ERR_EBADMSG,
+    CFG_ERR_EBUSY,
     CFG_ERR_EINVAL,
+    CFG_ERR_ENOSYS,
     CFG_FLAG_RESPONSE,
+    CFG_INFO_FLAG_STORAGE,
     CFG_MAGIC,
     CFG_PROTO_VERSION,
     CFG_REPORT_SIZE,
@@ -17,21 +25,39 @@ from .frames import (
     pack_frame,
     unpack_frame,
 )
+from .profile_blob import (
+    PROFILE_BLOB_V1_SIZE,
+    pack_profile,
+    pack_profile_dict,
+    unpack_profile_dict,
+)
 
 __all__ = [
     "CFG_CMD_ECHO",
     "CFG_CMD_GET_INFO",
     "CFG_CMD_NAK",
     "CFG_CMD_PING",
+    "CFG_CMD_PROFILE_ABORT",
+    "CFG_CMD_PROFILE_BEGIN",
+    "CFG_CMD_PROFILE_COMMIT",
+    "CFG_CMD_PROFILE_DATA",
+    "CFG_CMD_PROFILE_GET",
     "CFG_ERR_EBADMSG",
+    "CFG_ERR_EBUSY",
     "CFG_ERR_EINVAL",
+    "CFG_ERR_ENOSYS",
     "CFG_FLAG_RESPONSE",
+    "CFG_INFO_FLAG_STORAGE",
     "CFG_MAGIC",
     "CFG_PROTO_VERSION",
     "CFG_REPORT_SIZE",
     "Frame",
     "FrameError",
+    "PROFILE_BLOB_V1_SIZE",
     "crc32",
     "pack_frame",
+    "pack_profile",
+    "pack_profile_dict",
     "unpack_frame",
+    "unpack_profile_dict",
 ]

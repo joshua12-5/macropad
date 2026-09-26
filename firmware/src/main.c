@@ -6,6 +6,7 @@
 #include "oled_driver.h"
 #include "oled_ui.h"
 #include "profiles.h"
+#include "storage.h"
 #include "usb_hid_app.h"
 
 #include "hardware/uart.h"
@@ -24,9 +25,10 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 15: USB Config Protocol ===\n");
+    printf("\n=== Macropad Step 16: Flash Profile Storage ===\n");
 
     profiles_init();
+    storage_init();
     actions_init();
     macros_init();
     matrix_init();

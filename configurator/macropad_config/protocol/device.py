@@ -6,12 +6,23 @@ without the module, callers get a clear DeviceError — GUI stays usable.
 
 from __future__ import annotations
 
+import struct
 import time
 from typing import Optional
 
 from .frames import (
     CFG_CMD_GET_INFO,
+    CFG_CMD_NAK,
     CFG_CMD_PING,
+    CFG_CMD_PROFILE_ABORT,
+    CFG_CMD_PROFILE_BEGIN,
+    CFG_CMD_PROFILE_COMMIT,
+    CFG_CMD_PROFILE_DATA,
+    CFG_CMD_PROFILE_GET,
+    CFG_ERR_EBADMSG,
+    CFG_ERR_EBUSY,
+    CFG_ERR_EINVAL,
+    CFG_ERR_ENOSYS,
     CFG_FLAG_RESPONSE,
     CFG_REPORT_SIZE,
     Frame,
@@ -20,6 +31,12 @@ from .frames import (
     parse_get_info,
     unpack_frame,
 )
+from .profile_blob import (
+    PROFILE_BLOB_V1_SIZE,
+    PROFILE_DATA_MAX_CHUNK,
+    blob_crc,
+    iter_profile_data_chunks,
+)
 
 USB_VID = 0x2E8A
 USB_PID = 0xC001
@@ -27,6 +44,13 @@ CFG_USAGE_PAGE = 0xFF00
 CFG_USAGE = 0x01
 
 DEFAULT_TIMEOUT_MS = 500
+
+_ERR_NAMES = {
+    CFG_ERR_EINVAL: "EINVAL",
+    CFG_ERR_EBADMSG: "EBADMSG",
+    CFG_ERR_ENOSYS: "ENOSYS",
+    CFG_ERR_EBUSY: "EBUSY",
+}
 
 
 class DeviceError(RuntimeError):
@@ -69,6 +93,7 @@ class ConfigDevice:
         self._timeout_ms = timeout_ms
         self._path = path
         self._opened = False
+        self._seq = 1
 
     def open(self) -> None:
         if self._opened:
@@ -113,6 +138,13 @@ class ConfigDevice:
             return devices[0]["path"]
         return None
 
+    def _next_seq(self) -> int:
+        seq = self._seq & 0xFF
+        self._seq = (self._seq + 1) & 0xFF
+        if self._seq == 0:
+            self._seq = 1
+        return seq
+
     def write_frame(self, frame_bytes: bytes) -> None:
         if len(frame_bytes) != CFG_REPORT_SIZE:
             raise DeviceError("frame must be 64 bytes")
@@ -153,14 +185,74 @@ class ConfigDevice:
             raise DeviceError(f"seq mismatch: sent {seq & 0xFF} got {resp.seq}")
         return resp
 
+    def _raise_if_nak(self, resp: Frame, what: str) -> None:
+        if resp.cmd == CFG_CMD_NAK:
+            err = resp.payload[0] if resp.payload else 0
+            name = _ERR_NAMES.get(err, f"err={err}")
+            raise DeviceError(f"{what}: NAK {name}")
+
     def ping(self, seq: int = 1) -> Frame:
         return self.transact(CFG_CMD_PING, seq)
 
     def get_info(self, seq: int = 2) -> dict:
         resp = self.transact(CFG_CMD_GET_INFO, seq)
+        self._raise_if_nak(resp, "GET_INFO")
         if resp.cmd != CFG_CMD_GET_INFO:
             raise DeviceError(f"unexpected cmd 0x{resp.cmd:02X}")
         return parse_get_info(resp.payload)
+
+    def upload_profile(self, slot: int, blob_bytes: bytes, *, timeout_ms: int = 2000) -> None:
+        """Upload a packed profile_blob_v1 into device slot 0..4 (chunked)."""
+        if not 0 <= int(slot) <= 4:
+            raise DeviceError(f"slot must be 0..4, got {slot}")
+        if len(blob_bytes) != PROFILE_BLOB_V1_SIZE:
+            raise DeviceError(
+                f"blob must be {PROFILE_BLOB_V1_SIZE} bytes, got {len(blob_bytes)}"
+            )
+
+        old_timeout = self._timeout_ms
+        self._timeout_ms = timeout_ms
+        started = False
+        committed = False
+        try:
+            crc = blob_crc(blob_bytes)
+            begin_pl = struct.pack("<BHI", int(slot) & 0xFF, PROFILE_BLOB_V1_SIZE, crc)
+            resp = self.transact(CFG_CMD_PROFILE_BEGIN, self._next_seq(), begin_pl)
+            self._raise_if_nak(resp, "PROFILE_BEGIN")
+            if resp.cmd != CFG_CMD_PROFILE_BEGIN:
+                raise DeviceError(f"PROFILE_BEGIN unexpected cmd 0x{resp.cmd:02X}")
+            started = True
+
+            for offset, chunk in iter_profile_data_chunks(blob_bytes, PROFILE_DATA_MAX_CHUNK):
+                data_pl = struct.pack("<H", offset) + chunk
+                resp = self.transact(CFG_CMD_PROFILE_DATA, self._next_seq(), data_pl)
+                self._raise_if_nak(resp, f"PROFILE_DATA@{offset}")
+                if resp.cmd != CFG_CMD_PROFILE_DATA:
+                    raise DeviceError(f"PROFILE_DATA unexpected cmd 0x{resp.cmd:02X}")
+
+            resp = self.transact(CFG_CMD_PROFILE_COMMIT, self._next_seq(), b"")
+            self._raise_if_nak(resp, "PROFILE_COMMIT")
+            if resp.cmd != CFG_CMD_PROFILE_COMMIT:
+                raise DeviceError(f"PROFILE_COMMIT unexpected cmd 0x{resp.cmd:02X}")
+            committed = True
+        except Exception:
+            if started and not committed:
+                try:
+                    self.transact(CFG_CMD_PROFILE_ABORT, self._next_seq(), b"")
+                except Exception:
+                    pass
+            raise
+        finally:
+            self._timeout_ms = old_timeout
+
+    def profile_get_meta(self, slot: int) -> dict:
+        """PROFILE_GET → {slot, len, crc}."""
+        resp = self.transact(CFG_CMD_PROFILE_GET, self._next_seq(), bytes([int(slot) & 0xFF]))
+        self._raise_if_nak(resp, "PROFILE_GET")
+        if resp.cmd != CFG_CMD_PROFILE_GET or len(resp.payload) < 7:
+            raise DeviceError("bad PROFILE_GET response")
+        s, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
+        return {"slot": s, "len": length, "crc": crc}
 
 
 def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:

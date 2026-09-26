@@ -186,6 +186,15 @@ const profile_t *profiles_get(uint8_t index) {
     return &slots[index];
 }
 
+
+bool profiles_write_slot(uint8_t index, const profile_t *p) {
+    if (index >= PROFILE_SLOT_COUNT || p == NULL) {
+        return false;
+    }
+    slots[index] = *p;
+    return true;
+}
+
 bool profiles_set_active(uint8_t index) {
     if (index >= PROFILE_SLOT_COUNT) {
         return false;

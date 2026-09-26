@@ -1,4 +1,4 @@
-"""Main application window — Step 15 USB config protocol."""
+"""Main application window — Step 16 flash profile upload."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFormLayout,
+    QInputDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -197,6 +198,7 @@ class MainWindow(QMainWindow):
         self._dirty_ids: set[str] = set()
         self._meta_loading = False
         self._applying = False
+        self._last_device_info: dict | None = None
 
         self._build_menus()
         self._build_ui()
@@ -266,11 +268,13 @@ class MainWindow(QMainWindow):
         connect_act.triggered.connect(self._device_connect_info)
         device_menu.addAction(connect_act)
 
-        upload_act = QAction("Upload to device", self)
-        upload_act.setEnabled(False)
-        upload_act.setToolTip("Step 16+")
-        upload_act.setStatusTip("Step 16+ — profile/macro flash upload")
-        device_menu.addAction(upload_act)
+        self._upload_act = QAction("&Upload to device…", self)
+        self._upload_act.setShortcut(QKeySequence("Ctrl+Shift+U"))
+        self._upload_act.setStatusTip(
+            "Pack selected profile and upload into a device slot (0–4)"
+        )
+        self._upload_act.triggered.connect(self._device_upload_profile)
+        device_menu.addAction(self._upload_act)
 
         help_menu = self.menuBar().addMenu("&Help")
         about_act = QAction("&About", self)
@@ -549,6 +553,7 @@ class MainWindow(QMainWindow):
             self._refresh_action_json(label)
         finally:
             self._applying = False
+        self._last_device_info: dict | None = None
 
     def _refresh_action_json(self, label: str) -> None:
         try:
@@ -727,6 +732,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Device", str(exc))
             return
 
+        self._last_device_info = info
+
         lines = [
             f"Product: {info.get('product_tag', '?')}",
             f"Firmware: {info.get('fw_major', '?')}.{info.get('fw_minor', '?')}",
@@ -744,13 +751,104 @@ class MainWindow(QMainWindow):
         )
         QMessageBox.information(self, "Device info", msg)
 
+
+    def _device_upload_profile(self) -> None:
+        """Pack the selected profile and upload into a chosen device slot."""
+        if self._current is None:
+            QMessageBox.information(
+                self, "Upload", "Select a profile to upload."
+            )
+            return
+
+        try:
+            from .protocol.device import ConfigDevice, DeviceError
+            from .protocol.profile_blob import (
+                PROFILE_BLOB_V1_SIZE,
+                pack_profile,
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, "Upload", f"Protocol module unavailable:\n{exc}"
+            )
+            return
+
+        default_slot = 0
+        if self._last_device_info is not None:
+            try:
+                default_slot = int(self._last_device_info.get("active_slot", 0))
+            except (TypeError, ValueError):
+                default_slot = 0
+        builtin = {
+            "default": 0,
+            "gaming": 1,
+            "coding": 2,
+            "browser": 3,
+            "photoshop": 4,
+        }
+        if self._current.id in builtin:
+            default_slot = builtin[self._current.id]
+
+        slot, ok = QInputDialog.getInt(
+            self,
+            "Upload to device",
+            (
+                f"Upload profile {self._current.name!r} ({self._current.id})\n"
+                f"into device slot (0–4):"
+            ),
+            default_slot,
+            0,
+            4,
+            1,
+        )
+        if not ok:
+            return
+
+        try:
+            blob = pack_profile(self._current)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Upload", f"Pack failed:\n{exc}")
+            return
+        if len(blob) != PROFILE_BLOB_V1_SIZE:
+            QMessageBox.critical(
+                self,
+                "Upload",
+                f"Unexpected blob size {len(blob)} (expected {PROFILE_BLOB_V1_SIZE})",
+            )
+            return
+
+        self.statusBar().showMessage(
+            f"Uploading {self._current.id} → slot {slot}…"
+        )
+        try:
+            with ConfigDevice(timeout_ms=2000) as dev:
+                try:
+                    self._last_device_info = dev.get_info()
+                except DeviceError:
+                    pass
+                dev.upload_profile(slot, blob)
+        except DeviceError as exc:
+            self.statusBar().showMessage("Upload failed", 8000)
+            QMessageBox.warning(self, "Upload failed", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.statusBar().showMessage("Upload failed", 8000)
+            QMessageBox.warning(self, "Upload failed", str(exc))
+            return
+
+        msg = (
+            f"Uploaded {self._current.name} ({self._current.id}) "
+            f"into device slot {slot}."
+        )
+        self.statusBar().showMessage(msg, 15000)
+        QMessageBox.information(self, "Upload", msg)
+
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 15 — USB config protocol (PING / GET_INFO)<br><br>"
+                "Step 16 — flash profile storage + USB upload<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Macro library schema version: <b>1</b><br>"
                 "Protocol version: <b>1</b><br>"
