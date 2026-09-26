@@ -13,19 +13,27 @@ extern "C" {
 #define PROFILE_SLOT_COUNT      5
 
 /*
- * Action types (schema v1). Step 8 expands the engine; Step 7 stores them.
+ * Action types (schema v1). Step 8 expands the engine; Step 9 adds macros.
  * Pack payloads small — these live in RAM on RP2040.
+ *
+ * aux usage by type:
+ *   VOLUME  → volume_dir_t
+ *   PROFILE → profile slot index
+ *   TEXT    → text_id (firmware text_table)
+ *   URL     → text_id (URL string in text_table)
+ *   APP     → text_id (launch string; types string + Enter — host helper later)
+ *   MACRO   → macro_id (Step 9)
  */
 typedef enum {
     ACTION_DISABLED = 0,
     ACTION_KEY      = 1,  /* single HID key */
     ACTION_SHORTCUT = 2,  /* modifiers + key */
     ACTION_MACRO    = 3,  /* macro_id (Step 9) */
-    ACTION_TEXT     = 4,  /* text_id (host/firmware table later) */
+    ACTION_TEXT     = 4,  /* text_id → firmware string table */
     ACTION_MEDIA    = 5,  /* consumer usage */
     ACTION_VOLUME   = 6,  /* up/down/mute */
-    ACTION_APP      = 7,  /* reserved */
-    ACTION_URL      = 8,  /* reserved */
+    ACTION_APP      = 7,  /* text_id launch string + Enter (best-effort) */
+    ACTION_URL      = 8,  /* text_id URL + Enter */
     ACTION_PROFILE  = 9,  /* switch to profile slot */
 } action_type_t;
 
@@ -39,7 +47,7 @@ typedef struct {
     uint8_t type;       /* action_type_t */
     uint8_t mods;       /* keyboard modifier bitmap */
     uint8_t keycode;    /* HID keycode or media usage lo-byte helper */
-    uint8_t aux;        /* volume_dir, profile slot, macro_id, etc. */
+    uint8_t aux;        /* volume_dir, profile slot, text_id, macro_id, etc. */
     uint16_t usage;     /* full consumer usage when type=MEDIA */
 } action_t;
 
@@ -97,6 +105,26 @@ static inline action_t action_media(uint16_t usage) {
 
 static inline action_t action_profile(uint8_t slot) {
     action_t a = {ACTION_PROFILE, 0, 0, slot, 0};
+    return a;
+}
+
+static inline action_t action_text(uint8_t text_id) {
+    action_t a = {ACTION_TEXT, 0, 0, text_id, 0};
+    return a;
+}
+
+static inline action_t action_url(uint8_t text_id) {
+    action_t a = {ACTION_URL, 0, 0, text_id, 0};
+    return a;
+}
+
+static inline action_t action_app(uint8_t text_id) {
+    action_t a = {ACTION_APP, 0, 0, text_id, 0};
+    return a;
+}
+
+static inline action_t action_macro(uint8_t macro_id) {
+    action_t a = {ACTION_MACRO, 0, 0, macro_id, 0};
     return a;
 }
 

@@ -1,5 +1,7 @@
 #include "profiles.h"
 
+#include "text_table.h"
+
 #include "class/hid/hid.h"
 
 #include <string.h>
@@ -40,6 +42,9 @@
 #endif
 #ifndef HID_USAGE_CONSUMER_PLAY_PAUSE
 #define HID_USAGE_CONSUMER_PLAY_PAUSE 0x00CD
+#endif
+#ifndef HID_USAGE_CONSUMER_SCAN_NEXT
+#define HID_USAGE_CONSUMER_SCAN_NEXT 0x00B5
 #endif
 #ifndef KEYBOARD_MODIFIER_LEFTCTRL
 #define KEYBOARD_MODIFIER_LEFTCTRL 0x01
@@ -91,8 +96,8 @@ static void build_defaults(void) {
     slots[0].keys[7] = action_key(HID_KEY_F);
     slots[0].keys[8] = action_key(HID_KEY_G);
     slots[0].keys[9] = action_key(HID_KEY_H);
-    slots[0].keys[10] = action_key(HID_KEY_I);
-    slots[0].keys[11] = action_key(HID_KEY_J);
+    slots[0].keys[10] = action_text(TEXT_ID_HELLO);          /* key 11: TEXT */
+    slots[0].keys[11] = action_url(TEXT_ID_GITHUB_URL);       /* key 12: URL */
 
     /* 1 Gaming */
     set_meta(&slots[1], "gaming", "GAMING");
@@ -137,8 +142,8 @@ static void build_defaults(void) {
     slots[3].keys[7] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_1);
     slots[3].keys[8] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_TAB);
     slots[3].keys[9] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEY_TAB);
-    slots[3].keys[10] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_D);
-    slots[3].keys[11] = action_key(HID_KEY_F11);
+    slots[3].keys[10] = action_url(TEXT_ID_GITHUB_URL);       /* key 11: URL demo */
+    slots[3].keys[11] = action_media(HID_USAGE_CONSUMER_SCAN_NEXT); /* key 12: next track */
 
     /* 4 Photoshop-ish */
     set_meta(&slots[4], "photoshop", "PHOTOSHOP");

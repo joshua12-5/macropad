@@ -18,8 +18,11 @@ void usb_hid_consumer_volume_down(void);
 void usb_hid_consumer_mute(void);
 void usb_hid_consumer_usage(uint16_t usage);
 
-/* Brief key tap for one-shot SHORTCUT/KEY actions. */
+/* Brief key tap for one-shot SHORTCUT/KEY / typer actions. */
 void usb_hid_tap(uint8_t mods, uint8_t keycode);
+
+/* True when no tap is in progress (safe to start another tap). */
+bool usb_hid_tap_idle(void);
 
 #ifdef __cplusplus
 }

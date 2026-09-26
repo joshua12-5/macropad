@@ -54,12 +54,12 @@
       "key": "H"
     },
     "11": {
-      "type": "KEY",
-      "key": "I"
+      "type": "TEXT",
+      "text_id": 0
     },
     "12": {
-      "type": "KEY",
-      "key": "J"
+      "type": "URL",
+      "text_id": 1
     }
   },
   "encoder": {

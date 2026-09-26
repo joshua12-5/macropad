@@ -80,15 +80,13 @@
       "key": "TAB"
     },
     "11": {
-      "type": "SHORTCUT",
-      "mods": [
-        "CTRL"
-      ],
-      "key": "D"
+      "type": "URL",
+      "text_id": 1
     },
     "12": {
-      "type": "KEY",
-      "key": "F11"
+      "type": "MEDIA",
+      "usage": "0x00B5",
+      "code": "SCAN_NEXT"
     }
   },
   "encoder": {

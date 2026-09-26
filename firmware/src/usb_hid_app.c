@@ -204,6 +204,10 @@ void usb_hid_tap(uint8_t mods, uint8_t keycode) {
     tap_ticks = 0;
 }
 
+bool usb_hid_tap_idle(void) {
+    return tap_state == TAP_IDLE;
+}
+
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                                hid_report_type_t report_type,
                                uint8_t *buffer, uint16_t reqlen) {

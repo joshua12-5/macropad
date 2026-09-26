@@ -8,12 +8,14 @@ extern "C" {
 #endif
 
 /*
- * Step 7/8 bridge: execute one-shot actions (encoder / future tap).
- * Held KEY/SHORTCUT for matrix are handled via profiles_active()->keys
- * inside usb_hid_update_from_matrix().
+ * Step 8 action engine: non-blocking dispatch for every schema action type.
+ * Held KEY/SHORTCUT for matrix still go through usb_hid_update_from_matrix().
+ * TEXT/URL/APP type via HID in actions_task(); MACRO stubs to Step 9.
  */
 void actions_init(void);
+void actions_task(void);                 /* call from main loop every ~1 ms */
 void actions_fire(const action_t *action);
+bool actions_busy(void);                 /* true while typing or queue non-empty */
 
 #ifdef __cplusplus
 }

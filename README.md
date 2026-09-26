@@ -22,7 +22,8 @@ OLED                         ENCODER
 | 5 | Rotary encoder + volume/mute | Done |
 | 6 | SSD1306 OLED UI | Done |
 | 7 | Profile system (schema v1) | Done |
-| 8+ | Action engine, macros, configurator, PCB | Next |
+| 8 | Action engine (TEXT/URL/APP/MACRO stub) | Done |
+| 9+ | Macro sequencing, configurator, PCB | Next |
 
 ## Profiles
 

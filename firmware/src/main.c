@@ -22,7 +22,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 7: Profiles ===\n");
+    printf("\n=== Macropad Step 8: Action Engine ===\n");
 
     profiles_init();
     actions_init();
@@ -57,8 +57,14 @@ int main(void) {
         usb_hid_task();
         matrix_task();
         encoder_task();
+        actions_task();
         oled_ui_task();
-        usb_hid_update_from_matrix();
+
+        /* While the action engine is typing, skip matrix HID reports so
+         * KEY/SHORTCUT holds don't fight the typer. */
+        if (!actions_busy()) {
+            usb_hid_update_from_matrix();
+        }
 
         /* Long-press encoder → next profile (hold); short press → profile press action */
         if (encoder_switch_pressed()) {
@@ -85,7 +91,7 @@ int main(void) {
             if (mev.type == MATRIX_EVENT_PRESS) {
                 printf("KEY %u (%s)\n", mev.key_number, profiles_active()->name);
                 oled_ui_notify_key(mev.key_number);
-                /* Non KEY/SHORTCUT actions fire on press */
+                /* Non KEY/SHORTCUT actions fire on press (queued if busy). */
                 const action_t *a = &profiles_active()->keys[mev.key_number - 1];
                 if (a->type != ACTION_KEY && a->type != ACTION_SHORTCUT &&
                     a->type != ACTION_DISABLED) {
