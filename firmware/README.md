@@ -1,8 +1,41 @@
 # Firmware
 
-RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine · Macro engine · On-device profile select
+RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine · Macro engine · On-device profile select · USB config protocol
 
-Build target: `macropad_step14.uf2`
+Build target: `macropad_step15.uf2`
+
+## Step 15 — USB config protocol
+
+Second HID interface (vendor usage page `0xFF00`) carries 64-byte framed config packets. Host uses hidapi on the same VID/PID filtered by usage page.
+
+| Module | Role |
+|--------|------|
+| `config_protocol.c` / `.h` | Frame CRC, PING / GET_INFO / ECHO, NAK, deferred TX |
+| `usb_descriptors.c` | IF0 keyboard+consumer; IF1 vendor IN/OUT 64-byte |
+| `usb_hid_app.c` | Instance 0 = keys/media; instance 1 → config protocol |
+| `tusb_config.h` | `CFG_TUD_HID=2`, `CFG_TUD_HID_EP_BUFSIZE=64` |
+
+Protocol doc: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
+
+### UART
+
+```
+cfg ping seq=N
+cfg info seq=N
+cfg echo seq=N len=N
+cfg nak err=N …
+```
+
+### Flash
+
+```bash
+export PICO_SDK_PATH=/path/to/pico-sdk
+cd firmware && mkdir -p build && cd build
+cmake .. && make -j
+# Copy macropad_step15.uf2 to the Pico USB mass-storage bootloader.
+```
+
+Build may be unverified on this host if Pico SDK / arm-none-eabi is not installed.
 
 ## Step 14 — On-device profile select UI
 
@@ -18,15 +51,6 @@ Long-press the encoder (~800 ms) while idle to open a scrollable profile menu on
 - Title: `PROFILES`
 - Rows: `>2 CODING` (cursor) / ` 3 BROWSER` — inverse bar on selected row
 - ~4 visible lines; window scrolls so the cursor stays on-screen
-
-### UART
-
-```
-Profile select: enter (cursor N)
-Profile select: move -> N
-Profile select: confirm -> [N] NAME
-Profile select: cancel (long-press|timeout)
-```
 
 ## Earlier: Step 9 — Non-blocking macro engine
 
@@ -54,15 +78,8 @@ Profile select: cancel (long-press|timeout)
 
 Step format for a future configurator: [`macros/SCHEMA.md`](../macros/SCHEMA.md).
 
-### Flash
+UART (115200 on GP0/GP1) logs profile-select lines, `MACRO start` / `MACRO end`, action typer lines, and `cfg …` protocol lines.
 
-```bash
-export PICO_SDK_PATH=/path/to/pico-sdk
-cd firmware && mkdir -p build && cd build
-cmake .. && make -j
-# Copy macropad_step14.uf2 to the Pico USB mass-storage bootloader.
-```
+## Deferred (Step 16+)
 
-Build may be unverified on this host if Pico SDK is not installed.
-
-UART (115200 on GP0/GP1) logs profile-select lines, `MACRO start` / `MACRO end`, and action typer lines.
+Flash storage of profiles/macros and binary upload commands — not in this step.

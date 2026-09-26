@@ -29,9 +29,14 @@ OLED                         ENCODER
 | 12 | Profile manager (new / duplicate / delete) | Done |
 | 13 | Macro library editor (host JSON) | Done |
 | 14 | On-device profile select UI | Done |
-| 15–17 | Protocol / storage / polish | Next (Step 15: protocol) |
+| 15 | USB config protocol (vendor HID) | Done |
+| 16–17 | Flash storage / upload / polish | Next |
 
-**Configurator block (Steps 10–13) is complete.** Firmware Step 14 (encoder OLED profile menu) is done.
+**Step 15** adds a versioned vendor-HID config channel (PING / GET_INFO / ECHO). Profile flash upload is Step 16+.
+
+## Protocol
+
+Wire format and commands: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md).
 
 ## Profiles
 
@@ -45,7 +50,7 @@ Firmware still plays packed step tables in `firmware/src/macros.c` until a USB s
 
 ## Configurator
 
-Desktop app (Step 13 macro library): [`configurator/`](configurator/).
+Desktop app: [`configurator/`](configurator/).
 
 ```bash
 cd configurator
@@ -54,7 +59,7 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. USB upload is Steps 15–17.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO over vendor HID. **Upload to device** stays disabled until Step 16+.
 
 Headless checks:
 
@@ -63,15 +68,18 @@ python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
+python scripts/smoke_protocol.py
 ```
 
 ## Firmware
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step14.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step15.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
+
+**USB:** IF0 keyboard+consumer; IF1 vendor config HID (usage page `0xFF00`), 64-byte framed protocol.
 
 ## Pinout (locked)
 

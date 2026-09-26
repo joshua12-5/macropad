@@ -1,3 +1,3 @@
-"""Macropad Configurator — host-side profile editor shell."""
+"""Macropad Configurator — host-side profile editor + USB protocol."""
 
-__version__ = "0.10.0"
+__version__ = "0.15.0"

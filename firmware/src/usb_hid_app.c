@@ -3,6 +3,7 @@
 #include "matrix.h"
 #include "profiles.h"
 #include "usb_descriptors.h"
+#include "config_protocol.h"
 
 #include "class/hid/hid.h"
 #include "tusb.h"
@@ -118,6 +119,7 @@ void usb_hid_task(void) {
     tud_task();
     consumer_service();
     tap_service();
+    config_protocol_task();
 }
 
 static void build_report_from_profile(uint8_t report[8]) {
@@ -233,12 +235,19 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                                uint8_t *buffer, uint16_t reqlen) {
     (void)instance; (void)report_id; (void)report_type;
     (void)buffer; (void)reqlen;
+    /* No Feature reports in v1; interrupt IN carries responses. */
     return 0;
 }
 
 void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
                            hid_report_type_t report_type,
                            uint8_t const *buffer, uint16_t bufsize) {
-    (void)instance; (void)report_id; (void)report_type;
+    (void)report_id;
+    /* Vendor config IF: interrupt OUT (TinyUSB passes OUTPUT). */
+    if (instance == ITF_NUM_HID_CONFIG &&
+        report_type == HID_REPORT_TYPE_OUTPUT) {
+        config_protocol_on_host_report(buffer, bufsize);
+        return;
+    }
     (void)buffer; (void)bufsize;
 }

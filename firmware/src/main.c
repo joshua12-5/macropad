@@ -24,7 +24,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 14: Profile Select UI ===\n");
+    printf("\n=== Macropad Step 15: USB Config Protocol ===\n");
 
     profiles_init();
     actions_init();

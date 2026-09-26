@@ -1,5 +1,8 @@
-# Macropad Configurator — Step 10 shell
+# Macropad Configurator — Step 15 (USB config protocol)
 PySide6>=6.6,<6.9
+
+# Optional: vendor HID channel (Device → Connect / Get info). App runs without it.
+hid>=1.0.4
 
 # Optional packaging (not required to run):
 #   pip install pyinstaller

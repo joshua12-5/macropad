@@ -1,4 +1,4 @@
-"""Main application window — Step 13 macro library editor."""
+"""Main application window — Step 15 USB config protocol."""
 
 from __future__ import annotations
 
@@ -259,10 +259,17 @@ class MainWindow(QMainWindow):
         profile_menu.addAction(macro_lib_act)
 
         device_menu = self.menuBar().addMenu("&Device")
+
+        connect_act = QAction("&Connect / Get device info", self)
+        connect_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
+        connect_act.setStatusTip("PING + GET_INFO over vendor HID (Step 15)")
+        connect_act.triggered.connect(self._device_connect_info)
+        device_menu.addAction(connect_act)
+
         upload_act = QAction("Upload to device", self)
         upload_act.setEnabled(False)
-        upload_act.setToolTip("Coming in protocol step")
-        upload_act.setStatusTip("Coming in protocol step")
+        upload_act.setToolTip("Step 16+")
+        upload_act.setStatusTip("Step 16+ — profile/macro flash upload")
         device_menu.addAction(upload_act)
 
         help_menu = self.menuBar().addMenu("&Help")
@@ -687,16 +694,68 @@ class MainWindow(QMainWindow):
             return
         event.accept()
 
+
+    def _open_macro_library(self) -> None:
+        dlg = MacroLibraryDialog(parent=self)
+        dlg.exec()
+
+    def _device_connect_info(self) -> None:
+        """Open vendor HID, PING + GET_INFO, show result (Step 15)."""
+        try:
+            from .protocol.device import DeviceError, connect_and_info
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self,
+                "Device",
+                f"Protocol module unavailable:\n{exc}",
+            )
+            return
+
+        self.statusBar().showMessage("Connecting to device…")
+        try:
+            info = connect_and_info()
+        except DeviceError as exc:
+            self.statusBar().showMessage("No device / connect failed", 8000)
+            QMessageBox.information(
+                self,
+                "Device",
+                f"Could not talk to the macropad.\n\n{exc}",
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.statusBar().showMessage("Device error", 8000)
+            QMessageBox.warning(self, "Device", str(exc))
+            return
+
+        lines = [
+            f"Product: {info.get('product_tag', '?')}",
+            f"Firmware: {info.get('fw_major', '?')}.{info.get('fw_minor', '?')}",
+            f"Protocol: {info.get('proto_ver', '?')}",
+            f"Active slot: {info.get('active_slot', '?')}",
+            f"Slot count: {info.get('slot_count', '?')}",
+            f"Flags: {info.get('flags', 0)}",
+            f"PING: {info.get('ping_payload', '')!r}",
+        ]
+        msg = "\n".join(lines)
+        self.statusBar().showMessage(
+            f"Device OK — fw {info.get('fw_major')}.{info.get('fw_minor')} "
+            f"slot {info.get('active_slot')}/{info.get('slot_count')}",
+            15000,
+        )
+        QMessageBox.information(self, "Device info", msg)
+
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 13 — macro library editor<br><br>"
+                "Step 15 — USB config protocol (PING / GET_INFO)<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Macro library schema version: <b>1</b><br>"
+                "Protocol version: <b>1</b><br>"
                 "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
-                "USB upload / device protocol is Steps 14–17."
+                "Device → Connect / Get info uses vendor HID. "
+                "Upload / flash storage is Step 16+."
             ),
         )

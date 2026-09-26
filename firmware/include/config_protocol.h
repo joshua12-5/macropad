@@ -1,0 +1,72 @@
+#pragma once
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Step 15 — USB vendor-HID config channel (v1 framing). */
+
+#define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
+#define CFG_PROTO_VERSION       1u
+
+#define FW_VERSION_MAJOR        0u
+#define FW_VERSION_MINOR        15u
+
+#define CFG_REPORT_SIZE         64u
+#define CFG_HEADER_SIZE         8u
+#define CFG_PAYLOAD_MAX         52u
+#define CFG_CRC_OFFSET          60u
+
+#define CFG_FLAG_RESPONSE       0x01u
+
+#define CFG_CMD_PING            0x01u
+#define CFG_CMD_GET_INFO        0x02u
+#define CFG_CMD_ECHO            0x03u
+#define CFG_CMD_NAK             0x7Fu
+
+/* Compact err codes in NAK payload[0] (not full errno). */
+#define CFG_ERR_OK              0u
+#define CFG_ERR_EINVAL          1u
+#define CFG_ERR_EBADMSG         2u
+#define CFG_ERR_ENOSYS          3u
+#define CFG_ERR_EBUSY           4u
+
+#define CFG_PRODUCT_TAG         "MACROPAD"  /* exactly 8 chars on the wire */
+#define CFG_PRODUCT_TAG_LEN     8u
+
+#define CFG_USAGE_PAGE          0xFF00u
+#define CFG_USAGE               0x01u
+
+/*
+ * Frame is a flat 64-byte buffer (no packed struct) so Cortex-M0+ never
+ * performs unaligned uint16/uint32 loads. Layout:
+ *   [0..1] magic LE, [2] ver, [3] flags, [4] cmd, [5] seq,
+ *   [6..7] length LE, [8..59] payload, [60..63] crc32 LE.
+ */
+
+uint32_t cfg_crc32(const uint8_t *data, size_t len);
+
+/* Validate magic/version/length/crc on a 64-byte buffer. Returns CFG_ERR_* . */
+uint8_t cfg_frame_validate(const uint8_t *buf);
+
+/* Build a response frame into out[64] (sets FLAG_RESPONSE + CRC). */
+void cfg_frame_build(uint8_t *out, uint8_t cmd, uint8_t seq,
+                     const uint8_t *payload, uint16_t length);
+
+/* Parse request in `req` (64 bytes), fill `resp` (64 bytes).
+ * Returns true if a response should be sent. */
+bool config_protocol_handle(const uint8_t *req, uint8_t *resp);
+
+/* Deferred TX when HID IN is busy — call from main/usb task loop. */
+void config_protocol_task(void);
+
+/* Called by HID layer when vendor OUT arrives (instance 1). */
+void config_protocol_on_host_report(const uint8_t *report, uint16_t len);
+
+#ifdef __cplusplus
+}
+#endif

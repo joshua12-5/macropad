@@ -1,10 +1,8 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON and the macro library (schema v1).
+PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **Step 15 USB config protocol**.
 
-**Steps 10–13** (configurator block) are complete: shell, action editors, profile manager, and **macro library editor**.
-
-Next: Steps 14–17 device UI / protocol / storage. USB upload of macros to the RP2040 is **not** in this step — host `macros/library.json` is the configurator source of truth; firmware still uses packed C in `firmware/src/macros.c` until a sync protocol lands (they may diverge).
+**Steps 10–15** cover the configurator shell through vendor-HID Connect/Info. **Upload to device** / flash storage is **Step 16+**.
 
 ## Run
 
@@ -25,6 +23,8 @@ python -m macropad_config
 ```
 
 Macro library loads from `../macros/library.json` (override with `MACROPAD_MACROS_PATH`).
+
+Optional `hid` (cython-hidapi) is listed in `requirements.txt` for Device → Connect. The app still launches if `hid` is missing; Connect then shows a clear error.
 
 ### Edit & save profiles
 
@@ -47,14 +47,16 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
 ### Macro library editor (Step 13)
 
-**Profile → Macro library…** opens a dialog:
+**Profile → Macro library…** opens a dialog to edit `macros/library.json`.
 
-- Left: list of macros (`id: name`) with New / Duplicate / Delete (stable ids; new = `max_id+1`).
-- Right: editable name; step table (Op, Mods, Key, Arg); Add / Remove / Move up/down.
-- Step editor: op combo drives mods/key, delay, text_id, or consumer fields.
-- **Save** writes `macros/library.json`; **Cancel** discards.
+### Device (Step 15)
 
-ActionEditor **MACRO** type shows a combo of `id: name` from the library (falls back to built-in 0–4 labels if the file is missing).
+| Action | UI | Notes |
+|--------|-----|--------|
+| **Connect / Get device info** | **Device → Connect / Get device info** (`Ctrl+Shift+I`) | Opens vendor HID (VID `0x2E8A` / PID `0xC001` / usage page `0xFF00`), sends PING + GET_INFO, shows a dialog + status bar. |
+| **Upload to device** | Disabled | Tooltip: Step 16+ |
+
+Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
 
 ### Headless tests
 
@@ -63,9 +65,10 @@ python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
+python scripts/smoke_protocol.py
 ```
 
-(`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display.)
+(`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. `smoke_protocol.py` needs no hardware.)
 
 ## Layout
 
