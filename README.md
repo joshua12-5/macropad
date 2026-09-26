@@ -33,12 +33,20 @@ OLED                         ENCODER
 | 16 | Flash profile storage + USB upload | Done |
 | 17 | Macro-bank flash sync / polish | Done |
 | 18 | Auto app-switch / polish | Done |
+| 19 | Architecture hardening / polish | Done |
 
-**Step 18** adds host **auto app-switch**: the configurator watches the
-foreground app, matches `autoswitch/rules.json`, and sends USB `SET_ACTIVE`
-(`0x30`) so the device switches profiles in **RAM + OLED only** (no flash wear).
-Requires the configurator to be running — the device cannot see host apps.
-Steps **14–18** are complete.
+**Step 19** hardens the stack: `docs/ARCHITECTURE.md`, debounced flash persist
+of `active_slot` after `SET_ACTIVE`, `SAVE_ALL` (`0x32`) for Device → Save device
+state, clearer host errors, disconnect-safe autoswitch, and
+`configurator/scripts/run_all_smokes.py`. Steps **14–19** are complete.
+**Next: Step 20** testing / versioning polish.
+
+**Step 18** (kept): host auto app-switch via `SET_ACTIVE` (`0x30`); Step 19 adds
+debounced flash persist so frequent switches still avoid per-switch erase.
+
+## Architecture
+
+Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Protocol
 
@@ -75,13 +83,16 @@ python -m macropad_config
 ```
 
 Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO (shows `active_slot`).
-**Device → Upload profile / macros** sync flash banks.
+**Device → Upload profile / macros** sync flash banks;
+**Device → Save device state** sends `SAVE_ALL` (`0x32`).
 **Tools → Auto-switch…** edits rules; **Device → Auto-switch enabled** polls the
 foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
 
-Headless checks:
+Headless checks (or all at once):
 
 ```bash
+python scripts/run_all_smokes.py
+# individual:
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
@@ -96,7 +107,7 @@ python scripts/smoke_autoswitch.py
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step18.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step19.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 

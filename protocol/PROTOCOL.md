@@ -3,8 +3,9 @@
 Step 15 — framing + PING / GET_INFO / ECHO over a **second HID interface**.
 Step 16 — flash-backed profile slots + chunked **profile upload**.
 Step 17 — flash-backed **macro bank** sync + light protocol polish.
-Step 18 — host **auto app-switch** via `SET_ACTIVE` (RAM + OLED only).
-**Steps 14–18 are complete.**
+Step 18 — host **auto app-switch** via `SET_ACTIVE`.
+Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
+**Steps 14–19 are complete.**
 
 ## USB topology
 
@@ -63,8 +64,9 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | `0x22` | MACRO_COMMIT | empty | empty OK (after CRC + replace RAM + flash) |
 | `0x23` | MACRO_ABORT | empty | empty OK |
 | `0x24` | MACRO_GET | `id u8` | `id`, `len u16 LE`, `crc32 u32 LE` (metadata only) |
-| `0x30` | SET_ACTIVE | `slot u8` | empty OK (RAM + OLED only; **no flash write**) |
+| `0x30` | SET_ACTIVE | `slot u8` | empty OK (RAM + OLED; **debounced** flash persist) |
 | `0x31` | GET_ACTIVE | empty | `slot u8` (optional; GET_INFO also reports it) |
+| `0x32` | SAVE_ALL | empty | empty OK (immediate full storage rewrite) |
 | `0x7F` | NAK | — | device reply only; `payload[0]` = err |
 
 ### GET_INFO payload (14 bytes)
@@ -72,7 +74,7 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | Off | Type | Field |
 |-----|------|-------|
 | 0 | u8 | `fw_major` (`0`) |
-| 1 | u8 | `fw_minor` (Step 18 → `18`) |
+| 1 | u8 | `fw_minor` (Step 19 → `19`) |
 | 2 | u8 | `proto_ver` (`1`) |
 | 3 | u8 | `active_slot` |
 | 4 | u8 | `slot_count` |
@@ -110,7 +112,7 @@ Same chunked flow as profiles:
 **Busy mutex:** profile upload and macro upload are mutually exclusive — starting
 one while the other is active yields NAK `EBUSY`.
 
-### SET_ACTIVE / GET_ACTIVE (Step 18)
+### SET_ACTIVE / GET_ACTIVE (Step 18) + debounced persist (Step 19)
 
 Host-driven profile switch for auto app-switch:
 
@@ -120,16 +122,32 @@ Host-driven profile switch for auto app-switch:
    prints UART `cfg set_active N`. If the on-device profile menu is open, the
    menu is exited to idle after applying.
 4. Empty OK response. Bad slot → NAK `EINVAL`.
+5. **Upload busy:** `SET_ACTIVE` remains OK (RAM only); staging is not disturbed.
 
-**Important:** `SET_ACTIVE` does **not** erase or program flash (RAM + OLED
-only). Safe for frequent host-driven switches. Persistent active slot still
-comes from the flash image / profile COMMIT path.
+**Flash policy (Step 19):** `SET_ACTIVE` does **not** erase/program flash
+immediately. The device schedules a debounced rewrite of the full storage image
+(profiles + macros + new `active_slot` already in RAM). If no new `SET_ACTIVE`
+arrives for ~4 seconds (`STORAGE_ACTIVE_DEBOUNCE_MS`), one sector rewrite runs.
+Repeated switches cancel and reschedule the quiet window. UART:
+`stor debounce save` then `stor save ok|fail`.
 
 `GET_ACTIVE` returns the current RAM slot as a single `u8` (optional convenience;
 `GET_INFO.active_slot` is equivalent).
 
 Auto-switch requires the **configurator** (or another host agent) to be running —
 the device cannot observe host applications.
+
+### SAVE_ALL (Step 19)
+
+`CFG_CMD_SAVE_ALL = 0x32`, empty payload.
+
+1. If profile or macro upload is in progress → NAK `EBUSY`.
+2. Cancels any pending debounced active persist.
+3. Calls `storage_save_all()` (full v2 image: profiles + macros + `active_slot`).
+4. Empty OK on success; NAK `EBUSY` if the flash program fails.
+
+Host Device menu **Save device state** uses this for an explicit save without
+waiting for the debounce timer.
 
 ### Flash image (storage v2)
 
@@ -155,7 +173,7 @@ next save upgrades the sector to v2.
 | 1 | `EINVAL` | bad version/length/unknown cmd / bad slot / incomplete upload |
 | 2 | `EBADMSG` | bad magic or CRC (frame or blob) |
 | 3 | `ENOSYS` | unimplemented cmd |
-| 4 | `EBUSY` | upload already in progress (profile **or** macro) / flash program failed |
+| 4 | `EBUSY` | upload already in progress (profile **or** macro) / flash program failed / SAVE_ALL while busy |
 
 Unknown `cmd` → NAK `EINVAL`. Bad magic/CRC → NAK `EBADMSG` when possible.
 
@@ -169,8 +187,8 @@ Unknown `cmd` → NAK `EINVAL`. Bad magic/CRC → NAK `EBADMSG` when possible.
 - HID instance **1** OUT → `config_protocol_on_host_report`
 
 UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
-`cfg macro …`, `cfg set_active N`, `cfg get_active N`,
-`stor load v2|v1|default`, `stor save ok|fail`,
+`cfg macro …`, `cfg set_active N`, `cfg get_active N`, `cfg save_all ok`,
+`stor load v2|v1|default`, `stor save ok|fail`, `stor debounce save`,
 `profile save ok`, `macro save ok`.
 
 ## Host library
@@ -182,8 +200,10 @@ UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 - `configurator/scripts/smoke_protocol.py` / `smoke_storage.py` /
   `smoke_macros_blob.py` / `smoke_autoswitch.py` — no hardware
 - `autoswitch/rules.json` + `configurator/macropad_config/autoswitch/` — host matcher
+- `docs/ARCHITECTURE.md` — layers, data flows, flash vs RAM
+- `configurator/scripts/run_all_smokes.py` — aggregate smoke runner
 
 ## Deferred (later)
 
 - Full profile/macro download streaming
-- Further polish
+- Step 20 testing / versioning polish

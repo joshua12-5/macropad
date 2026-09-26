@@ -24,16 +24,19 @@ class AutoswitchService(QObject):
         *,
         on_status: Optional[StatusCallback] = None,
         on_switch: Optional[SwitchCallback] = None,
+        on_stopped: Optional[Callable[[], None]] = None,
         host_profile_ids: Optional[Sequence[str]] = None,
     ) -> None:
         super().__init__(parent)
         self._on_status = on_status
         self._on_switch = on_switch
+        self._on_stopped = on_stopped
         self._host_profile_ids = list(host_profile_ids) if host_profile_ids else None
         self._rules: AutoswitchRules = AutoswitchRules()
         self._enabled = False
         self._last_slot: Optional[int] = None
         self._device = None  # ConfigDevice | None (lazy)
+        self._reconnect_pending = False  # one best-effort reopen after disconnect
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
@@ -56,6 +59,7 @@ class AutoswitchService(QObject):
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = bool(enabled)
         if self._enabled:
+            self._reconnect_pending = False
             if self._timer.interval() < 100:
                 self._timer.setInterval(max(100, int(self._rules.poll_ms)))
             self._timer.start()
@@ -65,6 +69,7 @@ class AutoswitchService(QObject):
             self._timer.stop()
             self._close_device()
             self._last_slot = None
+            self._reconnect_pending = False
             self._status("Auto-switch: disabled")
 
     def is_enabled(self) -> bool:
@@ -92,9 +97,31 @@ class AutoswitchService(QObject):
         self._device = dev
         return dev
 
+    def _stop_after_disconnect(self, detail: str) -> None:
+        """Stop cleanly after disconnect / failed reconnect; leave menu to UI."""
+        self._close_device()
+        self._enabled = False
+        self._timer.stop()
+        self._last_slot = None
+        self._reconnect_pending = False
+        self._status(f"Auto-switch: device disconnected — stopped ({detail})")
+        if self._on_stopped:
+            self._on_stopped()
+
     def _tick(self) -> None:
         if not self._enabled:
             return
+
+        # Optional one reconnect attempt on the tick after a mid-run disconnect.
+        if self._device is None and self._reconnect_pending:
+            self._reconnect_pending = False
+            try:
+                self._ensure_device()
+                self._status("Auto-switch: reconnected")
+            except Exception as exc:
+                self._stop_after_disconnect(str(exc))
+                return
+
         try:
             info = get_foreground()
         except Exception:
@@ -118,9 +145,12 @@ class AutoswitchService(QObject):
             dev.set_active_slot(result.slot)
         except Exception as exc:
             self._close_device()
-            self._status(f"Auto-switch: device error ({exc})")
+            # Arm one reconnect for next tick if still enabled.
+            self._reconnect_pending = True
+            self._status(f"Auto-switch: device disconnected ({exc})")
             return
 
+        self._reconnect_pending = False
         self._last_slot = result.slot
         label = result.profile_id or f"slot{result.slot}"
         proc = info.process or "?"

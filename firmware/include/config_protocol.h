@@ -8,13 +8,13 @@
 extern "C" {
 #endif
 
-/* Step 15–18 — USB vendor-HID config channel (v1 framing). */
+/* Step 15–19 — USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        18u
+#define FW_VERSION_MINOR        19u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u
@@ -44,6 +44,9 @@ extern "C" {
 /* Step 18 — host-driven active profile (RAM + OLED only) */
 #define CFG_CMD_SET_ACTIVE      0x30u  /* payload: slot u8 */
 #define CFG_CMD_GET_ACTIVE      0x31u  /* response: slot u8 */
+
+/* Step 19 — immediate full storage rewrite (Device menu Save) */
+#define CFG_CMD_SAVE_ALL        0x32u  /* empty payload */
 
 #define CFG_CMD_NAK             0x7Fu
 

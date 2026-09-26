@@ -29,6 +29,9 @@ extern "C" {
  *
  * v1 images (profiles only) are loaded and macros stay at factory defaults;
  * the next save rewrites as v2.
+ *
+ * Step 19: SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
+ * CFG_CMD_SAVE_ALL forces an immediate rewrite.
  */
 
 #define STORAGE_MAGIC           0x4C46504Du  /* 'MPFL' LE */
@@ -37,6 +40,9 @@ extern "C" {
 #define STORAGE_VERSION         STORAGE_VERSION_2
 #define STORAGE_FLAG_PRESENT    0x01u        /* GET_INFO flags bit0 */
 #define STORAGE_FLAG_MACRO_BANK 0x02u        /* GET_INFO flags bit1 */
+
+/* Quiet window before rewriting flash after SET_ACTIVE (ms). */
+#define STORAGE_ACTIVE_DEBOUNCE_MS  4000u
 
 /* Profile upload staging (PROFILE_BEGIN / DATA / COMMIT / ABORT). */
 bool storage_upload_begin(uint8_t slot, uint16_t total_len, uint32_t blob_crc);
@@ -61,6 +67,13 @@ void storage_init(void);
 bool storage_save_all(void);
 bool storage_save_slot(uint8_t index); /* rewrites full image (same sector) */
 bool storage_loaded_from_flash(void);
+
+/* Step 19 — debounced active_slot flash persist after SET_ACTIVE.
+ * schedule: arm/reschedule quiet window; task: call from main loop;
+ * cancel: clear pending (after SAVE_ALL / COMMIT rewrite). */
+void storage_schedule_active_persist(void);
+void storage_cancel_active_persist(void);
+void storage_persist_task(void);
 
 #ifdef __cplusplus
 }

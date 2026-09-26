@@ -4,14 +4,14 @@ set(PICO_BOARD pico CACHE STRING "Board type")
 
 include(pico_sdk_import.cmake)
 
-project(macropad_step18 C CXX ASM)
+project(macropad_step19 C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
-add_executable(macropad_step18
+add_executable(macropad_step19
     src/main.c
     src/matrix.c
     src/encoder.c
@@ -30,11 +30,11 @@ add_executable(macropad_step18
     src/macros.c
 )
 
-target_include_directories(macropad_step18 PRIVATE
+target_include_directories(macropad_step19 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
-target_link_libraries(macropad_step18
+target_link_libraries(macropad_step19
     pico_stdlib
     hardware_gpio
     hardware_flash
@@ -44,7 +44,7 @@ target_link_libraries(macropad_step18
     tinyusb_board
 )
 
-pico_enable_stdio_uart(macropad_step18 1)
-pico_enable_stdio_usb(macropad_step18 0)
+pico_enable_stdio_uart(macropad_step19 1)
+pico_enable_stdio_usb(macropad_step19 0)
 
-pico_add_extra_outputs(macropad_step18)
+pico_add_extra_outputs(macropad_step19)

@@ -25,7 +25,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 17: Macro Bank Flash Sync ===\n");
+    printf("\n=== Macropad Step 19: Architecture Hardening ===\n");
 
     profiles_init();
     macros_init();   /* factory defaults into RAM before flash may override */
@@ -66,6 +66,7 @@ int main(void) {
         actions_task();
         macros_task();
         oled_ui_task();
+        storage_persist_task();
 
         const bool in_select = oled_ui_profile_select_active();
 

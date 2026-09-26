@@ -311,7 +311,8 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
     }
 
     case CFG_CMD_SET_ACTIVE: {
-        /* RAM + OLED only — never erase/program flash on switch. */
+        /* RAM + OLED immediately; flash rewrite debounced (~4 s quiet).
+         * OK even while profile/macro upload is busy (staging untouched). */
         if (length < 1) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
@@ -329,6 +330,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             oled_ui_set_profile_name(p->oled.title);
             oled_ui_show_toast("PROFILE", p->oled.title, 900);
         }
+        storage_schedule_active_persist();
         cfg_frame_build(resp, CFG_CMD_SET_ACTIVE, seq, NULL, 0);
         printf("cfg set_active %u\n", slot);
         return true;
@@ -338,6 +340,22 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         uint8_t pl[1] = {profiles_active_index()};
         cfg_frame_build(resp, CFG_CMD_GET_ACTIVE, seq, pl, 1);
         printf("cfg get_active %u\n", pl[0]);
+        return true;
+    }
+
+    case CFG_CMD_SAVE_ALL: {
+        /* Immediate full image rewrite (profiles + macros + active_slot). */
+        if (storage_upload_busy() || storage_macro_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        storage_cancel_active_persist();
+        if (!storage_save_all()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_SAVE_ALL, seq, NULL, 0);
+        printf("cfg save_all ok\n");
         return true;
     }
 

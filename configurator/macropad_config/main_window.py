@@ -287,6 +287,14 @@ class MainWindow(QMainWindow):
         self._upload_macros_act.triggered.connect(self._device_upload_macros)
         device_menu.addAction(self._upload_macros_act)
 
+        self._save_device_act = QAction("&Save device state", self)
+        self._save_device_act.setStatusTip(
+            "SAVE_ALL (0x32): rewrite flash with current RAM profiles+macros+active"
+        )
+        self._save_device_act.setEnabled(False)
+        self._save_device_act.triggered.connect(self._device_save_all)
+        device_menu.addAction(self._save_device_act)
+
         device_menu.addSeparator()
 
         self._autoswitch_act = QAction("Auto-switch &enabled", self)
@@ -305,10 +313,23 @@ class MainWindow(QMainWindow):
         autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
         tools_menu.addAction(autoswitch_dlg_act)
 
+        arch_tip_act = QAction("Architecture &overview…", self)
+        arch_tip_act.setStatusTip(
+            "Stack layers & data flow: docs/ARCHITECTURE.md in the repo"
+        )
+        arch_tip_act.triggered.connect(self._show_architecture_tip)
+        tools_menu.addAction(arch_tip_act)
+
         help_menu = self.menuBar().addMenu("&Help")
         about_act = QAction("&About", self)
         about_act.triggered.connect(self._show_about)
         help_menu.addAction(about_act)
+        arch_help = QAction("&Architecture doc", self)
+        arch_help.setStatusTip(
+            "See docs/ARCHITECTURE.md — layers, flash vs RAM, protocol links"
+        )
+        arch_help.triggered.connect(self._show_architecture_tip)
+        help_menu.addAction(arch_help)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -763,11 +784,15 @@ class MainWindow(QMainWindow):
         self._last_device_info = info
         self._autoswitch_connected = True
         self._autoswitch_act.setEnabled(True)
+        self._save_device_act.setEnabled(True)
 
+        fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
+        proto = info.get("proto_ver", "?")
         lines = [
+            f"Firmware: {fw}   (major.minor)",
+            f"Protocol: v{proto}",
+            "",
             f"Product: {info.get('product_tag', '?')}",
-            f"Firmware: {info.get('fw_major', '?')}.{info.get('fw_minor', '?')}",
-            f"Protocol: {info.get('proto_ver', '?')}",
             f"Active slot: {info.get('active_slot', '?')}",
             f"Slot count: {info.get('slot_count', '?')}",
             f"Flags: {info.get('flags', 0)}",
@@ -775,7 +800,7 @@ class MainWindow(QMainWindow):
         ]
         msg = "\n".join(lines)
         self.statusBar().showMessage(
-            f"Device OK — fw {info.get('fw_major')}.{info.get('fw_minor')} "
+            f"Device OK — fw {fw}  proto v{proto}  "
             f"active_slot {info.get('active_slot')}/{info.get('slot_count')}",
             15000,
         )
@@ -878,14 +903,65 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 18 — auto app-switch (host rules + SET_ACTIVE)<br><br>"
+                "Step 19 — architecture hardening (debounce save, SAVE_ALL)<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Macro library schema version: <b>1</b><br>"
                 "Protocol version: <b>1</b><br>"
                 "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
-                "Device → Upload profile / macros; Tools → Auto-switch (host must be running)."
+                "Architecture: <code>docs/ARCHITECTURE.md</code><br>"
+                "Device → Upload / Save device state; Tools → Auto-switch."
             ),
         )
+
+    def _show_architecture_tip(self) -> None:
+        self.statusBar().showMessage(
+            "Architecture: docs/ARCHITECTURE.md (layers, flash vs RAM, protocol links)",
+            12000,
+        )
+        QMessageBox.information(
+            self,
+            "Architecture",
+            (
+                "Stack overview lives in the repo at:\n\n"
+                "    docs/ARCHITECTURE.md\n\n"
+                "It covers layers (pins → matrix → actions → USB/config → "
+                "flash v2 → host), data flows, and flash vs RAM."
+            ),
+        )
+
+    def _device_save_all(self) -> None:
+        """SAVE_ALL (0x32) — immediate device flash rewrite."""
+        try:
+            from .protocol.device import ConfigDevice, DeviceError
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, "Save device state", f"Protocol module unavailable:\n{exc}"
+            )
+            return
+
+        self.statusBar().showMessage("Saving device state (SAVE_ALL)…")
+        try:
+            with ConfigDevice(timeout_ms=3000) as dev:
+                try:
+                    self._last_device_info = dev.get_info()
+                except DeviceError:
+                    pass
+                dev.save_all()
+        except DeviceError as exc:
+            self.statusBar().showMessage("Save device state failed", 8000)
+            QMessageBox.warning(self, "Save device state failed", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.statusBar().showMessage("Save device state failed", 8000)
+            QMessageBox.warning(self, "Save device state failed", str(exc))
+            return
+
+        self._autoswitch_connected = True
+        self._autoswitch_act.setEnabled(True)
+        self._save_device_act.setEnabled(True)
+        msg = "Device state saved (profiles + macros + active_slot)."
+        self.statusBar().showMessage(msg, 10000)
+        QMessageBox.information(self, "Save device state", msg)
 
 
     def _ensure_autoswitch(self):
@@ -902,6 +978,7 @@ class MainWindow(QMainWindow):
         svc = AutoswitchService(
             self,
             on_status=lambda msg: self.statusBar().showMessage(msg, 8000),
+            on_stopped=self._on_autoswitch_stopped,
             host_profile_ids=ids,
         )
         try:
@@ -943,6 +1020,12 @@ class MainWindow(QMainWindow):
                 self._autoswitch_act.blockSignals(False)
                 svc.set_enabled(False)
             self.statusBar().showMessage("Auto-switch rules saved", 5000)
+
+    def _on_autoswitch_stopped(self) -> None:
+        """Menu sync when service stops after device disconnect."""
+        self._autoswitch_act.blockSignals(True)
+        self._autoswitch_act.setChecked(False)
+        self._autoswitch_act.blockSignals(False)
 
     def _on_autoswitch_toggled(self, checked: bool) -> None:
         if checked and not self._autoswitch_connected:
@@ -1004,6 +1087,7 @@ class MainWindow(QMainWindow):
                     self._last_device_info = dev.get_info()
                     self._autoswitch_connected = True
                     self._autoswitch_act.setEnabled(True)
+                    self._save_device_act.setEnabled(True)
                 except DeviceError:
                     pass
                 for mid, macro in to_upload:

@@ -21,6 +21,7 @@ from .frames import (
     CFG_CMD_GET_ACTIVE,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
+    CFG_CMD_SAVE_ALL,
     CFG_CMD_SET_ACTIVE,
     CFG_CMD_PROFILE_BEGIN,
     CFG_CMD_PROFILE_COMMIT,
@@ -211,8 +212,11 @@ class ConfigDevice:
     def _raise_if_nak(self, resp: Frame, what: str) -> None:
         if resp.cmd == CFG_CMD_NAK:
             err = resp.payload[0] if resp.payload else 0
-            name = _ERR_NAMES.get(err, f"err={err}")
-            raise DeviceError(f"{what}: NAK {name}")
+            name = _ERR_NAMES.get(err, f"UNKNOWN({err})")
+            raise DeviceError(
+                f"{what} failed: device NAK {name} (code {err}). "
+                f"See protocol/PROTOCOL.md error table."
+            )
 
     def ping(self, seq: int = 1) -> Frame:
         return self.transact(CFG_CMD_PING, seq)
@@ -342,6 +346,13 @@ class ConfigDevice:
         if resp.cmd != CFG_CMD_GET_ACTIVE or not resp.payload:
             raise DeviceError("bad GET_ACTIVE response")
         return int(resp.payload[0])
+
+    def save_all(self) -> None:
+        """SAVE_ALL (0x32) — immediate flash rewrite of profiles+macros+active_slot."""
+        resp = self.transact(CFG_CMD_SAVE_ALL, self._next_seq(), b"")
+        self._raise_if_nak(resp, "SAVE_ALL")
+        if resp.cmd != CFG_CMD_SAVE_ALL:
+            raise DeviceError(f"SAVE_ALL unexpected cmd 0x{resp.cmd:02X}")
 
     def profile_get_meta(self, slot: int) -> dict:
         """PROFILE_GET → {slot, len, crc}."""

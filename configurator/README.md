@@ -1,8 +1,9 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–18: framing, profile upload, macro bank sync).
+PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–19: framing, uploads, autoswitch, SAVE_ALL).
 
-**Steps 10–17** cover the configurator shell through flash profile **and** macro-bank upload. **Next: Step 18** auto-switch / polish.
+**Steps 10–19** cover the configurator through architecture hardening. **Next: Step 20** testing / versioning polish.
+Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
 
 ## Run
 
@@ -49,7 +50,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
 **Profile → Macro library…** opens a dialog to edit `macros/library.json`.
 
-### Device (Step 15–17)
+### Device (Step 15–19)
 
 | Action | UI | Notes |
 |--------|-----|--------|
@@ -57,7 +58,11 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Upload profile to device…** | **Device → Upload profile to device…** (`Ctrl+Shift+U`) | Packs the **selected** profile to `profile_blob_v1` (148 B), asks for slot **0–4** (defaults to last GET_INFO active slot, or built-in id map `default/gaming/coding/browser/photoshop` → 0..4), then BEGIN/DATA/COMMIT. |
 | **Upload macros to device…** | **Device → Upload macros to device…** (`Ctrl+Shift+M`) | Packs `macros/library.json` ids **0–4** to `macro_blob_v1` (162 B each), uploads in order; skips missing ids; status bar + message box report count. |
 | **Auto-switch…** | **Tools → Auto-switch…** | Edit `autoswitch/rules.json` (enable, poll_ms, fallback, rules table). |
-| **Auto-switch enabled** | **Device → Auto-switch enabled** (checkable) | Needs a prior Connect. Polls foreground app; sends `SET_ACTIVE`. Status: `Auto-switch: coding (Code)`. |
+| **Auto-switch enabled** | **Device → Auto-switch enabled** (checkable) | Needs a prior Connect. Polls foreground app; sends `SET_ACTIVE`. Status: `Auto-switch: coding (Code)`. Disconnect mid-run stops cleanly (one reconnect attempt). |
+| **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
+
+Connect / Get info shows **fw major.minor** and **proto_ver** prominently.
+Tools/Help tip points at `docs/ARCHITECTURE.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
 Blob layout: [`../protocol/PROFILE_BLOB.md`](../protocol/PROFILE_BLOB.md).
@@ -67,6 +72,8 @@ Macro flash upload is implemented (Step 17).
 ### Headless tests
 
 ```bash
+python scripts/run_all_smokes.py
+# or individually:
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py

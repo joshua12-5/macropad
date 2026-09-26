@@ -58,6 +58,10 @@ _Static_assert(PROFILE_BLOB_V1_SIZE <= UPLOAD_BUF_MAX, "profile > upload buf");
 static uint8_t g_upload_buf[UPLOAD_BUF_MAX];
 static uint8_t g_upload_recv_mask[(UPLOAD_BUF_MAX + 7) / 8];
 
+/* Step 19 — debounced active_slot persist (SET_ACTIVE → quiet → one rewrite). */
+static bool g_active_persist_pending;
+static absolute_time_t g_active_persist_deadline;
+
 static void wr_u16_le(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
@@ -191,6 +195,7 @@ static bool program_image(const uint8_t *image) {
 void storage_init(void) {
     g_loaded_from_flash = false;
     g_upload_kind = UPLOAD_NONE;
+    g_active_persist_pending = false;
 
     const uint8_t *img = flash_image();
 
@@ -224,6 +229,9 @@ bool storage_loaded_from_flash(void) {
 }
 
 bool storage_save_all(void) {
+    /* Any explicit rewrite supersedes a pending debounced active persist. */
+    g_active_persist_pending = false;
+
     uint8_t image[STORAGE_IMAGE_SIZE];
     if (!build_image(image, profiles_active_index())) {
         printf("stor save fail\n");
@@ -236,6 +244,35 @@ bool storage_save_all(void) {
     g_loaded_from_flash = true;
     printf("stor save ok\n");
     return true;
+}
+
+void storage_schedule_active_persist(void) {
+    g_active_persist_pending = true;
+    g_active_persist_deadline = make_timeout_time_ms(STORAGE_ACTIVE_DEBOUNCE_MS);
+}
+
+void storage_cancel_active_persist(void) {
+    g_active_persist_pending = false;
+}
+
+void storage_persist_task(void) {
+    if (!g_active_persist_pending) {
+        return;
+    }
+    if (absolute_time_diff_us(g_active_persist_deadline, get_absolute_time()) < 0) {
+        return; /* quiet window not elapsed */
+    }
+    /* Due: one rewrite of profiles+macros+active already in RAM. */
+    g_active_persist_pending = false;
+    if (storage_upload_busy() || storage_macro_upload_busy()) {
+        /* Defer until upload finishes — re-arm quiet window. */
+        storage_schedule_active_persist();
+        return;
+    }
+    printf("stor debounce save\n");
+    if (!storage_save_all()) {
+        printf("stor debounce save fail\n");
+    }
 }
 
 bool storage_save_slot(uint8_t index) {
