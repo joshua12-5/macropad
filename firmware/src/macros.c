@@ -11,6 +11,19 @@
 #include <stdio.h>
 #include <string.h>
 
+
+static size_t cstr_nlen(const char *s, size_t maxn) {
+    size_t i = 0;
+    if (s == NULL) {
+        return 0;
+    }
+    while (i < maxn && s[i] != '\0') {
+        i++;
+    }
+    return i;
+}
+
+
 #ifndef KEYBOARD_MODIFIER_LEFTCTRL
 #define KEYBOARD_MODIFIER_LEFTCTRL 0x01
 #endif
@@ -311,7 +324,7 @@ bool macros_replace(uint8_t id, const char *name,
     macro_blob_slot_t *slot = &g_slots[id];
     memset(slot, 0, sizeof(*slot));
 
-    size_t namelen = strnlen(name, MACRO_NAME_MAX - 1u);
+    size_t namelen = cstr_nlen(name, MACRO_NAME_MAX - 1u);
     memcpy(slot->name, name, namelen);
 
     /* Copy steps; truncate at first END or append END if missing. */

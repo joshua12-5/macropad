@@ -2,6 +2,19 @@
 
 #include <string.h>
 
+
+static size_t cstr_nlen(const char *s, size_t maxn) {
+    size_t i = 0;
+    if (s == NULL) {
+        return 0;
+    }
+    while (i < maxn && s[i] != '\0') {
+        i++;
+    }
+    return i;
+}
+
+
 static uint16_t rd_u16_le(const uint8_t *p) {
     return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
 }
@@ -95,7 +108,7 @@ bool macro_blob_pack(const macro_blob_slot_t *src, uint8_t *dst, size_t dst_len)
 
     memset(dst, 0, MACRO_BLOB_V1_SIZE);
 
-    size_t namelen = strnlen(src->name, MACRO_NAME_MAX - 1u);
+    size_t namelen = cstr_nlen(src->name, MACRO_NAME_MAX - 1u);
     memcpy(&dst[MACRO_BLOB_OFF_NAME], src->name, namelen);
 
     dst[MACRO_BLOB_OFF_STEP_COUNT] = count;
