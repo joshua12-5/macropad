@@ -62,7 +62,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
 
 Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If `proto_ver` ≠ host `PROTO_VER`, a **warning** dialog appears and upload / autoswitch / SAVE_ALL stay disabled. Firmware too old for a feature disables that action with a tooltip (see `macropad_config/version.py`).
-Help → About lists host **0.20.0**, proto, expected fw, schema versions.
+Help → About lists host **0.21.0**, proto, expected fw, schema versions.
 Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).

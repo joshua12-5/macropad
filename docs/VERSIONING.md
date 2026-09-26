@@ -1,19 +1,19 @@
-# Versioning matrix (Step 20)
+# Versioning matrix (Step 21)
 
 How firmware, wire protocol, and host JSON schemas relate — and what must match.
 
-## Matrix (shipping Step 20)
+## Matrix (shipping Step 21)
 
 | Axis | Constant / field | Current | Where |
 |------|------------------|---------|--------|
-| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.20** | `firmware/include/config_protocol.h` → GET_INFO |
+| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.21** | `firmware/include/config_protocol.h` → GET_INFO |
 | Wire protocol | `CFG_PROTO_VERSION` / `proto_ver` | **1** | frame byte + GET_INFO; host `macropad_config/version.py` `PROTO_VER` |
-| Host app | `HOST_APP_VERSION` | **0.20.0** | `configurator/macropad_config/version.py` (+ About) |
+| Host app | `HOST_APP_VERSION` | **0.21.0** | `configurator/macropad_config/version.py` (+ About) |
 | Profile JSON / blob | `schema_version` | **1** | `profiles/*.json`, `PROFILE_BLOB`, host `SCHEMA_VERSION` |
 | Macro library / blob | `schema_version` | **1** | `macros/library.json`, `MACRO_BLOB`, `MACRO_SCHEMA_VERSION` |
 | Autoswitch rules | `schema_version` | **1** | `autoswitch/rules.json`, host `rules.SCHEMA_VERSION` |
-| USB `bcdDevice` | `USB_BCD` | **0x0114** (1.20) | `firmware/src/usb_descriptors.c` |
-| CMake / UF2 | target name | `macropad_step20` | `firmware/CMakeLists.txt` |
+| USB `bcdDevice` | `USB_BCD` | **0x0115** (1.21) | `firmware/src/usb_descriptors.c` |
+| CMake / UF2 | target name | `macropad_step21` | `firmware/CMakeLists.txt` |
 
 Firmware **major.minor** is a product revision (shown in Connect / GET_INFO).
 It is **not** the same number as `proto_ver` or JSON `schema_version`.
@@ -60,7 +60,7 @@ tooltip explaining the required version (Connect still works for info).
 
 | What you change | Bump | Also update |
 |-----------------|------|-------------|
-| Polish / host-only / docs / smokes in Steps 18–24 | `FW_VERSION_MINOR` + host `0.MINOR.0` + CMake `macropad_stepNN` + `bcdDevice` | READMEs, About, this matrix |
+| Polish / host-only / docs / smokes in Steps 18–24 | `FW_VERSION_MINOR` + host `0.MINOR.0` + CMake `macropad_stepNN` + `bcdDevice` | READMEs, About, this matrix, CHANGELOG |
 | Incompatible wire change (new framing, cmd meaning) | `CFG_PROTO_VERSION` / `PROTO_VER` | Both sides; old hosts must warn |
 | Profile / macro / autoswitch JSON shape | that schema’s `schema_version` | SCHEMA.md, validators, blobs, firmware unpack |
 | Breaking firmware API without proto bump | raise `FW_VERSION_MAJOR` | Document min host; rare |
@@ -69,7 +69,10 @@ tooltip explaining the required version (Connect still works for info).
 `HOST_APP_VERSION = "0.N.0"`, UF2 `macropad_stepN`, keep `proto_ver` and JSON
 schemas at **1** until an intentional incompatibility.
 
-## Smoke / hardware
+Release process: [`RELEASE.md`](RELEASE.md). Changelog: [`../CHANGELOG.md`](../CHANGELOG.md).
+
+## Smoke / hardware / CI
 
 - Headless: `configurator/scripts/smoke_version.py` (via `run_all_smokes.py`).
+- CI: [`.github/workflows/smokes.yml`](../.github/workflows/smokes.yml) runs **host smokes only** (no Pico SDK).
 - On device: [`HARDWARE_TEST.md`](HARDWARE_TEST.md).

@@ -1,4 +1,4 @@
-"""Main application window — Step 20 versioning / compat polish."""
+"""Main application window — Step 21 release notes + CI / compat polish."""
 
 from __future__ import annotations
 
@@ -1028,7 +1028,7 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 20 "
+                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 21 "
                 "testing / versioning polish<br><br>"
                 f"Protocol (host): <b>{app_version.PROTO_VER}</b><br>"
                 f"Expected firmware: <b>{app_version.FW_VERSION_MAJOR_EXPECTED}."

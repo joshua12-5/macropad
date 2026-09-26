@@ -1,6 +1,6 @@
 # Hardware test checklist (manual)
 
-Use after flashing `macropad_step20.uf2` (or current step UF2). Tick each item
+Use after flashing `macropad_step21.uf2` (or current step UF2). Tick each item
 on a real RP2040-Zero + matrix + EC11 + SSD1306 build.
 
 **Prep:** Pico SDK build → copy UF2 while BOOTSEL held → wait for USB re-enum.
@@ -10,7 +10,7 @@ Configurator: `cd configurator && python -m macropad_config` (optional `hid`).
 
 - [ ] UF2 copies cleanly; device reboots as HID (keyboard + config IF1)
 - [ ] UART (if wired): boot / `stor load …` lines look healthy
-- [ ] Connect / Get device info: fw **0.20** (or expected), **proto v1**, product `MACROPAD`
+- [ ] Connect / Get device info: fw **0.21** (or expected), **proto v1**, product `MACROPAD`
 - [ ] Proto mismatch warning appears if testing against a deliberately wrong host `PROTO_VER` (optional)
 
 ## Keys (matrix)

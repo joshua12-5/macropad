@@ -1,0 +1,31 @@
+# Host-only smokes — no Pico SDK / firmware build required.
+name: Host smokes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smokes:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: configurator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install configurator dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run all host smokes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python scripts/run_all_smokes.py

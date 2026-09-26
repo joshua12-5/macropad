@@ -1,5 +1,7 @@
 # RP2040 Programmable Macropad
 
+[![Host smokes](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml/badge.svg)](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml)
+
 Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator.
 
 ## Layout
@@ -35,13 +37,20 @@ OLED                         ENCODER
 | 18 | Auto app-switch / polish | Done |
 | 19 | Architecture hardening / polish | Done |
 | 20 | Testing / versioning polish | Done |
+| 21 | Changelog / CI smokes / release polish | Done |
 
-**Step 20** adds versioning polish: [`docs/VERSIONING.md`](docs/VERSIONING.md)
+**Step 21** adds release polish: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog,
+Steps 14–21), GitHub Actions [`.github/workflows/smokes.yml`](.github/workflows/smokes.yml)
+(**host smokes only** — no Pico SDK / firmware build), and
+[`docs/RELEASE.md`](docs/RELEASE.md). Versions: firmware **0.21**, host
+**0.21.0**, UF2 `macropad_step21`, `bcdDevice` 0x0115. Steps **14–21** are
+complete. **Next: Step 22** more polish/testing in the 18–24 block.
+
+**Step 20** (kept): [`docs/VERSIONING.md`](docs/VERSIONING.md)
 (fw major.minor vs `proto_ver` vs JSON schemas), host
-`macropad_config/version.py` (`HOST_APP_VERSION` **0.20.0**, feature min-fw
-gates), Connect/About proto mismatch warnings, `smoke_version.py`, and
-[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md). Steps **14–20** are complete.
-**Next: Step 21** more polish/testing in the 18–24 block (e.g. release notes or CI stub).
+`macropad_config/version.py` (feature min-fw gates), Connect/About proto
+mismatch warnings, `smoke_version.py`, and
+[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
 
 **Step 19** (kept): `docs/ARCHITECTURE.md`, debounced flash persist of
 `active_slot` after `SET_ACTIVE`, `SAVE_ALL` (`0x32`), clearer host errors,
@@ -54,7 +63,9 @@ debounced flash persist so frequent switches still avoid per-switch erase.
 
 Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 Version matrix / compat: [`docs/VERSIONING.md`](docs/VERSIONING.md).
+Changelog: [`CHANGELOG.md`](CHANGELOG.md). Cut a release: [`docs/RELEASE.md`](docs/RELEASE.md).
 Manual hardware checklist: [`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
+CI runs **host configurator smokes only** (no firmware build).
 
 ## Protocol
 
@@ -96,7 +107,8 @@ Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/libr
 **Tools → Auto-switch…** edits rules; **Device → Auto-switch enabled** polls the
 foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
 
-Headless checks (or all at once):
+Headless checks (or all at once). The same suite runs in CI on push/PR to
+`main` (`.github/workflows/smokes.yml`) — **host smokes only**, no Pico SDK:
 
 ```bash
 python scripts/run_all_smokes.py
@@ -116,7 +128,7 @@ python scripts/smoke_autoswitch.py
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step20.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step21.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 
