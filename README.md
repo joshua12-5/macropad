@@ -1,6 +1,6 @@
 # RP2040 Programmable Macropad
 
-Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator (in progress).
+Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator.
 
 ## Layout
 
@@ -24,7 +24,8 @@ OLED                         ENCODER
 | 7 | Profile system (schema v1) | Done |
 | 8 | Action engine (TEXT/URL/APP/MACRO stub) | Done |
 | 9 | Non-blocking macro engine | Done |
-| 10+ | Configurator, PCB, host helpers | Next |
+| 10 | PySide6 configurator shell | Done |
+| 11+ | Action editors, PCB, host helpers | Next |
 
 ## Profiles
 
@@ -33,6 +34,21 @@ Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](pr
 ## Macros
 
 Built-in step tables + opcode docs: [`macros/SCHEMA.md`](macros/SCHEMA.md).
+
+## Configurator
+
+Desktop shell (Step 10): [`configurator/`](configurator/).
+
+```bash
+cd configurator
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m macropad_config
+```
+
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). UI: profile list, OLED + 3×4 pad preview + encoder, read-only action JSON. Full editors are Steps 11–13; USB upload is Steps 15–16.
+
+Headless load check: `QT_QPA_PLATFORM=offscreen python scripts/smoke_load.py`
 
 ## Firmware
 

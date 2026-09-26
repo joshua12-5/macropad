@@ -14,13 +14,22 @@ firmware/build/
 .DS_Store
 Thumbs.db
 
-# Python configurator (later)
+# Python configurator
 __pycache__/
+*.py[cod]
+*$py.class
 .venv/
 venv/
-*.pyc
-dist/
+.env/
 *.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pip-wheel-metadata/
 
 # KiCad backups (later)
 *-backups/

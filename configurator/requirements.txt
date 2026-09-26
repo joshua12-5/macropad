@@ -1,0 +1,6 @@
+# Macropad Configurator — Step 10 shell
+PySide6>=6.6,<6.9
+
+# Optional packaging (not required to run):
+#   pip install pyinstaller
+#   pyinstaller --onefile --windowed -n macropad-config -m macropad_config
