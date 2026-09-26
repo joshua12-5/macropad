@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .schema import SCHEMA_VERSION, SchemaError, validate_profile_dict
+from .schema import SCHEMA_VERSION, SchemaError, validate_action, validate_profile_dict
 
 
 class ProfileLoadError(Exception):
@@ -42,6 +42,30 @@ class Profile:
 
     def action_for_encoder(self, slot: str) -> dict[str, Any] | None:
         return self.encoder.get(slot)
+
+    def set_key_action(self, key_num: int, action: dict[str, Any]) -> None:
+        """Replace the action for key 1–12 (validated)."""
+        if not 1 <= int(key_num) <= 12:
+            raise ValueError(f"key_num must be 1–12, got {key_num}")
+        validated = validate_action(dict(action), path=f"keys[{key_num}]")
+        self.keys[str(key_num)] = dict(validated)
+
+    def set_encoder_action(self, slot: str, action: dict[str, Any]) -> None:
+        """Replace an encoder slot action (cw/ccw/press/long_press)."""
+        if slot not in ("cw", "ccw", "press", "long_press"):
+            raise ValueError(f"unknown encoder slot {slot!r}")
+        validated = validate_action(dict(action), path=f"encoder.{slot}")
+        self.encoder[slot] = dict(validated)
+
+    def set_name(self, name: str) -> None:
+        name = str(name).strip()
+        if not name:
+            raise ValueError("profile name must be non-empty")
+        self.name = name
+
+    def set_oled_title(self, title: str) -> None:
+        self.oled = dict(self.oled)
+        self.oled["title"] = str(title)
 
     def summary(self) -> dict[str, Any]:
         return {

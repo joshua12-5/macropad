@@ -43,6 +43,9 @@ class ProfileListWidget(QWidget):
         else:
             self.profile_selected.emit(None)
 
+    def profiles(self) -> list[Profile]:
+        return list(self._profiles)
+
     def current_profile(self) -> Profile | None:
         row = self._list.currentRow()
         if 0 <= row < len(self._profiles):

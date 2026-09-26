@@ -16,6 +16,39 @@ from PySide6.QtWidgets import (
 
 from ..models.profile import Profile
 
+# Short labels for key captions (type or compact summary).
+_TYPE_SHORT = {
+    "DISABLED": "—",
+    "KEY": "KEY",
+    "SHORTCUT": "SC",
+    "MACRO": "MAC",
+    "TEXT": "TXT",
+    "URL": "URL",
+    "APP": "APP",
+    "MEDIA": "MED",
+    "VOLUME": "VOL",
+    "PROFILE": "PRF",
+}
+
+
+def _key_caption(num: int, action: dict | None) -> str:
+    if not action:
+        return str(num)
+    atype = str(action.get("type", "?"))
+    short = _TYPE_SHORT.get(atype, atype[:3])
+    if atype == "KEY":
+        key = str(action.get("key", ""))
+        return f"{num}\n{key}" if key else f"{num}\nKEY"
+    if atype == "SHORTCUT":
+        key = str(action.get("key", ""))
+        return f"{num}\n{key}" if key else f"{num}\nSC"
+    if atype == "MACRO":
+        return f"{num}\nM{action.get('macro_id', '?')}"
+    if atype in ("TEXT", "URL", "APP"):
+        tid = action.get("text_id", action.get("app_id", "?"))
+        return f"{num}\n{short}{tid}"
+    return f"{num}\n{short}"
+
 
 class PadPreview(QWidget):
     """Visual mock of the macropad faceplate."""
@@ -80,7 +113,12 @@ class PadPreview(QWidget):
         knob.setMinimumSize(72, 72)
         enc_col.addWidget(knob, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        for slot, caption in (("cw", "CW"), ("ccw", "CCW"), ("press", "Press"), ("long_press", "Long")):
+        for slot, caption in (
+            ("cw", "CW"),
+            ("ccw", "CCW"),
+            ("press", "Press"),
+            ("long_press", "Long"),
+        ):
             btn = QPushButton(caption)
             btn.setObjectName("encoderButton")
             btn.setCheckable(True)
@@ -92,7 +130,7 @@ class PadPreview(QWidget):
         body.addLayout(enc_col, stretch=1)
         root.addLayout(body)
 
-        hint = QLabel("Click a key or encoder action — details are read-only in Step 10.")
+        hint = QLabel("Click a key or encoder slot to edit its action (Step 11).")
         hint.setObjectName("hintLabel")
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -101,9 +139,13 @@ class PadPreview(QWidget):
         self._profile = profile
         if profile is None:
             self._oled.setText("—")
+            for num, btn in self._key_buttons.items():
+                btn.setText(str(num))
+            self._refresh_encoder_labels()
             self.clear_selection()
             return
         self._oled.setText(profile.oled_title)
+        self.refresh_captions()
         # Keep selection if still valid; otherwise clear
         if self._selected is None:
             return
@@ -112,6 +154,35 @@ class PadPreview(QWidget):
             self._select_key(int(sid))
         else:
             self._select_encoder(str(sid))
+
+    def refresh_captions(self) -> None:
+        """Update key/encoder button labels from the current profile."""
+        profile = self._profile
+        for num, btn in self._key_buttons.items():
+            action = profile.action_for_key(num) if profile else None
+            btn.setText(_key_caption(num, action))
+        self._refresh_encoder_labels()
+
+    def set_oled_title(self, title: str) -> None:
+        self._oled.setText(title or "—")
+
+    def _refresh_encoder_labels(self) -> None:
+        captions = {
+            "cw": "CW",
+            "ccw": "CCW",
+            "press": "Press",
+            "long_press": "Long",
+        }
+        profile = self._profile
+        for slot, btn in self._encoder_buttons.items():
+            base = captions.get(slot, slot)
+            if profile is None:
+                btn.setText(base)
+                continue
+            action = profile.action_for_encoder(slot) or {}
+            atype = str(action.get("type", ""))
+            short = _TYPE_SHORT.get(atype, "")
+            btn.setText(f"{base}\n{short}" if short else base)
 
     def clear_selection(self) -> None:
         self._selected = None

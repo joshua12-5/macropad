@@ -25,7 +25,8 @@ OLED                         ENCODER
 | 8 | Action engine (TEXT/URL/APP/MACRO stub) | Done |
 | 9 | Non-blocking macro engine | Done |
 | 10 | PySide6 configurator shell | Done |
-| 11+ | Action editors, PCB, host helpers | Next |
+| 11 | Key/encoder action editors | Done |
+| 12+ | Macro editor / profile manager, PCB, host helpers | Next |
 
 ## Profiles
 
@@ -37,7 +38,7 @@ Built-in step tables + opcode docs: [`macros/SCHEMA.md`](macros/SCHEMA.md).
 
 ## Configurator
 
-Desktop shell (Step 10): [`configurator/`](configurator/).
+Desktop app (Step 11 editors): [`configurator/`](configurator/).
 
 ```bash
 cd configurator
@@ -46,9 +47,14 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). UI: profile list, OLED + 3×4 pad preview + encoder, read-only action JSON. Full editors are Steps 11–13; USB upload is Steps 15–16.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. Macro sequence editor / profile create-delete are Steps 12–13; USB upload is Steps 15–16.
 
-Headless load check: `QT_QPA_PLATFORM=offscreen python scripts/smoke_load.py`
+Headless checks:
+
+```bash
+python scripts/smoke_load.py
+python scripts/smoke_edit.py
+```
 
 ## Firmware
 

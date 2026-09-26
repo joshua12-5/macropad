@@ -1,4 +1,4 @@
-"""Main application window — Step 10 shell."""
+"""Main application window — Step 11 action editors."""
 
 from __future__ import annotations
 
@@ -10,8 +10,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -20,7 +22,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .models.profile import Profile, default_profiles_dir, load_profiles_dir
+from .models.profile import (
+    Profile,
+    default_profiles_dir,
+    load_profiles_dir,
+    save_profile,
+)
+from .models.schema import SchemaError
+from .widgets.action_editor import ActionEditor
 from .widgets.pad_preview import PadPreview
 from .widgets.profile_list import ProfileListWidget
 
@@ -74,6 +83,11 @@ QLabel#hintLabel {
     color: #80848e;
     font-size: 11px;
 }
+QLabel#validationError {
+    color: #f23f43;
+    font-size: 11px;
+    padding: 2px 0;
+}
 QFrame#keyGridFrame {
     background-color: #2b2d31;
     border: 1px solid #3c3f45;
@@ -85,7 +99,7 @@ QPushButton#keyButton {
     border: 1px solid #4e5058;
     border-radius: 6px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 11px;
 }
 QPushButton#keyButton:hover { background-color: #404249; }
 QPushButton#keyButton:checked {
@@ -99,6 +113,7 @@ QPushButton#encoderButton {
     border: 1px solid #4e5058;
     border-radius: 4px;
     padding: 6px;
+    font-size: 11px;
 }
 QPushButton#encoderButton:hover { background-color: #404249; }
 QPushButton#encoderButton:checked {
@@ -132,6 +147,16 @@ QTextEdit#detailsPanel {
     color: #dce0e6;
     padding: 6px;
 }
+QLineEdit, QComboBox, QSpinBox {
+    background-color: #383a40;
+    color: #e8e8ea;
+    border: 1px solid #4e5058;
+    border-radius: 4px;
+    padding: 4px 6px;
+    selection-background-color: #5865f2;
+}
+QComboBox::drop-down { border: none; }
+QCheckBox { spacing: 6px; }
 QSplitter::handle {
     background-color: #3c3f45;
     width: 2px;
@@ -143,11 +168,15 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Macropad Configurator")
-        self.resize(960, 640)
+        self.resize(1100, 700)
         self.setStyleSheet(DARK_STYLE)
 
         self._profiles_dir = default_profiles_dir()
         self._current: Profile | None = None
+        self._selection: tuple[str, object] | None = None
+        self._dirty_ids: set[str] = set()
+        self._meta_loading = False
+        self._applying = False
 
         self._build_menus()
         self._build_ui()
@@ -163,8 +192,22 @@ class MainWindow(QMainWindow):
 
         reload_act = QAction("&Reload", self)
         reload_act.setShortcut(QKeySequence("Ctrl+R"))
-        reload_act.triggered.connect(self.reload_profiles)
+        reload_act.triggered.connect(self._reload_with_prompt)
         file_menu.addAction(reload_act)
+
+        file_menu.addSeparator()
+
+        self._save_act = QAction("&Save", self)
+        self._save_act.setShortcut(QKeySequence.StandardKey.Save)
+        self._save_act.triggered.connect(self._save_current)
+        self._save_act.setEnabled(False)
+        file_menu.addAction(self._save_act)
+
+        self._save_all_act = QAction("Save &All", self)
+        self._save_all_act.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        self._save_all_act.triggered.connect(self._save_all)
+        self._save_all_act.setEnabled(False)
+        file_menu.addAction(self._save_all_act)
 
         file_menu.addSeparator()
 
@@ -204,41 +247,108 @@ class MainWindow(QMainWindow):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
 
-        summary_heading = QLabel("Profile")
-        summary_heading.setObjectName("sectionHeading")
-        right_layout.addWidget(summary_heading)
+        meta_heading = QLabel("Profile")
+        meta_heading.setObjectName("sectionHeading")
+        right_layout.addWidget(meta_heading)
 
-        self._summary = QTextEdit()
-        self._summary.setObjectName("detailsPanel")
-        self._summary.setReadOnly(True)
-        self._summary.setMaximumHeight(120)
-        right_layout.addWidget(self._summary)
+        meta_form = QFormLayout()
+        meta_form.setContentsMargins(0, 0, 0, 0)
+        meta_form.setSpacing(4)
+        self._name_edit = QLineEdit()
+        self._name_edit.setPlaceholderText("Profile name")
+        self._name_edit.textChanged.connect(self._on_meta_changed)
+        self._oled_edit = QLineEdit()
+        self._oled_edit.setPlaceholderText("OLED title")
+        self._oled_edit.textChanged.connect(self._on_meta_changed)
+        meta_form.addRow("Name", self._name_edit)
+        meta_form.addRow("OLED", self._oled_edit)
+        right_layout.addLayout(meta_form)
 
         action_heading = QLabel("Selected action")
         action_heading.setObjectName("sectionHeading")
         right_layout.addWidget(action_heading)
 
+        self._action_editor = ActionEditor()
+        self._action_editor.actionChanged.connect(self._on_action_changed)
+        right_layout.addWidget(self._action_editor)
+
+        json_heading = QLabel("Action JSON")
+        json_heading.setObjectName("sectionHeading")
+        right_layout.addWidget(json_heading)
+
         self._action_view = QTextEdit()
         self._action_view.setObjectName("detailsPanel")
         self._action_view.setReadOnly(True)
+        self._action_view.setMaximumHeight(160)
         self._action_view.setPlaceholderText("Click a key or encoder slot…")
         right_layout.addWidget(self._action_view)
+
+        right_layout.addStretch(1)
 
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 2)
-        splitter.setSizes([200, 480, 280])
+        splitter.setSizes([200, 520, 340])
 
         layout.addWidget(splitter)
         self.statusBar().showMessage("Ready")
 
+    # --- dirty tracking -------------------------------------------------
+
+    def _mark_dirty(self, profile: Profile | None = None) -> None:
+        profile = profile or self._current
+        if profile is None:
+            return
+        self._dirty_ids.add(profile.id)
+        self._update_save_actions()
+        self.statusBar().showMessage(f"Modified: {profile.name} ({profile.id})")
+
+    def _clear_dirty(self, profile_id: str | None = None) -> None:
+        if profile_id is None:
+            self._dirty_ids.clear()
+        else:
+            self._dirty_ids.discard(profile_id)
+        self._update_save_actions()
+
+    def _update_save_actions(self) -> None:
+        cur_dirty = bool(self._current and self._current.id in self._dirty_ids)
+        self._save_act.setEnabled(cur_dirty)
+        self._save_all_act.setEnabled(bool(self._dirty_ids))
+        title = "Macropad Configurator"
+        if self._dirty_ids:
+            title += " *"
+        self.setWindowTitle(title)
+
+    def _confirm_discard_dirty(self, reason: str) -> bool:
+        if not self._dirty_ids:
+            return True
+        names = ", ".join(sorted(self._dirty_ids))
+        reply = QMessageBox.question(
+            self,
+            "Unsaved changes",
+            f"{reason}\n\nUnsaved profiles: {names}\n\nDiscard changes?",
+            QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return reply == QMessageBox.StandardButton.Discard
+
+    # --- load / save ----------------------------------------------------
+
+    def _reload_with_prompt(self) -> None:
+        if not self._confirm_discard_dirty("Reload will discard unsaved edits."):
+            return
+        self._clear_dirty()
+        self.reload_profiles()
+
     def reload_profiles(self) -> None:
         self._profiles_dir = default_profiles_dir()
         profiles, errors = load_profiles_dir(self._profiles_dir)
+        keep_id = self._current.id if self._current else None
 
-        # SCHEMA.md is .md; *.json that aren't profiles (none expected) show as errors
         self._profile_list.set_profiles(profiles)
 
         if errors:
@@ -253,30 +363,77 @@ class MainWindow(QMainWindow):
                 f"Loaded {len(profiles)} profile(s) from {self._profiles_dir}"
             )
 
+        if keep_id:
+            self._profile_list.select_by_id(keep_id)
         if not profiles:
             self._on_profile_selected(None)
 
+    def _save_current(self) -> None:
+        if self._current is None:
+            return
+        try:
+            path = save_profile(self._current)
+        except (OSError, ValueError, SchemaError) as exc:
+            QMessageBox.critical(self, "Save failed", str(exc))
+            return
+        self._clear_dirty(self._current.id)
+        self.statusBar().showMessage(f"Saved {path}")
+
+    def _save_all(self) -> None:
+        saved = 0
+        for profile in self._profile_list.profiles():
+            if profile.id not in self._dirty_ids:
+                continue
+            try:
+                save_profile(profile)
+                self._dirty_ids.discard(profile.id)
+                saved += 1
+            except (OSError, ValueError, SchemaError) as exc:
+                QMessageBox.critical(
+                    self, "Save failed", f"{profile.id}: {exc}"
+                )
+                break
+        self._update_save_actions()
+        self.statusBar().showMessage(f"Saved {saved} profile(s)")
+
+    # --- profile / selection --------------------------------------------
+
     def _on_profile_selected(self, profile: Profile | None) -> None:
         self._current = profile
+        self._selection = None
         self._pad.set_profile(profile)
         self._pad.clear_selection()
-        if profile is None:
-            self._summary.setPlainText("(no profile selected)")
-            self._action_view.clear()
-            return
-        summary = {
-            "id": profile.id,
-            "name": profile.name,
-            "schema_version": profile.schema_version,
-            "oled_title": profile.oled_title,
-        }
-        self._summary.setPlainText(json.dumps(summary, indent=2))
-        self._action_view.setPlainText("(select a key or encoder action)")
+        self._meta_loading = True
+        try:
+            if profile is None:
+                self._name_edit.clear()
+                self._oled_edit.clear()
+                self._name_edit.setEnabled(False)
+                self._oled_edit.setEnabled(False)
+                self._action_editor.set_action(None)
+                self._action_editor.set_enabled(False)
+                self._action_view.clear()
+            else:
+                self._name_edit.setEnabled(True)
+                self._oled_edit.setEnabled(True)
+                self._name_edit.setText(profile.name)
+                self._oled_edit.setText(profile.oled_title)
+                self._action_editor.set_action(None)
+                self._action_editor.set_enabled(False)
+                self._action_view.setPlainText("(select a key or encoder action)")
+        finally:
+            self._meta_loading = False
+        self._update_save_actions()
 
     def _on_selection_changed(self, kind: str, selection_id: object) -> None:
         if not kind or self._current is None:
+            self._selection = None
+            self._action_editor.set_enabled(False)
+            self._action_editor.set_action(None)
             self._action_view.clear()
             return
+
+        self._selection = (kind, selection_id)
         if kind == "key":
             action = self._current.action_for_key(int(selection_id))
             label = f"Key {selection_id}"
@@ -284,12 +441,69 @@ class MainWindow(QMainWindow):
             action = self._current.action_for_encoder(str(selection_id))
             label = f"Encoder.{selection_id}"
 
-        if action is None:
-            self._action_view.setPlainText(f"{label}: (missing)")
+        self._action_editor.set_enabled(True)
+        self._action_editor.set_action(dict(action) if action else {"type": "DISABLED"})
+        self._refresh_action_json(label)
+        if action:
+            self.statusBar().showMessage(f"{label}: {action.get('type', '?')}")
+
+    def _on_meta_changed(self, *_args: object) -> None:
+        if self._meta_loading or self._current is None:
+            return
+        name = self._name_edit.text().strip()
+        title = self._oled_edit.text()
+        if name and name != self._current.name:
+            try:
+                self._current.set_name(name)
+            except ValueError:
+                return
+        if title != self._current.oled_title:
+            self._current.set_oled_title(title)
+            self._pad.set_oled_title(title)
+        self._mark_dirty()
+
+    def _on_action_changed(self) -> None:
+        if self._applying or self._current is None or self._selection is None:
+            return
+        kind, selection_id = self._selection
+        try:
+            action = self._action_editor.get_action()
+        except SchemaError:
+            # Keep JSON preview showing last good attempt / form dump
+            self._refresh_action_json_raw()
+            return
+
+        self._applying = True
+        try:
+            if kind == "key":
+                self._current.set_key_action(int(selection_id), action)
+                label = f"Key {selection_id}"
+            else:
+                self._current.set_encoder_action(str(selection_id), action)
+                label = f"Encoder.{selection_id}"
+            self._pad.refresh_captions()
+            self._mark_dirty()
+            self._refresh_action_json(label)
+        finally:
+            self._applying = False
+
+    def _refresh_action_json(self, label: str) -> None:
+        try:
+            action = self._action_editor.get_action()
+        except SchemaError as exc:
+            self._action_view.setPlainText(f"{label}: invalid — {exc}")
             return
         payload = {"selection": label, "action": action}
         self._action_view.setPlainText(json.dumps(payload, indent=2))
-        self.statusBar().showMessage(f"{label}: {action.get('type', '?')}")
+
+    def _refresh_action_json_raw(self) -> None:
+        if self._selection is None:
+            return
+        kind, selection_id = self._selection
+        label = (
+            f"Key {selection_id}" if kind == "key" else f"Encoder.{selection_id}"
+        )
+        self._refresh_action_json(label)
 
     def _open_profiles_folder(self) -> None:
         path = self._profiles_dir
@@ -311,16 +525,22 @@ class MainWindow(QMainWindow):
                 f"Profiles directory:\n{path}\n\n(Could not open file manager: {exc})",
             )
 
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if not self._confirm_discard_dirty("Quit with unsaved changes?"):
+            event.ignore()
+            return
+        event.accept()
+
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 10 — PySide6 shell<br><br>"
+                "Step 11 — key/encoder action editors<br><br>"
                 "Profile schema version: <b>1</b><br>"
-                "Loads JSON from the repo <code>profiles/</code> folder.<br><br>"
-                "Action editors (Steps 11–13) and USB upload (Steps 15–16) "
-                "are not implemented yet."
+                "Loads and saves JSON in the repo <code>profiles/</code> folder.<br><br>"
+                "Macro sequence editor and profile create/delete are Steps 12–13. "
+                "USB upload is Steps 15–16."
             ),
         )
