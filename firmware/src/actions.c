@@ -76,12 +76,6 @@
 #define ACTION_QUEUE_DEPTH 8
 #define TYPE_GAP_TICKS     6   /* ~6 ms between characters after tap idle */
 
-/* Weak Step 9 hook — override in macros.c later. */
-__attribute__((weak)) bool macros_fire(uint8_t macro_id) {
-    (void)macro_id;
-    return false;
-}
-
 typedef struct {
     action_t action;
 } queued_action_t;
@@ -322,16 +316,12 @@ static void fire_immediate(const action_t *action) {
         }
         break;
 
-    case ACTION_MACRO: {
-        char idbuf[8];
-        snprintf(idbuf, sizeof idbuf, "%u", (unsigned)action->aux);
-        oled_ui_show_toast("MACRO", idbuf, 700);
-        printf("MACRO id=%u\n", (unsigned)action->aux);
+    case ACTION_MACRO:
+        /* macros_fire() owns OLED toast + UART start/end logs. */
         if (!macros_fire(action->aux)) {
-            /* Step 9 not linked — stub only. */
+            printf("MACRO: fire failed id=%u\n", (unsigned)action->aux);
         }
         break;
-    }
 
     case ACTION_TEXT: {
         const char *s = text_table_get(action->aux);
@@ -378,6 +368,24 @@ static void fire_immediate(const action_t *action) {
 
 static bool needs_queue(uint8_t type) {
     return type == ACTION_TEXT || type == ACTION_URL || type == ACTION_APP;
+}
+
+
+bool actions_type_string(const char *s, bool append_enter) {
+    if (!s || typing_active) {
+        return false;
+    }
+    start_typing(s, append_enter, "TEXT");
+    return true;
+}
+
+bool actions_type_text_id(uint8_t text_id, bool append_enter) {
+    const char *s = text_table_get(text_id);
+    if (!s) {
+        printf("TEXT: invalid text_id %u\n", (unsigned)text_id);
+        return false;
+    }
+    return actions_type_string(s, append_enter);
 }
 
 void actions_init(void) {

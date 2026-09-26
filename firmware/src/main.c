@@ -1,4 +1,5 @@
 #include "actions.h"
+#include "macros.h"
 #include "board_pins.h"
 #include "encoder.h"
 #include "matrix.h"
@@ -22,10 +23,11 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 8: Action Engine ===\n");
+    printf("\n=== Macropad Step 9: Macro Engine ===\n");
 
     profiles_init();
     actions_init();
+    macros_init();
     matrix_init();
     encoder_init();
     usb_hid_init();
@@ -58,11 +60,12 @@ int main(void) {
         matrix_task();
         encoder_task();
         actions_task();
+        macros_task();
         oled_ui_task();
 
-        /* While the action engine is typing, skip matrix HID reports so
-         * KEY/SHORTCUT holds don't fight the typer. */
-        if (!actions_busy()) {
+        /* While typing or playing a macro, skip matrix HID reports so
+         * KEY/SHORTCUT holds don't fight the engine. */
+        if (!actions_busy() && !macros_busy()) {
             usb_hid_update_from_matrix();
         }
 

@@ -87,12 +87,8 @@
       "key": "B"
     },
     "12": {
-      "type": "SHORTCUT",
-      "mods": [
-        "CTRL",
-        "SHIFT"
-      ],
-      "key": "P"
+      "type": "MACRO",
+      "macro_id": 1
     }
   },
   "encoder": {

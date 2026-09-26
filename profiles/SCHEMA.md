@@ -20,7 +20,7 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 | `DISABLED` | — | No-op |
 | `KEY` | `key` | Held via matrix HID report |
 | `SHORTCUT` | `mods[]`, `key` | Held via matrix HID report |
-| `MACRO` | `macro_id` | OLED toast + UART; Step 9 sequencing hooks via `macros_fire()` |
+| `MACRO` | `macro_id` | Non-blocking playback via `macros_fire()` / `macros_task()` (see `macros/SCHEMA.md`) |
 | `TEXT` | `text_id` | Types string from firmware `text_table` over USB HID (non-blocking) |
 | `MEDIA` | `code` or `usage` | Consumer HID pulse; OLED shows short label when known |
 | `VOLUME` | `dir`: `up` / `down` / `mute` | Consumer volume |
@@ -31,7 +31,7 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 ### ID fields
 
 - **`text_id`**: index into firmware `text_table` (shared by TEXT / URL / APP).
-- **`macro_id`**: reserved for Step 9 macro engine.
+- **`macro_id`**: index into firmware built-in macro table (Step 9).
 - **`app_id`**: treated as `text_id` in Step 8 (launch string + Enter).
 
 Firmware ships packed C copies of five profiles; JSON is the host/library form for the configurator.
@@ -48,3 +48,15 @@ Firmware ships packed C copies of five profiles; JSON is the host/library form f
 | 5 | `calc` |
 | 6 | `Hello, World!` |
 | 7 | `ls -la\n` |
+
+### Built-in macros (firmware)
+
+| id | Name | Behavior |
+|----|------|----------|
+| 0 | hello | Types `HELLO` via key taps |
+| 1 | sel+cpy | Ctrl+A then Ctrl+C |
+| 2 | undo/redo | Ctrl+Z then Ctrl+Y |
+| 3 | git st | Types `git status` + newline from text table |
+| 4 | alt-tab | Alt down, Tab, release |
+
+Demo bindings: **Default** key 10 → macro 0; **Coding** key 12 → macro 1.

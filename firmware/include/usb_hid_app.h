@@ -24,6 +24,10 @@ void usb_hid_tap(uint8_t mods, uint8_t keycode);
 /* True when no tap is in progress (safe to start another tap). */
 bool usb_hid_tap_idle(void);
 
+/* Direct keyboard report (macro KEY_DOWN/UP / sticky holds).
+ * Ignored while a tap is in progress. keys may be NULL (all zero). */
+void usb_hid_set_report(uint8_t mods, const uint8_t keys[6]);
+
 #ifdef __cplusplus
 }
 #endif

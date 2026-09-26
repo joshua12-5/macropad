@@ -1,5 +1,6 @@
 #include "profiles.h"
 
+#include "macros.h"
 #include "text_table.h"
 
 #include "class/hid/hid.h"
@@ -95,9 +96,9 @@ static void build_defaults(void) {
     slots[0].keys[6] = action_key(HID_KEY_E);
     slots[0].keys[7] = action_key(HID_KEY_F);
     slots[0].keys[8] = action_key(HID_KEY_G);
-    slots[0].keys[9] = action_key(HID_KEY_H);
-    slots[0].keys[10] = action_text(TEXT_ID_HELLO);          /* key 11: TEXT */
-    slots[0].keys[11] = action_url(TEXT_ID_GITHUB_URL);       /* key 12: URL */
+    slots[0].keys[9] = action_macro(MACRO_ID_HELLO);          /* key 10: hello macro */
+    slots[0].keys[10] = action_text(TEXT_ID_HELLO);         /* key 11: TEXT */
+    slots[0].keys[11] = action_url(TEXT_ID_GITHUB_URL);      /* key 12: URL */
 
     /* 1 Gaming */
     set_meta(&slots[1], "gaming", "GAMING");
@@ -128,7 +129,7 @@ static void build_defaults(void) {
     slots[2].keys[8] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_SLASH);
     slots[2].keys[9] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEY_F);
     slots[2].keys[10] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_B);
-    slots[2].keys[11] = action_shortcut(KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEY_P);
+    slots[2].keys[11] = action_macro(MACRO_ID_SELECT_COPY);  /* key 12: select-all + copy */
 
     /* 3 Browser */
     set_meta(&slots[3], "browser", "BROWSER");

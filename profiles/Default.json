@@ -50,8 +50,8 @@
       "key": "G"
     },
     "10": {
-      "type": "KEY",
-      "key": "H"
+      "type": "MACRO",
+      "macro_id": 0
     },
     "11": {
       "type": "TEXT",

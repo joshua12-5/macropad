@@ -1,28 +1,36 @@
 # Firmware
 
-RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine
+RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1) · Action engine · Macro engine
 
-Build target: `macropad_step8.uf2`
+Build target: `macropad_step9.uf2`
 
-## Step 8 — Action engine
+## Step 9 — Non-blocking macro engine
 
-Every schema action type has defined behavior:
+| Module | Role |
+|--------|------|
+| `macros.c` / `macros.h` | Step opcodes, built-in tables, `macros_fire` / `macros_task` |
+| `actions.c` | TEXT/URL/APP typer; `ACTION_MACRO` → `macros_fire`; shared `actions_type_text_id` |
+| `usb_hid_app.c` | `usb_hid_tap` + `usb_hid_set_report` for sticky KEY_DOWN/UP |
 
-| Type | Behavior |
-|------|----------|
-| KEY / SHORTCUT | Held via matrix HID (unchanged) |
-| VOLUME / MEDIA / PROFILE | Immediate consumer / profile switch |
-| TEXT | Non-blocking HID typer from `text_table` |
-| URL | Type URL string + Enter |
-| APP | Type launch string + Enter (needs focused launcher/terminal; host helper later) |
-| MACRO | OLED + UART stub; `macros_fire()` weak hook for Step 9 |
+### Built-in macros
 
-Hold encoder ~800 ms to cycle profiles (Default → Gaming → Coding → Browser → Photoshop).
+| id | Name | Sequence |
+|----|------|----------|
+| 0 | hello | H E L L O taps |
+| 1 | sel+cpy | Ctrl+A, Ctrl+C |
+| 2 | undo/redo | Ctrl+Z, Ctrl+Y |
+| 3 | git st | TEXT `git status\n` |
+| 4 | alt-tab | Alt hold + Tab |
 
 ### Demo bindings
 
-- **Default** key 11 → TEXT `Hello`; key 12 → URL (GitHub repo)
-- **Browser** key 11 → URL; key 12 → MEDIA next track
+- **Default** key 10 → MACRO hello (0); key 11 TEXT; key 12 URL
+- **Coding** key 12 → MACRO select-all + copy (1)
+- **Browser** key 11 URL; key 12 MEDIA next
+
+Hold encoder ~800 ms to cycle profiles.
+
+Step format for a future configurator: [`macros/SCHEMA.md`](../macros/SCHEMA.md).
 
 ### Flash
 
@@ -30,5 +38,7 @@ Hold encoder ~800 ms to cycle profiles (Default → Gaming → Coding → Browse
 export PICO_SDK_PATH=/path/to/pico-sdk
 cd firmware && mkdir -p build && cd build
 cmake .. && make -j
-# Then copy macropad_step8.uf2 to the Pico USB mass-storage bootloader.
+# Copy macropad_step9.uf2 to the Pico USB mass-storage bootloader.
 ```
+
+UART (115200 on GP0/GP1) logs `MACRO start` / `MACRO end` and action typer lines.

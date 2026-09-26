@@ -23,11 +23,16 @@ OLED                         ENCODER
 | 6 | SSD1306 OLED UI | Done |
 | 7 | Profile system (schema v1) | Done |
 | 8 | Action engine (TEXT/URL/APP/MACRO stub) | Done |
-| 9+ | Macro sequencing, configurator, PCB | Next |
+| 9 | Non-blocking macro engine | Done |
+| 10+ | Configurator, PCB, host helpers | Next |
 
 ## Profiles
 
 Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](profiles/SCHEMA.md).
+
+## Macros
+
+Built-in step tables + opcode docs: [`macros/SCHEMA.md`](macros/SCHEMA.md).
 
 ## Firmware
 

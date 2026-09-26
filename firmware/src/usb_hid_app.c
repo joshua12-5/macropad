@@ -208,6 +208,26 @@ bool usb_hid_tap_idle(void) {
     return tap_state == TAP_IDLE;
 }
 
+void usb_hid_set_report(uint8_t mods, const uint8_t keys[6]) {
+    if (tap_state != TAP_IDLE) {
+        return;
+    }
+    if (!tud_mounted() || !tud_hid_n_ready(0)) {
+        return;
+    }
+    uint8_t k[6] = {0};
+    if (keys) {
+        memcpy(k, keys, 6);
+    }
+    if (tud_hid_n_keyboard_report(0, REPORT_ID_KEYBOARD, mods, k)) {
+        last_report[0] = mods;
+        last_report[1] = 0;
+        memcpy(&last_report[2], k, 6);
+        last_valid = true;
+    }
+}
+
+
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                                hid_report_type_t report_type,
                                uint8_t *buffer, uint16_t reqlen) {
