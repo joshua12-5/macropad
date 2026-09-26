@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 SMOKES = [
+    "smoke_version.py",
     "smoke_protocol.py",
     "smoke_storage.py",
     "smoke_macros_blob.py",

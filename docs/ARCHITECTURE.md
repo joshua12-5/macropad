@@ -94,8 +94,13 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
 
 ## Step 19 hardening summary
 
-- `FW_VERSION_MINOR = 19`, CMake target `macropad_step19`
 - Debounced `active_slot` persist after `SET_ACTIVE`
 - `CFG_CMD_SAVE_ALL = 0x32` for explicit Device menu save (`EBUSY` if upload in progress)
 - Host: `save_all()`, clearer NAK errors, disconnect-safe autoswitch, smoke runner
-- Next: **Step 20** testing / versioning polish
+
+## Step 20 versioning
+
+- `FW_VERSION_MINOR = 20`, CMake target `macropad_step20`, `bcdDevice` 0x0114
+- Host `HOST_APP_VERSION` **0.20.0**; matrix in [`VERSIONING.md`](VERSIONING.md)
+- Connect proto_ver guard + fw feature gates; `smoke_version.py`; [`HARDWARE_TEST.md`](HARDWARE_TEST.md)
+- Next: **Step 21** more polish/testing (release notes / CI stub)

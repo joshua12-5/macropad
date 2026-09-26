@@ -1,4 +1,4 @@
-"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15–19)."""
+"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15–20)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Main application window — Step 18 auto app-switch."""
+"""Main application window — Step 20 versioning / compat polish."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ from .widgets.pad_preview import PadPreview
 from .widgets.profile_dialog import ProfileNameIdDialog
 from .widgets.autoswitch_dialog import AutoswitchDialog
 from .widgets.profile_list import ProfileListWidget
+from . import version as app_version
 
 DARK_STYLE = """
 QMainWindow, QWidget {
@@ -753,6 +754,123 @@ class MainWindow(QMainWindow):
         dlg = MacroLibraryDialog(parent=self)
         dlg.exec()
 
+
+    def _apply_device_feature_gates(self, info: dict | None) -> None:
+        """Enable/disable upload / autoswitch / SAVE_ALL from GET_INFO fw."""
+        if not info:
+            tip_u = app_version.feature_disabled_tooltip(
+                "Upload profile", app_version.MIN_FW_MINOR_UPLOAD
+            )
+            tip_m = app_version.feature_disabled_tooltip(
+                "Upload macros", app_version.MIN_FW_MINOR_MACRO_UPLOAD
+            )
+            tip_a = app_version.feature_disabled_tooltip(
+                "Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH
+            )
+            tip_s = app_version.feature_disabled_tooltip(
+                "Save device state", app_version.MIN_FW_MINOR_SAVE_ALL
+            )
+            for act, tip in (
+                (self._upload_act, tip_u),
+                (self._upload_macros_act, tip_m),
+                (self._autoswitch_act, tip_a),
+                (self._save_device_act, tip_s),
+            ):
+                act.setEnabled(False)
+                act.setToolTip(tip)
+            return
+
+        major = info.get("fw_major")
+        minor = info.get("fw_minor")
+        proto_ok, _ = app_version.check_proto_ver(info.get("proto_ver", -1))
+
+        def gate(act, supported: bool, feature: str, min_minor: int, base_tip: str) -> None:
+            if proto_ok and supported:
+                act.setEnabled(True)
+                act.setToolTip("")
+                act.setStatusTip(base_tip)
+            else:
+                act.setEnabled(False)
+                if not proto_ok:
+                    tip = (
+                        f"{feature} disabled: protocol mismatch "
+                        f"(host expects proto_ver={app_version.PROTO_VER})."
+                    )
+                else:
+                    tip = app_version.feature_disabled_tooltip(feature, min_minor)
+                act.setToolTip(tip)
+                act.setStatusTip(tip)
+
+        gate(
+            self._upload_act,
+            app_version.fw_supports_upload(major, minor),
+            "Upload profile",
+            app_version.MIN_FW_MINOR_UPLOAD,
+            "Pack selected profile and upload into a device slot (0–4)",
+        )
+        gate(
+            self._upload_macros_act,
+            app_version.fw_supports_macro_upload(major, minor),
+            "Upload macros",
+            app_version.MIN_FW_MINOR_MACRO_UPLOAD,
+            "Upload host macro library ids 0–4 to the device flash bank",
+        )
+        # Autoswitch also needs a prior successful connect flag.
+        as_ok = proto_ok and app_version.fw_supports_autoswitch(major, minor)
+        if as_ok and self._autoswitch_connected:
+            self._autoswitch_act.setEnabled(True)
+            self._autoswitch_act.setToolTip("")
+            self._autoswitch_act.setStatusTip(
+                "Poll foreground app and SET_ACTIVE on the device (needs connection)"
+            )
+        else:
+            self._autoswitch_act.setEnabled(False)
+            if self._autoswitch_act.isChecked():
+                self._autoswitch_act.blockSignals(True)
+                self._autoswitch_act.setChecked(False)
+                self._autoswitch_act.blockSignals(False)
+            if not proto_ok:
+                tip = (
+                    "Auto-switch disabled: protocol mismatch "
+                    f"(host expects proto_ver={app_version.PROTO_VER})."
+                )
+            elif not app_version.fw_supports_autoswitch(major, minor):
+                tip = app_version.feature_disabled_tooltip(
+                    "Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH
+                )
+            else:
+                tip = "Connect to a device first to enable auto-switch."
+            self._autoswitch_act.setToolTip(tip)
+            self._autoswitch_act.setStatusTip(tip)
+
+        gate(
+            self._save_device_act,
+            app_version.fw_supports_save_all(major, minor),
+            "Save device state",
+            app_version.MIN_FW_MINOR_SAVE_ALL,
+            "SAVE_ALL (0x32): rewrite flash with current RAM profiles+macros+active",
+        )
+
+    def _warn_proto_if_needed(self, info: dict) -> bool:
+        """Warn on proto mismatch. Returns True if proto matches."""
+        ok, msg = app_version.check_proto_ver(info.get("proto_ver", -1))
+        if ok:
+            return True
+        self.statusBar().showMessage(f"Protocol mismatch — {msg}", 20000)
+        QMessageBox.warning(
+            self,
+            "Protocol version mismatch",
+            (
+                f"{msg}\n\n"
+                f"Host app: {app_version.HOST_APP_VERSION}\n"
+                f"Device fw: {info.get('fw_major', '?')}.{info.get('fw_minor', '?')}\n\n"
+                "Upload / autoswitch / SAVE_ALL are disabled until versions match.\n"
+                "See docs/VERSIONING.md."
+            ),
+        )
+        return False
+
+
     def _device_connect_info(self) -> None:
         """Open vendor HID, PING + GET_INFO, show result (Step 15)."""
         try:
@@ -783,27 +901,34 @@ class MainWindow(QMainWindow):
 
         self._last_device_info = info
         self._autoswitch_connected = True
-        self._autoswitch_act.setEnabled(True)
-        self._save_device_act.setEnabled(True)
+        proto_ok = self._warn_proto_if_needed(info)
+        self._apply_device_feature_gates(info)
 
         fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
         proto = info.get("proto_ver", "?")
         lines = [
+            f"Host app: {app_version.HOST_APP_VERSION}",
             f"Firmware: {fw}   (major.minor)",
-            f"Protocol: v{proto}",
+            f"Protocol: v{proto}  (host expects {app_version.PROTO_VER})",
             "",
             f"Product: {info.get('product_tag', '?')}",
             f"Active slot: {info.get('active_slot', '?')}",
             f"Slot count: {info.get('slot_count', '?')}",
             f"Flags: {info.get('flags', 0)}",
             f"PING: {info.get('ping_payload', '')!r}",
+            "",
+            app_version.compat_summary(info),
         ]
+        if not proto_ok:
+            lines.insert(3, "*** PROTOCOL MISMATCH — see warning ***")
         msg = "\n".join(lines)
-        self.statusBar().showMessage(
-            f"Device OK — fw {fw}  proto v{proto}  "
-            f"active_slot {info.get('active_slot')}/{info.get('slot_count')}",
-            15000,
+        status = (
+            f"Device {'WARN' if not proto_ok else 'OK'} — fw {fw}  "
+            f"proto v{proto}  "
+            f"active_slot {info.get('active_slot')}/{info.get('slot_count')}  "
+            f"host {app_version.HOST_APP_VERSION}"
         )
+        self.statusBar().showMessage(status, 15000)
         QMessageBox.information(self, "Device info", msg)
 
 
@@ -903,13 +1028,19 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 19 — architecture hardening (debounce save, SAVE_ALL)<br><br>"
-                "Profile schema version: <b>1</b><br>"
-                "Macro library schema version: <b>1</b><br>"
-                "Protocol version: <b>1</b><br>"
-                "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
+                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 20 "
+                "testing / versioning polish<br><br>"
+                f"Protocol (host): <b>{app_version.PROTO_VER}</b><br>"
+                f"Expected firmware: <b>{app_version.FW_VERSION_MAJOR_EXPECTED}."
+                f"{app_version.FW_VERSION_MINOR_CURRENT}</b><br>"
+                f"Profile / macro / autoswitch schemas: <b>"
+                f"{app_version.PROFILE_SCHEMA_VERSION}/"
+                f"{app_version.MACRO_SCHEMA_VERSION}/"
+                f"{app_version.AUTOSWITCH_SCHEMA_VERSION}</b><br><br>"
+                "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br>"
+                "Compatibility: <code>docs/VERSIONING.md</code><br>"
                 "Architecture: <code>docs/ARCHITECTURE.md</code><br>"
-                "Device → Upload / Save device state; Tools → Auto-switch."
+                "Device → Connect shows fw / proto; mismatches warn and gate features."
             ),
         )
 
@@ -957,8 +1088,11 @@ class MainWindow(QMainWindow):
             return
 
         self._autoswitch_connected = True
-        self._autoswitch_act.setEnabled(True)
-        self._save_device_act.setEnabled(True)
+        if self._last_device_info is not None:
+            self._apply_device_feature_gates(self._last_device_info)
+        else:
+            self._autoswitch_act.setEnabled(True)
+            self._save_device_act.setEnabled(True)
         msg = "Device state saved (profiles + macros + active_slot)."
         self.statusBar().showMessage(msg, 10000)
         QMessageBox.information(self, "Save device state", msg)

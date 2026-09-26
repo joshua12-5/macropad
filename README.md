@@ -34,12 +34,18 @@ OLED                         ENCODER
 | 17 | Macro-bank flash sync / polish | Done |
 | 18 | Auto app-switch / polish | Done |
 | 19 | Architecture hardening / polish | Done |
+| 20 | Testing / versioning polish | Done |
 
-**Step 19** hardens the stack: `docs/ARCHITECTURE.md`, debounced flash persist
-of `active_slot` after `SET_ACTIVE`, `SAVE_ALL` (`0x32`) for Device → Save device
-state, clearer host errors, disconnect-safe autoswitch, and
-`configurator/scripts/run_all_smokes.py`. Steps **14–19** are complete.
-**Next: Step 20** testing / versioning polish.
+**Step 20** adds versioning polish: [`docs/VERSIONING.md`](docs/VERSIONING.md)
+(fw major.minor vs `proto_ver` vs JSON schemas), host
+`macropad_config/version.py` (`HOST_APP_VERSION` **0.20.0**, feature min-fw
+gates), Connect/About proto mismatch warnings, `smoke_version.py`, and
+[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md). Steps **14–20** are complete.
+**Next: Step 21** more polish/testing in the 18–24 block (e.g. release notes or CI stub).
+
+**Step 19** (kept): `docs/ARCHITECTURE.md`, debounced flash persist of
+`active_slot` after `SET_ACTIVE`, `SAVE_ALL` (`0x32`), clearer host errors,
+disconnect-safe autoswitch, `run_all_smokes.py`.
 
 **Step 18** (kept): host auto app-switch via `SET_ACTIVE` (`0x30`); Step 19 adds
 debounced flash persist so frequent switches still avoid per-switch erase.
@@ -47,6 +53,8 @@ debounced flash persist so frequent switches still avoid per-switch erase.
 ## Architecture
 
 Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Version matrix / compat: [`docs/VERSIONING.md`](docs/VERSIONING.md).
+Manual hardware checklist: [`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
 
 ## Protocol
 
@@ -93,6 +101,7 @@ Headless checks (or all at once):
 ```bash
 python scripts/run_all_smokes.py
 # individual:
+python scripts/smoke_version.py
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
@@ -107,7 +116,7 @@ python scripts/smoke_autoswitch.py
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step19.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step20.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 

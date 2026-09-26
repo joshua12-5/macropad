@@ -1,9 +1,9 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–19: framing, uploads, autoswitch, SAVE_ALL).
+PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–20: framing, uploads, autoswitch, SAVE_ALL, versioning).
 
-**Steps 10–19** cover the configurator through architecture hardening. **Next: Step 20** testing / versioning polish.
-Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
+**Steps 10–20** cover the configurator through testing / versioning polish. **Next: Step 21** more polish/testing (e.g. release notes or CI stub).
+Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). Versions: [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 
 ## Run
 
@@ -50,7 +50,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
 **Profile → Macro library…** opens a dialog to edit `macros/library.json`.
 
-### Device (Step 15–19)
+### Device (Step 15–20)
 
 | Action | UI | Notes |
 |--------|-----|--------|
@@ -61,8 +61,9 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Auto-switch enabled** | **Device → Auto-switch enabled** (checkable) | Needs a prior Connect. Polls foreground app; sends `SET_ACTIVE`. Status: `Auto-switch: coding (Code)`. Disconnect mid-run stops cleanly (one reconnect attempt). |
 | **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
 
-Connect / Get info shows **fw major.minor** and **proto_ver** prominently.
-Tools/Help tip points at `docs/ARCHITECTURE.md`.
+Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If `proto_ver` ≠ host `PROTO_VER`, a **warning** dialog appears and upload / autoswitch / SAVE_ALL stay disabled. Firmware too old for a feature disables that action with a tooltip (see `macropad_config/version.py`).
+Help → About lists host **0.20.0**, proto, expected fw, schema versions.
+Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
 Blob layout: [`../protocol/PROFILE_BLOB.md`](../protocol/PROFILE_BLOB.md).
@@ -74,6 +75,7 @@ Macro flash upload is implemented (Step 17).
 ```bash
 python scripts/run_all_smokes.py
 # or individually:
+python scripts/smoke_version.py
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py

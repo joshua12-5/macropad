@@ -8,13 +8,13 @@
 extern "C" {
 #endif
 
-/* Step 15–19 — USB vendor-HID config channel (v1 framing). */
+/* Step 15–20 — USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        19u
+#define FW_VERSION_MINOR        20u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u

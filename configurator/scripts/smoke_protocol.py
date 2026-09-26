@@ -57,7 +57,7 @@ def test_pack_unpack_roundtrip() -> None:
         (CFG_CMD_PING, b"PONG"),
         (CFG_CMD_ECHO, b"abc"),
         (CFG_CMD_ECHO, bytes(range(CFG_PAYLOAD_MAX))),
-        (CFG_CMD_GET_INFO, bytes([0, 19, 1, 0, 5, 3]) + b"MACROPAD"),
+        (CFG_CMD_GET_INFO, bytes([0, 20, 1, 0, 5, 3]) + b"MACROPAD"),
         (CFG_CMD_NAK, bytes([CFG_ERR_EINVAL])),
         (CFG_CMD_SET_ACTIVE, b""),
         (CFG_CMD_SAVE_ALL, b""),
