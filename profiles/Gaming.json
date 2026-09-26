@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "gaming",
+  "name": "GAMING",
+  "oled": {
+    "title": "GAMING",
+    "animation": "static"
+  },
+  "keys": {
+    "1": {
+      "type": "KEY",
+      "key": "W"
+    },
+    "2": {
+      "type": "KEY",
+      "key": "A"
+    },
+    "3": {
+      "type": "KEY",
+      "key": "S"
+    },
+    "4": {
+      "type": "KEY",
+      "key": "D"
+    },
+    "5": {
+      "type": "KEY",
+      "key": "Q"
+    },
+    "6": {
+      "type": "KEY",
+      "key": "E"
+    },
+    "7": {
+      "type": "KEY",
+      "key": "R"
+    },
+    "8": {
+      "type": "KEY",
+      "key": "F"
+    },
+    "9": {
+      "type": "KEY",
+      "key": "1"
+    },
+    "10": {
+      "type": "KEY",
+      "key": "2"
+    },
+    "11": {
+      "type": "KEY",
+      "key": "3"
+    },
+    "12": {
+      "type": "KEY",
+      "key": "SPACE"
+    }
+  },
+  "encoder": {
+    "cw": {
+      "type": "VOLUME",
+      "dir": "up"
+    },
+    "ccw": {
+      "type": "VOLUME",
+      "dir": "down"
+    },
+    "press": {
+      "type": "MEDIA",
+      "code": "PLAY_PAUSE"
+    },
+    "long_press": {
+      "type": "DISABLED"
+    }
+  }
+}

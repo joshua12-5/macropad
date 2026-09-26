@@ -1,7 +1,7 @@
-# Firmware — Step 6 (OLED)
+# Firmware
 
-SSD1306 128×64 I²C on GP4 (SDA) / GP5 (SCL).
+RP2040-Zero · Pico SDK · TinyUSB · SSD1306 · KY-040 · Profiles (schema v1)
 
-Modules: `oled_driver` (HW) · `oled_font` · `oled_ui` (pages/toasts).
+Build target: `macropad_step7.uf2`
 
-Idle screen shows profile name + display volume estimate. Encoder/key actions show short toasts.
+Hold encoder ~800 ms to cycle profiles (Default → Gaming → Coding → Browser → Photoshop).

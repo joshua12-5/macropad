@@ -21,7 +21,12 @@ OLED                         ENCODER
 | 4 | USB HID keyboard | Done |
 | 5 | Rotary encoder + volume/mute | Done |
 | 6 | SSD1306 OLED UI | Done |
-| 7+ | Profiles, configurator, PCB, enclosure | Next |
+| 7 | Profile system (schema v1) | Done |
+| 8+ | Action engine, macros, configurator, PCB | Next |
+
+## Profiles
+
+Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](profiles/SCHEMA.md).
 
 ## Firmware
 

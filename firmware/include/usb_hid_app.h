@@ -10,13 +10,16 @@ extern "C" {
 void usb_hid_init(void);
 void usb_hid_task(void);
 
-/* Rebuild keyboard report from matrix; send if changed. */
+/* Held keys from active profile matrix bindings. */
 void usb_hid_update_from_matrix(void);
 
-/* Consumer Control: Volume Up / Down / Mute (auto-releases next tick). */
 void usb_hid_consumer_volume_up(void);
 void usb_hid_consumer_volume_down(void);
 void usb_hid_consumer_mute(void);
+void usb_hid_consumer_usage(uint16_t usage);
+
+/* Brief key tap for one-shot SHORTCUT/KEY actions. */
+void usb_hid_tap(uint8_t mods, uint8_t keycode);
 
 #ifdef __cplusplus
 }

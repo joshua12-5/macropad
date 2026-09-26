@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "id": "coding",
+  "name": "CODING",
+  "oled": {
+    "title": "CODING",
+    "animation": "static"
+  },
+  "keys": {
+    "1": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "C"
+    },
+    "2": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "V"
+    },
+    "3": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "X"
+    },
+    "4": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "Z"
+    },
+    "5": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "S"
+    },
+    "6": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "S"
+    },
+    "7": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "F"
+    },
+    "8": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "H"
+    },
+    "9": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "/"
+    },
+    "10": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "F"
+    },
+    "11": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "B"
+    },
+    "12": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "P"
+    }
+  },
+  "encoder": {
+    "cw": {
+      "type": "VOLUME",
+      "dir": "up"
+    },
+    "ccw": {
+      "type": "VOLUME",
+      "dir": "down"
+    },
+    "press": {
+      "type": "VOLUME",
+      "dir": "mute"
+    },
+    "long_press": {
+      "type": "DISABLED"
+    }
+  }
+}

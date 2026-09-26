@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "default",
+  "name": "DEFAULT",
+  "oled": {
+    "title": "DEFAULT",
+    "animation": "static"
+  },
+  "keys": {
+    "1": {
+      "type": "KEY",
+      "key": "A"
+    },
+    "2": {
+      "type": "KEY",
+      "key": "B"
+    },
+    "3": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "C"
+    },
+    "4": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "V"
+    },
+    "5": {
+      "type": "KEY",
+      "key": "C"
+    },
+    "6": {
+      "type": "KEY",
+      "key": "D"
+    },
+    "7": {
+      "type": "KEY",
+      "key": "E"
+    },
+    "8": {
+      "type": "KEY",
+      "key": "F"
+    },
+    "9": {
+      "type": "KEY",
+      "key": "G"
+    },
+    "10": {
+      "type": "KEY",
+      "key": "H"
+    },
+    "11": {
+      "type": "KEY",
+      "key": "I"
+    },
+    "12": {
+      "type": "KEY",
+      "key": "J"
+    }
+  },
+  "encoder": {
+    "cw": {
+      "type": "VOLUME",
+      "dir": "up"
+    },
+    "ccw": {
+      "type": "VOLUME",
+      "dir": "down"
+    },
+    "press": {
+      "type": "VOLUME",
+      "dir": "mute"
+    },
+    "long_press": {
+      "type": "DISABLED"
+    }
+  }
+}

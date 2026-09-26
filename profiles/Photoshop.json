@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "id": "photoshop",
+  "name": "PHOTOSHOP",
+  "oled": {
+    "title": "PHOTOSHOP",
+    "animation": "static"
+  },
+  "keys": {
+    "1": {
+      "type": "KEY",
+      "key": "B"
+    },
+    "2": {
+      "type": "KEY",
+      "key": "E"
+    },
+    "3": {
+      "type": "KEY",
+      "key": "V"
+    },
+    "4": {
+      "type": "KEY",
+      "key": "M"
+    },
+    "5": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "Z"
+    },
+    "6": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "Z"
+    },
+    "7": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "S"
+    },
+    "8": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "T"
+    },
+    "9": {
+      "type": "KEY",
+      "key": "["
+    },
+    "10": {
+      "type": "KEY",
+      "key": "]"
+    },
+    "11": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "="
+    },
+    "12": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "-"
+    }
+  },
+  "encoder": {
+    "cw": {
+      "type": "VOLUME",
+      "dir": "up"
+    },
+    "ccw": {
+      "type": "VOLUME",
+      "dir": "down"
+    },
+    "press": {
+      "type": "VOLUME",
+      "dir": "mute"
+    },
+    "long_press": {
+      "type": "DISABLED"
+    }
+  }
+}

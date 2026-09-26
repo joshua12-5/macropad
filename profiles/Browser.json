@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "id": "browser",
+  "name": "BROWSER",
+  "oled": {
+    "title": "BROWSER",
+    "animation": "static"
+  },
+  "keys": {
+    "1": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "T"
+    },
+    "2": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "W"
+    },
+    "3": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "T"
+    },
+    "4": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "L"
+    },
+    "5": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "R"
+    },
+    "6": {
+      "type": "SHORTCUT",
+      "mods": [
+        "ALT"
+      ],
+      "key": "LEFT"
+    },
+    "7": {
+      "type": "SHORTCUT",
+      "mods": [
+        "ALT"
+      ],
+      "key": "RIGHT"
+    },
+    "8": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "1"
+    },
+    "9": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "TAB"
+    },
+    "10": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL",
+        "SHIFT"
+      ],
+      "key": "TAB"
+    },
+    "11": {
+      "type": "SHORTCUT",
+      "mods": [
+        "CTRL"
+      ],
+      "key": "D"
+    },
+    "12": {
+      "type": "KEY",
+      "key": "F11"
+    }
+  },
+  "encoder": {
+    "cw": {
+      "type": "VOLUME",
+      "dir": "up"
+    },
+    "ccw": {
+      "type": "VOLUME",
+      "dir": "down"
+    },
+    "press": {
+      "type": "VOLUME",
+      "dir": "mute"
+    },
+    "long_press": {
+      "type": "DISABLED"
+    }
+  }
+}
