@@ -1,4 +1,4 @@
-"""Main application window — Step 11 action editors."""
+"""Main application window — Step 12 profile manager."""
 
 from __future__ import annotations
 
@@ -25,12 +25,18 @@ from PySide6.QtWidgets import (
 from .models.profile import (
     Profile,
     default_profiles_dir,
+    delete_profile_file,
+    duplicate_profile,
     load_profiles_dir,
+    make_blank_profile,
     save_profile,
+    suggest_profile_id,
+    suggest_profile_path,
 )
 from .models.schema import SchemaError
 from .widgets.action_editor import ActionEditor
 from .widgets.pad_preview import PadPreview
+from .widgets.profile_dialog import ProfileNameIdDialog
 from .widgets.profile_list import ProfileListWidget
 
 DARK_STYLE = """
@@ -119,6 +125,19 @@ QPushButton#encoderButton:hover { background-color: #404249; }
 QPushButton#encoderButton:checked {
     background-color: #5865f2;
     border-color: #7983f5;
+}
+QPushButton#profileToolButton {
+    background-color: #383a40;
+    color: #e8e8ea;
+    border: 1px solid #4e5058;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+QPushButton#profileToolButton:hover { background-color: #404249; }
+QPushButton#profileToolButton:disabled {
+    color: #6d6f78;
+    background-color: #2b2d31;
 }
 QListWidget#profileList {
     background-color: #2b2d31;
@@ -216,6 +235,30 @@ class MainWindow(QMainWindow):
         quit_act.triggered.connect(self.close)
         file_menu.addAction(quit_act)
 
+        profile_menu = self.menuBar().addMenu("&Profile")
+
+        self._new_profile_act = QAction("&New…", self)
+        self._new_profile_act.setShortcut(QKeySequence("Ctrl+N"))
+        self._new_profile_act.triggered.connect(self._new_profile)
+        profile_menu.addAction(self._new_profile_act)
+
+        self._dup_profile_act = QAction("&Duplicate…", self)
+        self._dup_profile_act.setShortcut(QKeySequence("Ctrl+D"))
+        self._dup_profile_act.triggered.connect(self._duplicate_profile)
+        profile_menu.addAction(self._dup_profile_act)
+
+        self._del_profile_act = QAction("De&lete…", self)
+        self._del_profile_act.triggered.connect(self._delete_profile)
+        profile_menu.addAction(self._del_profile_act)
+
+        profile_menu.addSeparator()
+
+        macro_lib_act = QAction("Macro library…", self)
+        macro_lib_act.setEnabled(False)
+        macro_lib_act.setToolTip("Step 13")
+        macro_lib_act.setStatusTip("Step 13")
+        profile_menu.addAction(macro_lib_act)
+
         device_menu = self.menuBar().addMenu("&Device")
         upload_act = QAction("Upload to device", self)
         upload_act.setEnabled(False)
@@ -238,6 +281,9 @@ class MainWindow(QMainWindow):
 
         self._profile_list = ProfileListWidget()
         self._profile_list.profile_selected.connect(self._on_profile_selected)
+        self._profile_list.new_requested.connect(self._new_profile)
+        self._profile_list.duplicate_requested.connect(self._duplicate_profile)
+        self._profile_list.delete_requested.connect(self._delete_profile)
         splitter.addWidget(self._profile_list)
 
         self._pad = PadPreview()
@@ -368,15 +414,21 @@ class MainWindow(QMainWindow):
         if not profiles:
             self._on_profile_selected(None)
 
+    def _path_for_save(self, profile: Profile) -> Path:
+        if profile.source_path is not None:
+            return Path(profile.source_path)
+        return suggest_profile_path(profile.name, profile.id, self._profiles_dir)
+
     def _save_current(self) -> None:
         if self._current is None:
             return
         try:
-            path = save_profile(self._current)
+            path = save_profile(self._current, self._path_for_save(self._current))
         except (OSError, ValueError, SchemaError) as exc:
             QMessageBox.critical(self, "Save failed", str(exc))
             return
         self._clear_dirty(self._current.id)
+        self._profile_list.refresh_labels()
         self.statusBar().showMessage(f"Saved {path}")
 
     def _save_all(self) -> None:
@@ -385,7 +437,7 @@ class MainWindow(QMainWindow):
             if profile.id not in self._dirty_ids:
                 continue
             try:
-                save_profile(profile)
+                save_profile(profile, self._path_for_save(profile))
                 self._dirty_ids.discard(profile.id)
                 saved += 1
             except (OSError, ValueError, SchemaError) as exc:
@@ -393,6 +445,7 @@ class MainWindow(QMainWindow):
                     self, "Save failed", f"{profile.id}: {exc}"
                 )
                 break
+        self._profile_list.refresh_labels()
         self._update_save_actions()
         self.statusBar().showMessage(f"Saved {saved} profile(s)")
 
@@ -424,6 +477,9 @@ class MainWindow(QMainWindow):
         finally:
             self._meta_loading = False
         self._update_save_actions()
+        has = profile is not None
+        self._dup_profile_act.setEnabled(has)
+        self._del_profile_act.setEnabled(has)
 
     def _on_selection_changed(self, kind: str, selection_id: object) -> None:
         if not kind or self._current is None:
@@ -460,6 +516,7 @@ class MainWindow(QMainWindow):
         if title != self._current.oled_title:
             self._current.set_oled_title(title)
             self._pad.set_oled_title(title)
+        self._profile_list.refresh_labels()
         self._mark_dirty()
 
     def _on_action_changed(self) -> None:
@@ -505,6 +562,106 @@ class MainWindow(QMainWindow):
         )
         self._refresh_action_json(label)
 
+
+    # --- profile CRUD (Step 12) -----------------------------------------
+
+    def _new_profile(self) -> None:
+        existing = self._profile_list.existing_ids()
+        dlg = ProfileNameIdDialog(
+            title="New profile",
+            existing_ids=existing,
+            initial_name="",
+            parent=self,
+        )
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        name = dlg.profile_name()
+        pid = dlg.profile_id()
+        try:
+            profile = make_blank_profile(pid, name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "New profile", str(exc))
+            return
+        self._profile_list.add_profile(profile, select=True)
+        self._mark_dirty(profile)
+        self.statusBar().showMessage(f"Created profile {name} ({pid}) — unsaved")
+
+    def _duplicate_profile(self) -> None:
+        src = self._current or self._profile_list.current_profile()
+        if src is None:
+            return
+        existing = self._profile_list.existing_ids()
+        suggested_name = f"{src.name} Copy"
+        suggested_id = suggest_profile_id(suggested_name, existing)
+        dlg = ProfileNameIdDialog(
+            title="Duplicate profile",
+            existing_ids=existing,
+            initial_name=suggested_name,
+            initial_id=suggested_id,
+            parent=self,
+        )
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        name = dlg.profile_name()
+        pid = dlg.profile_id()
+        try:
+            profile = duplicate_profile(src, pid, name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Duplicate profile", str(exc))
+            return
+        self._profile_list.add_profile(profile, select=True)
+        self._mark_dirty(profile)
+        self.statusBar().showMessage(
+            f"Duplicated {src.id} → {pid} — unsaved"
+        )
+
+    def _delete_profile(self) -> None:
+        profile = self._current or self._profile_list.current_profile()
+        if profile is None:
+            return
+
+        remaining = len(self._profile_list.profiles()) - 1
+        warn = ""
+        if remaining <= 0:
+            warn = (
+                "\n\nThis is the last profile. You can delete it, "
+                "but the list will be empty until you create a new one."
+            )
+        on_disk = (
+            profile.source_path is not None
+            and Path(profile.source_path).is_file()
+        )
+        disk_note = (
+            f"\n\nFile on disk will be removed:\n{profile.source_path}"
+            if on_disk
+            else "\n\n(Not yet saved to disk — will only drop from memory.)"
+        )
+        reply = QMessageBox.question(
+            self,
+            "Delete profile",
+            (
+                f"Delete profile {profile.name!r} ({profile.id})?"
+                f"{disk_note}{warn}"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        pid = profile.id
+        try:
+            if on_disk:
+                delete_profile_file(profile)
+        except OSError as exc:
+            QMessageBox.critical(self, "Delete failed", str(exc))
+            return
+
+        self._dirty_ids.discard(pid)
+        self._profile_list.remove_profile(pid)
+        self._update_save_actions()
+        self.statusBar().showMessage(f"Deleted profile {pid}")
+
     def _open_profiles_folder(self) -> None:
         path = self._profiles_dir
         if not path.exists():
@@ -537,10 +694,10 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 11 — key/encoder action editors<br><br>"
+                "Step 12 — profile manager (new / duplicate / delete)<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Loads and saves JSON in the repo <code>profiles/</code> folder.<br><br>"
-                "Macro sequence editor and profile create/delete are Steps 12–13. "
+                "Macro sequence editor is Step 13. "
                 "USB upload is Steps 15–16."
             ),
         )

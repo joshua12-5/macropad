@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -100,6 +102,123 @@ class Profile:
         )
 
 
+_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def is_valid_profile_id(profile_id: str) -> bool:
+    """Return True if id matches ^[a-z][a-z0-9_]*$."""
+    return bool(_ID_RE.match(profile_id or ""))
+
+
+def suggest_profile_id(name: str, existing_ids: set[str]) -> str:
+    """Slugify *name* to a unique lowercase id matching is_valid_profile_id."""
+    slug = (name or "").strip().lower()
+    slug = re.sub(r"[^a-z0-9_]+", "_", slug)
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    if not slug:
+        slug = "profile"
+    if not slug[0].isalpha():
+        slug = f"p_{slug}"
+    if not is_valid_profile_id(slug):
+        slug = re.sub(r"[^a-z0-9_]", "", slug)
+        if not slug or not slug[0].isalpha():
+            slug = "profile"
+    if slug not in existing_ids:
+        return slug
+    n = 2
+    while f"{slug}_{n}" in existing_ids:
+        n += 1
+    return f"{slug}_{n}"
+
+
+def make_blank_profile(profile_id: str, name: str) -> Profile:
+    """Create a schema-v1 blank profile (keys DISABLED; encoder volume + long DISABLED)."""
+    name = str(name).strip()
+    if not name:
+        raise ValueError("profile name must be non-empty")
+    if not is_valid_profile_id(profile_id):
+        raise ValueError(
+            f"invalid profile id {profile_id!r} (expected ^[a-z][a-z0-9_]*$)"
+        )
+    keys = {str(i): {"type": "DISABLED"} for i in range(1, 13)}
+    encoder = {
+        "cw": {"type": "VOLUME", "dir": "up"},
+        "ccw": {"type": "VOLUME", "dir": "down"},
+        "press": {"type": "VOLUME", "dir": "mute"},
+        "long_press": {"type": "DISABLED"},
+    }
+    profile = Profile(
+        schema_version=SCHEMA_VERSION,
+        id=profile_id,
+        name=name,
+        oled={"title": name, "animation": "static"},
+        keys=keys,
+        encoder=encoder,
+        source_path=None,
+    )
+    validate_profile_dict(profile.to_dict())
+    return profile
+
+
+def duplicate_profile(src: Profile, new_id: str, new_name: str) -> Profile:
+    """Deep-copy *src* with a new id/name; source_path cleared until saved."""
+    new_name = str(new_name).strip()
+    if not new_name:
+        raise ValueError("profile name must be non-empty")
+    if not is_valid_profile_id(new_id):
+        raise ValueError(
+            f"invalid profile id {new_id!r} (expected ^[a-z][a-z0-9_]*$)"
+        )
+    profile = Profile(
+        schema_version=int(src.schema_version),
+        id=new_id,
+        name=new_name,
+        oled=copy.deepcopy(src.oled),
+        keys={k: copy.deepcopy(v) for k, v in src.keys.items()},
+        encoder={k: copy.deepcopy(v) for k, v in src.encoder.items()},
+        source_path=None,
+    )
+    validate_profile_dict(profile.to_dict())
+    return profile
+
+
+def delete_profile_file(profile: Profile) -> None:
+    """Unlink profile.source_path if set and present on disk."""
+    path = profile.source_path
+    if path is None:
+        return
+    path = Path(path)
+    if path.is_file():
+        path.unlink()
+    profile.source_path = None
+
+
+def suggest_profile_path(
+    name: str, profile_id: str, directory: Path | str
+) -> Path:
+    """Pick a unique JSON path under *directory* for a new profile file.
+
+    Prefer ``{name with spaces removed}.json``. If that exists, fall back to
+    ``{id}.json``, then ``{id}_2.json``, …
+    """
+    directory = Path(directory)
+    base = (name or "").replace(" ", "").strip()
+    if not base:
+        base = profile_id
+    candidate = directory / f"{base}.json"
+    if not candidate.exists():
+        return candidate
+    candidate = directory / f"{profile_id}.json"
+    if not candidate.exists():
+        return candidate
+    n = 2
+    while True:
+        candidate = directory / f"{profile_id}_{n}.json"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
 def default_profiles_dir() -> Path:
     """Resolve profiles directory: MACROPAD_PROFILES_DIR or repo profiles/."""
     env = os.environ.get("MACROPAD_PROFILES_DIR")
@@ -161,6 +280,7 @@ def save_profile(profile: Profile, path: Path | str | None = None) -> Path:
         raise ValueError("no destination path for save_profile")
     payload = profile.to_dict()
     validate_profile_dict(payload)
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     profile.source_path = dest
     return dest
@@ -171,7 +291,13 @@ __all__ = [
     "Profile",
     "ProfileLoadError",
     "default_profiles_dir",
+    "delete_profile_file",
+    "duplicate_profile",
+    "is_valid_profile_id",
     "load_profile",
     "load_profiles_dir",
+    "make_blank_profile",
     "save_profile",
+    "suggest_profile_id",
+    "suggest_profile_path",
 ]

@@ -26,7 +26,8 @@ OLED                         ENCODER
 | 9 | Non-blocking macro engine | Done |
 | 10 | PySide6 configurator shell | Done |
 | 11 | Key/encoder action editors | Done |
-| 12+ | Macro editor / profile manager, PCB, host helpers | Next |
+| 12 | Profile manager (new / duplicate / delete) | Done |
+| 13+ | Macro editor, PCB, host helpers | Next |
 
 ## Profiles
 
@@ -38,7 +39,7 @@ Built-in step tables + opcode docs: [`macros/SCHEMA.md`](macros/SCHEMA.md).
 
 ## Configurator
 
-Desktop app (Step 11 editors): [`configurator/`](configurator/).
+Desktop app (Step 12 profile manager): [`configurator/`](configurator/).
 
 ```bash
 cd configurator
@@ -47,13 +48,14 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. Macro sequence editor / profile create-delete are Steps 12–13; USB upload is Steps 15–16.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. Macro sequence editor is Step 13; USB upload is Steps 15–16.
 
 Headless checks:
 
 ```bash
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
+python scripts/smoke_profile_mgr.py
 ```
 
 ## Firmware
