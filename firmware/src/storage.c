@@ -1,6 +1,7 @@
 #include "storage.h"
 
 #include "config_protocol.h"
+#include "macros.h"
 #include "profiles.h"
 
 #include "hardware/flash.h"
@@ -22,21 +23,40 @@
 #define STORAGE_FLASH_OFFSET  (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 
 #define STORAGE_HDR_SIZE      8u
-#define STORAGE_BLOBS_SIZE    (PROFILE_SLOT_COUNT * PROFILE_BLOB_V1_SIZE)
+#define STORAGE_PROFILES_SIZE (PROFILE_SLOT_COUNT * PROFILE_BLOB_V1_SIZE)
+#define STORAGE_MACROS_SIZE   (MACRO_BUILTIN_COUNT * MACRO_BLOB_V1_SIZE)
 #define STORAGE_CRC_SIZE      4u
-#define STORAGE_IMAGE_SIZE    (STORAGE_HDR_SIZE + STORAGE_BLOBS_SIZE + STORAGE_CRC_SIZE)
+
+#define STORAGE_V1_BODY_SIZE  (STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE)
+#define STORAGE_V1_IMAGE_SIZE (STORAGE_V1_BODY_SIZE + STORAGE_CRC_SIZE)
+
+#define STORAGE_V2_BODY_SIZE  (STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE + STORAGE_MACROS_SIZE)
+#define STORAGE_IMAGE_SIZE    (STORAGE_V2_BODY_SIZE + STORAGE_CRC_SIZE)
 
 _Static_assert(STORAGE_IMAGE_SIZE <= FLASH_SECTOR_SIZE, "storage image exceeds sector");
 _Static_assert(PROFILE_BLOB_V1_SIZE == 148u, "PROFILE_BLOB_V1_SIZE mismatch");
+_Static_assert(MACRO_BLOB_V1_SIZE == 162u, "MACRO_BLOB_V1_SIZE mismatch");
+_Static_assert(MACRO_MAX_STEPS == 24u, "MACRO_MAX_STEPS mismatch");
+
+enum {
+    UPLOAD_NONE = 0,
+    UPLOAD_PROFILE = 1,
+    UPLOAD_MACRO = 2,
+};
 
 static bool g_loaded_from_flash;
-static bool g_upload_active;
+static uint8_t g_upload_kind;
 static uint8_t g_upload_slot;
 static uint16_t g_upload_len;
 static uint32_t g_upload_crc;
 static uint16_t g_upload_got;
-static uint8_t g_upload_buf[PROFILE_BLOB_V1_SIZE];
-static uint8_t g_upload_recv_mask[(PROFILE_BLOB_V1_SIZE + 7) / 8];
+
+/* Staging fits the larger of profile (148) and macro (162) blobs. */
+#define UPLOAD_BUF_MAX  MACRO_BLOB_V1_SIZE
+_Static_assert(PROFILE_BLOB_V1_SIZE <= UPLOAD_BUF_MAX, "profile > upload buf");
+
+static uint8_t g_upload_buf[UPLOAD_BUF_MAX];
+static uint8_t g_upload_recv_mask[(UPLOAD_BUF_MAX + 7) / 8];
 
 static void wr_u16_le(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
@@ -65,26 +85,69 @@ static const uint8_t *flash_image(void) {
     return (const uint8_t *)(XIP_BASE + STORAGE_FLASH_OFFSET);
 }
 
-static bool image_valid(const uint8_t *img) {
+static bool image_crc_ok(const uint8_t *img, size_t body_size) {
+    uint32_t expect = cfg_crc32(img, body_size);
+    uint32_t got = rd_u32_le(&img[body_size]);
+    return expect == got;
+}
+
+static bool image_valid_v1(const uint8_t *img) {
     if (rd_u32_le(&img[0]) != STORAGE_MAGIC) {
         return false;
     }
-    if (rd_u16_le(&img[4]) != STORAGE_VERSION) {
+    if (rd_u16_le(&img[4]) != STORAGE_VERSION_1) {
         return false;
     }
+    if (img[6] >= PROFILE_SLOT_COUNT) {
+        return false;
+    }
+    return image_crc_ok(img, STORAGE_V1_BODY_SIZE);
+}
+
+static bool image_valid_v2(const uint8_t *img) {
+    if (rd_u32_le(&img[0]) != STORAGE_MAGIC) {
+        return false;
+    }
+    if (rd_u16_le(&img[4]) != STORAGE_VERSION_2) {
+        return false;
+    }
+    if (img[6] >= PROFILE_SLOT_COUNT) {
+        return false;
+    }
+    return image_crc_ok(img, STORAGE_V2_BODY_SIZE);
+}
+
+static bool load_profiles_from_image(const uint8_t *img) {
     uint8_t active = img[6];
-    if (active >= PROFILE_SLOT_COUNT) {
-        return false;
+    for (uint8_t i = 0; i < PROFILE_SLOT_COUNT; i++) {
+        profile_t tmp;
+        const uint8_t *blob =
+            &img[STORAGE_HDR_SIZE + i * PROFILE_BLOB_V1_SIZE];
+        if (!profile_blob_unpack(blob, PROFILE_BLOB_V1_SIZE, &tmp)) {
+            return false;
+        }
+        if (!profiles_write_slot(i, &tmp)) {
+            return false;
+        }
     }
-    uint32_t expect = cfg_crc32(img, STORAGE_HDR_SIZE + STORAGE_BLOBS_SIZE);
-    uint32_t got = rd_u32_le(&img[STORAGE_HDR_SIZE + STORAGE_BLOBS_SIZE]);
-    return expect == got;
+    return profiles_set_active(active);
+}
+
+static bool load_macros_from_image(const uint8_t *img) {
+    const uint8_t *base = &img[STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE];
+    for (uint8_t i = 0; i < MACRO_BUILTIN_COUNT; i++) {
+        const uint8_t *blob = &base[i * MACRO_BLOB_V1_SIZE];
+        if (!macros_apply_blob(i, blob, MACRO_BLOB_V1_SIZE)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool build_image(uint8_t *out, uint8_t active_slot) {
     memset(out, 0, STORAGE_IMAGE_SIZE);
     wr_u32_le(&out[0], STORAGE_MAGIC);
-    wr_u16_le(&out[4], STORAGE_VERSION);
+    wr_u16_le(&out[4], STORAGE_VERSION_2);
     out[6] = active_slot;
     out[7] = 0;
 
@@ -99,14 +162,20 @@ static bool build_image(uint8_t *out, uint8_t active_slot) {
         }
     }
 
-    uint32_t crc = cfg_crc32(out, STORAGE_HDR_SIZE + STORAGE_BLOBS_SIZE);
-    wr_u32_le(&out[STORAGE_HDR_SIZE + STORAGE_BLOBS_SIZE], crc);
+    uint8_t *macro_base = &out[STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE];
+    for (uint8_t i = 0; i < MACRO_BUILTIN_COUNT; i++) {
+        if (!macros_pack_slot(i, &macro_base[i * MACRO_BLOB_V1_SIZE],
+                              MACRO_BLOB_V1_SIZE)) {
+            return false;
+        }
+    }
+
+    uint32_t crc = cfg_crc32(out, STORAGE_V2_BODY_SIZE);
+    wr_u32_le(&out[STORAGE_V2_BODY_SIZE], crc);
     return true;
 }
 
 static bool program_image(const uint8_t *image) {
-    /* Pad sector buffer so flash_range_program length is a multiple of
-     * FLASH_PAGE_SIZE (256). */
     static uint8_t sector[FLASH_SECTOR_SIZE];
     memset(sector, 0xFF, sizeof(sector));
     memcpy(sector, image, STORAGE_IMAGE_SIZE);
@@ -116,36 +185,38 @@ static bool program_image(const uint8_t *image) {
     flash_range_program(STORAGE_FLASH_OFFSET, sector, FLASH_SECTOR_SIZE);
     restore_interrupts(ints);
 
-    return image_valid(flash_image());
+    return image_valid_v2(flash_image());
 }
 
 void storage_init(void) {
     g_loaded_from_flash = false;
-    g_upload_active = false;
+    g_upload_kind = UPLOAD_NONE;
 
     const uint8_t *img = flash_image();
-    if (!image_valid(img)) {
-        printf("stor load default\n");
+
+    if (image_valid_v2(img)) {
+        if (!load_profiles_from_image(img) || !load_macros_from_image(img)) {
+            printf("stor load default\n");
+            macros_factory_reset_all();
+            return;
+        }
+        g_loaded_from_flash = true;
+        printf("stor load v2\n");
         return;
     }
 
-    uint8_t active = img[6];
-    for (uint8_t i = 0; i < PROFILE_SLOT_COUNT; i++) {
-        profile_t tmp;
-        const uint8_t *blob =
-            &img[STORAGE_HDR_SIZE + i * PROFILE_BLOB_V1_SIZE];
-        if (!profile_blob_unpack(blob, PROFILE_BLOB_V1_SIZE, &tmp)) {
+    if (image_valid_v1(img)) {
+        if (!load_profiles_from_image(img)) {
             printf("stor load default\n");
             return;
         }
-        if (!profiles_write_slot(i, &tmp)) {
-            printf("stor load default\n");
-            return;
-        }
+        /* Macros already seeded by macros_init(); next save upgrades to v2. */
+        g_loaded_from_flash = true;
+        printf("stor load v1 (macros factory)\n");
+        return;
     }
-    (void)profiles_set_active(active);
-    g_loaded_from_flash = true;
-    printf("stor load ok\n");
+
+    printf("stor load default\n");
 }
 
 bool storage_loaded_from_flash(void) {
@@ -171,33 +242,26 @@ bool storage_save_slot(uint8_t index) {
     if (index >= PROFILE_SLOT_COUNT) {
         return false;
     }
-    /* Single sector holds all slots — rewrite the full image. */
     return storage_save_all();
 }
 
 bool storage_upload_busy(void) {
-    return g_upload_active;
+    return g_upload_kind == UPLOAD_PROFILE;
 }
 
-bool storage_upload_begin(uint8_t slot, uint16_t total_len, uint32_t blob_crc) {
-    if (g_upload_active) {
-        return false; /* caller maps to EBUSY */
-    }
-    if (slot >= PROFILE_SLOT_COUNT || total_len != PROFILE_BLOB_V1_SIZE) {
-        return false; /* EINVAL */
-    }
-    g_upload_active = true;
-    g_upload_slot = slot;
-    g_upload_len = total_len;
-    g_upload_crc = blob_crc;
+bool storage_macro_upload_busy(void) {
+    return g_upload_kind == UPLOAD_MACRO;
+}
+
+static void upload_reset_mask(uint16_t len) {
     g_upload_got = 0;
     memset(g_upload_buf, 0, sizeof(g_upload_buf));
     memset(g_upload_recv_mask, 0, sizeof(g_upload_recv_mask));
-    return true;
+    (void)len;
 }
 
-bool storage_upload_data(uint16_t offset, const uint8_t *data, uint16_t len) {
-    if (!g_upload_active || data == NULL) {
+static bool upload_apply_data(uint16_t offset, const uint8_t *data, uint16_t len) {
+    if (data == NULL) {
         return false;
     }
     if ((uint32_t)offset + len > g_upload_len) {
@@ -217,8 +281,30 @@ bool storage_upload_data(uint16_t offset, const uint8_t *data, uint16_t len) {
     return true;
 }
 
+bool storage_upload_begin(uint8_t slot, uint16_t total_len, uint32_t blob_crc) {
+    if (g_upload_kind != UPLOAD_NONE) {
+        return false; /* EBUSY */
+    }
+    if (slot >= PROFILE_SLOT_COUNT || total_len != PROFILE_BLOB_V1_SIZE) {
+        return false;
+    }
+    g_upload_kind = UPLOAD_PROFILE;
+    g_upload_slot = slot;
+    g_upload_len = total_len;
+    g_upload_crc = blob_crc;
+    upload_reset_mask(total_len);
+    return true;
+}
+
+bool storage_upload_data(uint16_t offset, const uint8_t *data, uint16_t len) {
+    if (g_upload_kind != UPLOAD_PROFILE) {
+        return false;
+    }
+    return upload_apply_data(offset, data, len);
+}
+
 uint8_t storage_upload_commit(void) {
-    if (!g_upload_active) {
+    if (g_upload_kind != UPLOAD_PROFILE) {
         return CFG_ERR_EINVAL;
     }
 
@@ -240,7 +326,7 @@ uint8_t storage_upload_commit(void) {
     }
 
     uint8_t slot = g_upload_slot;
-    g_upload_active = false;
+    g_upload_kind = UPLOAD_NONE;
 
     if (!profiles_write_slot(slot, &tmp)) {
         return CFG_ERR_EINVAL;
@@ -248,12 +334,75 @@ uint8_t storage_upload_commit(void) {
     if (!storage_save_all()) {
         return CFG_ERR_EBUSY;
     }
+    printf("profile save ok slot=%u\n", slot);
     return CFG_ERR_OK;
 }
 
 void storage_upload_abort(void) {
-    g_upload_active = false;
-    g_upload_got = 0;
+    if (g_upload_kind == UPLOAD_PROFILE) {
+        g_upload_kind = UPLOAD_NONE;
+        g_upload_got = 0;
+    }
+}
+
+bool storage_macro_upload_begin(uint8_t id, uint16_t total_len, uint32_t blob_crc) {
+    if (g_upload_kind != UPLOAD_NONE) {
+        return false;
+    }
+    if (id >= MACRO_BUILTIN_COUNT || total_len != MACRO_BLOB_V1_SIZE) {
+        return false;
+    }
+    g_upload_kind = UPLOAD_MACRO;
+    g_upload_slot = id;
+    g_upload_len = total_len;
+    g_upload_crc = blob_crc;
+    upload_reset_mask(total_len);
+    return true;
+}
+
+bool storage_macro_upload_data(uint16_t offset, const uint8_t *data, uint16_t len) {
+    if (g_upload_kind != UPLOAD_MACRO) {
+        return false;
+    }
+    return upload_apply_data(offset, data, len);
+}
+
+uint8_t storage_macro_upload_commit(void) {
+    if (g_upload_kind != UPLOAD_MACRO) {
+        return CFG_ERR_EINVAL;
+    }
+
+    if (g_upload_got != g_upload_len) {
+        storage_macro_upload_abort();
+        return CFG_ERR_EINVAL;
+    }
+
+    uint32_t crc = cfg_crc32(g_upload_buf, g_upload_len);
+    if (crc != g_upload_crc) {
+        storage_macro_upload_abort();
+        return CFG_ERR_EBADMSG;
+    }
+
+    uint8_t id = g_upload_slot;
+    if (!macros_apply_blob(id, g_upload_buf, g_upload_len)) {
+        storage_macro_upload_abort();
+        return CFG_ERR_EINVAL;
+    }
+
+    g_upload_kind = UPLOAD_NONE;
+
+    if (!storage_save_all()) {
+        return CFG_ERR_EBUSY;
+    }
+    printf("macro save ok id=%u\n", id);
+    return CFG_ERR_OK;
+}
+
+void storage_macro_upload_abort(void) {
+    if (g_upload_kind == UPLOAD_MACRO) {
+        g_upload_kind = UPLOAD_NONE;
+        g_upload_got = 0;
+    }
 }
 
 bool storage_profile_meta(uint8_t slot, uint16_t *out_len, uint32_t *out_crc) {
@@ -267,5 +416,18 @@ bool storage_profile_meta(uint8_t slot, uint16_t *out_len, uint32_t *out_crc) {
     }
     *out_len = PROFILE_BLOB_V1_SIZE;
     *out_crc = cfg_crc32(blob, PROFILE_BLOB_V1_SIZE);
+    return true;
+}
+
+bool storage_macro_meta(uint8_t id, uint16_t *out_len, uint32_t *out_crc) {
+    if (id >= MACRO_BUILTIN_COUNT || out_len == NULL || out_crc == NULL) {
+        return false;
+    }
+    uint8_t blob[MACRO_BLOB_V1_SIZE];
+    if (!macros_pack_slot(id, blob, sizeof(blob))) {
+        return false;
+    }
+    *out_len = MACRO_BLOB_V1_SIZE;
+    *out_crc = cfg_crc32(blob, MACRO_BLOB_V1_SIZE);
     return true;
 }

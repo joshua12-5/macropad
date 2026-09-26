@@ -1,8 +1,13 @@
-"""USB config protocol framing + profile blob (Step 15/16)."""
+"""USB config protocol framing + profile/macro blobs (Step 15–17)."""
 
 from .frames import (
     CFG_CMD_ECHO,
     CFG_CMD_GET_INFO,
+    CFG_CMD_MACRO_ABORT,
+    CFG_CMD_MACRO_BEGIN,
+    CFG_CMD_MACRO_COMMIT,
+    CFG_CMD_MACRO_DATA,
+    CFG_CMD_MACRO_GET,
     CFG_CMD_NAK,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
@@ -15,6 +20,7 @@ from .frames import (
     CFG_ERR_EINVAL,
     CFG_ERR_ENOSYS,
     CFG_FLAG_RESPONSE,
+    CFG_INFO_FLAG_MACRO_BANK,
     CFG_INFO_FLAG_STORAGE,
     CFG_MAGIC,
     CFG_PROTO_VERSION,
@@ -24,6 +30,13 @@ from .frames import (
     crc32,
     pack_frame,
     unpack_frame,
+)
+from .macro_blob import (
+    MACRO_BLOB_V1_SIZE,
+    MACRO_BUILTIN_COUNT,
+    MACRO_MAX_STEPS,
+    pack_macro,
+    unpack_macro,
 )
 from .profile_blob import (
     PROFILE_BLOB_V1_SIZE,
@@ -35,6 +48,11 @@ from .profile_blob import (
 __all__ = [
     "CFG_CMD_ECHO",
     "CFG_CMD_GET_INFO",
+    "CFG_CMD_MACRO_ABORT",
+    "CFG_CMD_MACRO_BEGIN",
+    "CFG_CMD_MACRO_COMMIT",
+    "CFG_CMD_MACRO_DATA",
+    "CFG_CMD_MACRO_GET",
     "CFG_CMD_NAK",
     "CFG_CMD_PING",
     "CFG_CMD_PROFILE_ABORT",
@@ -47,17 +65,23 @@ __all__ = [
     "CFG_ERR_EINVAL",
     "CFG_ERR_ENOSYS",
     "CFG_FLAG_RESPONSE",
+    "CFG_INFO_FLAG_MACRO_BANK",
     "CFG_INFO_FLAG_STORAGE",
     "CFG_MAGIC",
     "CFG_PROTO_VERSION",
     "CFG_REPORT_SIZE",
     "Frame",
     "FrameError",
+    "MACRO_BLOB_V1_SIZE",
+    "MACRO_BUILTIN_COUNT",
+    "MACRO_MAX_STEPS",
     "PROFILE_BLOB_V1_SIZE",
     "crc32",
     "pack_frame",
+    "pack_macro",
     "pack_profile",
     "pack_profile_dict",
     "unpack_frame",
+    "unpack_macro",
     "unpack_profile_dict",
 ]

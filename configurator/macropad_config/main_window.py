@@ -1,4 +1,4 @@
-"""Main application window — Step 16 flash profile upload."""
+"""Main application window — Step 17 macro bank flash sync."""
 
 from __future__ import annotations
 
@@ -268,13 +268,21 @@ class MainWindow(QMainWindow):
         connect_act.triggered.connect(self._device_connect_info)
         device_menu.addAction(connect_act)
 
-        self._upload_act = QAction("&Upload to device…", self)
+        self._upload_act = QAction("&Upload profile to device…", self)
         self._upload_act.setShortcut(QKeySequence("Ctrl+Shift+U"))
         self._upload_act.setStatusTip(
             "Pack selected profile and upload into a device slot (0–4)"
         )
         self._upload_act.triggered.connect(self._device_upload_profile)
         device_menu.addAction(self._upload_act)
+
+        self._upload_macros_act = QAction("Upload &macros to device…", self)
+        self._upload_macros_act.setShortcut(QKeySequence("Ctrl+Shift+M"))
+        self._upload_macros_act.setStatusTip(
+            "Upload host macro library ids 0–4 to the device flash bank"
+        )
+        self._upload_macros_act.triggered.connect(self._device_upload_macros)
+        device_menu.addAction(self._upload_macros_act)
 
         help_menu = self.menuBar().addMenu("&Help")
         about_act = QAction("&About", self)
@@ -848,12 +856,11 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 16 — flash profile storage + USB upload<br><br>"
+                "Step 17 — macro bank flash sync + protocol polish<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Macro library schema version: <b>1</b><br>"
                 "Protocol version: <b>1</b><br>"
                 "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
-                "Device → Connect / Get info uses vendor HID. "
-                "Upload / flash storage is Step 16+."
+                "Device → Upload profile / Upload macros sync flash banks."
             ),
         )

@@ -8,13 +8,13 @@
 extern "C" {
 #endif
 
-/* Step 15/16 — USB vendor-HID config channel (v1 framing). */
+/* Step 15–17 — USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        16u
+#define FW_VERSION_MINOR        17u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u
@@ -34,11 +34,12 @@ extern "C" {
 #define CFG_CMD_PROFILE_ABORT   0x13u
 #define CFG_CMD_PROFILE_GET     0x14u  /* metadata only: slot,len,crc */
 
-/* Step 17 reserved — macro bank sync (stub → ENOSYS) */
+/* Step 17 — macro bank sync */
 #define CFG_CMD_MACRO_BEGIN     0x20u
 #define CFG_CMD_MACRO_DATA      0x21u
 #define CFG_CMD_MACRO_COMMIT    0x22u
 #define CFG_CMD_MACRO_ABORT     0x23u
+#define CFG_CMD_MACRO_GET       0x24u  /* metadata only: id,len,crc */
 
 #define CFG_CMD_NAK             0x7Fu
 
@@ -50,6 +51,7 @@ extern "C" {
 #define CFG_ERR_EBUSY           4u
 
 #define CFG_INFO_FLAG_STORAGE   0x01u  /* bit0: flash profile storage present */
+#define CFG_INFO_FLAG_MACRO_BANK 0x02u /* bit1: flash macro bank present */
 
 #define CFG_PRODUCT_TAG         "MACROPAD"  /* exactly 8 chars on the wire */
 #define CFG_PRODUCT_TAG_LEN     8u

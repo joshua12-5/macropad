@@ -1,6 +1,7 @@
 #include "macros.h"
 
 #include "actions.h"
+#include "macro_blob.h"
 #include "oled_ui.h"
 #include "text_table.h"
 #include "usb_hid_app.h"
@@ -53,10 +54,10 @@
 #define M_UP_ALL        { MACRO_KEY_UP, 0, 0, 0, 0 }
 #define M_DELAY(ms)     { MACRO_DELAY_MS, 0, 0, 0, (ms) }
 #define M_TEXT(id)      { MACRO_TEXT, 0, 0, 0, (id) }
-#define M_CONSUMER(u)   { MACRO_CONSUMER, 0, 0, 0, (u) }
 
-/* 0 hello_macro */
-static const macro_step_t macro_hello[] = {
+/* ---- Factory defaults (const flash) ---- */
+
+static const macro_step_t factory_hello[] = {
     M_TAP(0, HID_KEY_H),
     M_DELAY(30),
     M_TAP(0, HID_KEY_E),
@@ -69,30 +70,26 @@ static const macro_step_t macro_hello[] = {
     M_END,
 };
 
-/* 1 select_all_copy */
-static const macro_step_t macro_select_copy[] = {
+static const macro_step_t factory_select_copy[] = {
     M_TAP(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_A),
     M_DELAY(40),
     M_TAP(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_C),
     M_END,
 };
 
-/* 2 undo_redo */
-static const macro_step_t macro_undo_redo[] = {
+static const macro_step_t factory_undo_redo[] = {
     M_TAP(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_Z),
     M_DELAY(50),
     M_TAP(KEYBOARD_MODIFIER_LEFTCTRL, HID_KEY_Y),
     M_END,
 };
 
-/* 3 git_status via text table (includes newline) */
-static const macro_step_t macro_git_status[] = {
+static const macro_step_t factory_git_status[] = {
     M_TEXT(TEXT_ID_GIT_STATUS),
     M_END,
 };
 
-/* 4 alt_tab: Alt down, Tab tap, delay, release */
-static const macro_step_t macro_alt_tab[] = {
+static const macro_step_t factory_alt_tab[] = {
     M_DOWN(KEYBOARD_MODIFIER_LEFTALT, 0),
     M_DELAY(20),
     M_TAP(0, HID_KEY_TAB),
@@ -104,15 +101,29 @@ static const macro_step_t macro_alt_tab[] = {
 typedef struct {
     const char *name;
     const macro_step_t *steps;
-} macro_def_t;
+    uint8_t count;
+} factory_def_t;
 
-static const macro_def_t k_macros[MACRO_BUILTIN_COUNT] = {
-    [MACRO_ID_HELLO]       = { "hello",     macro_hello },
-    [MACRO_ID_SELECT_COPY] = { "sel+cpy",   macro_select_copy },
-    [MACRO_ID_UNDO_REDO]   = { "undo/redo", macro_undo_redo },
-    [MACRO_ID_GIT_STATUS]  = { "git st",    macro_git_status },
-    [MACRO_ID_ALT_TAB]     = { "alt-tab",   macro_alt_tab },
+static uint8_t count_steps(const macro_step_t *steps) {
+    for (uint8_t i = 0; i < MACRO_MAX_STEPS; i++) {
+        if (steps[i].op == MACRO_END) {
+            return (uint8_t)(i + 1u);
+        }
+    }
+    return MACRO_MAX_STEPS;
+}
+
+static const factory_def_t k_factory[MACRO_BUILTIN_COUNT] = {
+    [MACRO_ID_HELLO]       = { "hello",     factory_hello,       0 },
+    [MACRO_ID_SELECT_COPY] = { "sel+cpy",   factory_select_copy, 0 },
+    [MACRO_ID_UNDO_REDO]   = { "undo/redo", factory_undo_redo,   0 },
+    [MACRO_ID_GIT_STATUS]  = { "git st",    factory_git_status,  0 },
+    [MACRO_ID_ALT_TAB]     = { "alt-tab",   factory_alt_tab,     0 },
 };
+
+/* ---- RAM working set ---- */
+
+static macro_blob_slot_t g_slots[MACRO_BUILTIN_COUNT];
 
 typedef enum {
     MSTATE_IDLE = 0,
@@ -171,8 +182,10 @@ static void sticky_remove_key(uint8_t keycode) {
 }
 
 static void finish_macro(void) {
-    printf("MACRO end id=%u (%s)\n", (unsigned)active_id,
-           active_id < MACRO_BUILTIN_COUNT ? k_macros[active_id].name : "?");
+    const char *name = (active_id < MACRO_BUILTIN_COUNT)
+                           ? g_slots[active_id].name
+                           : "?";
+    printf("MACRO end id=%u (%s)\n", (unsigned)active_id, name);
     sticky_clear();
     if (usb_hid_tap_idle()) {
         uint8_t empty[6] = {0};
@@ -184,10 +197,6 @@ static void finish_macro(void) {
     settle_ticks = 0;
 }
 
-/*
- * Try current step. Returns true if step_index should advance.
- * Leaves state in WAIT_* when work is outstanding.
- */
 static bool try_step(const macro_step_t *s) {
     switch (s->op) {
     case MACRO_END:
@@ -201,10 +210,9 @@ static bool try_step(const macro_step_t *s) {
 
     case MACRO_TAP:
         if (!usb_hid_tap_idle()) {
-            state = MSTATE_WAIT_TAP; /* retry same step when idle */
+            state = MSTATE_WAIT_TAP;
             return false;
         }
-        /* OR sticky mods so Alt-held Tab works after KEY_DOWN. */
         usb_hid_tap((uint8_t)(sticky_mods | s->mods), s->keycode);
         state = MSTATE_WAIT_TAP;
         return true;
@@ -232,12 +240,12 @@ static bool try_step(const macro_step_t *s) {
     case MACRO_TEXT:
         if (actions_busy() || !usb_hid_tap_idle()) {
             state = MSTATE_WAIT_TEXT;
-            return false; /* retry */
+            return false;
         }
         if (!actions_type_text_id((uint8_t)s->arg, false)) {
             printf("MACRO TEXT: failed id=%u\n", (unsigned)s->arg);
             state = MSTATE_RUN;
-            return true; /* skip */
+            return true;
         }
         state = MSTATE_WAIT_TEXT;
         return true;
@@ -260,10 +268,91 @@ static void advance(void) {
         finish_macro();
         return;
     }
-    const macro_step_t *s = &k_macros[active_id].steps[step_index];
+    const macro_blob_slot_t *slot = &g_slots[active_id];
+    if (step_index >= slot->step_count) {
+        finish_macro();
+        return;
+    }
+    const macro_step_t *s = &slot->steps[step_index];
     if (try_step(s)) {
         step_index++;
     }
+}
+
+static bool load_factory_slot(uint8_t id) {
+    if (id >= MACRO_BUILTIN_COUNT) {
+        return false;
+    }
+    const factory_def_t *f = &k_factory[id];
+    uint8_t n = f->count ? f->count : count_steps(f->steps);
+    return macros_replace(id, f->name, f->steps, n);
+}
+
+void macros_factory_reset_all(void) {
+    for (uint8_t i = 0; i < MACRO_BUILTIN_COUNT; i++) {
+        (void)load_factory_slot(i);
+    }
+}
+
+bool macros_replace(uint8_t id, const char *name,
+                    const macro_step_t *steps, uint8_t count) {
+    if (id >= MACRO_BUILTIN_COUNT || steps == NULL || name == NULL) {
+        return false;
+    }
+    if (count < 1u || count > MACRO_MAX_STEPS) {
+        return false;
+    }
+
+    /* Abort if replacing the macro currently playing. */
+    if (state != MSTATE_IDLE && active_id == id) {
+        macros_abort();
+    }
+
+    macro_blob_slot_t *slot = &g_slots[id];
+    memset(slot, 0, sizeof(*slot));
+
+    size_t namelen = strnlen(name, MACRO_NAME_MAX - 1u);
+    memcpy(slot->name, name, namelen);
+
+    /* Copy steps; truncate at first END or append END if missing. */
+    uint8_t n = 0;
+    bool has_end = false;
+    for (uint8_t i = 0; i < count; i++) {
+        slot->steps[i] = steps[i];
+        slot->steps[i].pad = 0;
+        n = (uint8_t)(i + 1u);
+        if (steps[i].op == MACRO_END) {
+            has_end = true;
+            break;
+        }
+    }
+    if (!has_end) {
+        if (count >= MACRO_MAX_STEPS) {
+            return false;
+        }
+        slot->steps[count].op = MACRO_END;
+        n = (uint8_t)(count + 1u);
+    }
+    slot->step_count = n;
+    return true;
+}
+
+bool macros_apply_blob(uint8_t id, const uint8_t *blob, size_t len) {
+    if (id >= MACRO_BUILTIN_COUNT || blob == NULL) {
+        return false;
+    }
+    macro_blob_slot_t tmp;
+    if (!macro_blob_unpack(blob, len, &tmp)) {
+        return false;
+    }
+    return macros_replace(id, tmp.name, tmp.steps, tmp.step_count);
+}
+
+bool macros_pack_slot(uint8_t id, uint8_t *dst, size_t dst_len) {
+    if (id >= MACRO_BUILTIN_COUNT || dst == NULL) {
+        return false;
+    }
+    return macro_blob_pack(&g_slots[id], dst, dst_len);
 }
 
 void macros_init(void) {
@@ -273,6 +362,7 @@ void macros_init(void) {
     delay_left = 0;
     settle_ticks = 0;
     sticky_clear();
+    macros_factory_reset_all();
 }
 
 bool macros_busy(void) {
@@ -299,7 +389,7 @@ const char *macros_name(uint8_t macro_id) {
     if (macro_id >= MACRO_BUILTIN_COUNT) {
         return NULL;
     }
-    return k_macros[macro_id].name;
+    return g_slots[macro_id].name;
 }
 
 bool macros_fire(uint8_t macro_id) {
@@ -323,7 +413,7 @@ bool macros_fire(uint8_t macro_id) {
     sticky_clear();
     state = MSTATE_RUN;
 
-    const char *name = k_macros[macro_id].name;
+    const char *name = g_slots[macro_id].name;
     oled_ui_show_toast("MACRO", name, 800);
     printf("MACRO start id=%u (%s)\n", (unsigned)macro_id, name);
     return true;
@@ -342,7 +432,6 @@ void macros_task(void) {
         if (!usb_hid_tap_idle()) {
             return;
         }
-        /* Restore sticky holds after tap released the keyboard. */
         if (sticky_mods || sticky_keys[0]) {
             sticky_send();
         }

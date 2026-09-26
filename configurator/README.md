@@ -1,8 +1,8 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Step 15 framing + Step 16 profile upload).
+PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–17: framing, profile upload, macro bank sync).
 
-**Steps 10–16** cover the configurator shell through flash profile upload. **Macro-bank flash sync** is **Step 17**.
+**Steps 10–17** cover the configurator shell through flash profile **and** macro-bank upload. **Next: Step 18** auto-switch / polish.
 
 ## Run
 
@@ -49,17 +49,18 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
 **Profile → Macro library…** opens a dialog to edit `macros/library.json`.
 
-### Device (Step 15–16)
+### Device (Step 15–17)
 
 | Action | UI | Notes |
 |--------|-----|--------|
 | **Connect / Get device info** | **Device → Connect / Get device info** (`Ctrl+Shift+I`) | Opens vendor HID (VID `0x2E8A` / PID `0xC001` / usage page `0xFF00`), sends PING + GET_INFO, shows a dialog + status bar. |
-| **Upload to device…** | **Device → Upload to device…** (`Ctrl+Shift+U`) | Packs the **selected** profile to `profile_blob_v1` (148 B), asks for slot **0–4** (defaults to last GET_INFO active slot, or built-in id map `default/gaming/coding/browser/photoshop` → 0..4), then BEGIN/DATA/COMMIT. |
+| **Upload profile to device…** | **Device → Upload profile to device…** (`Ctrl+Shift+U`) | Packs the **selected** profile to `profile_blob_v1` (148 B), asks for slot **0–4** (defaults to last GET_INFO active slot, or built-in id map `default/gaming/coding/browser/photoshop` → 0..4), then BEGIN/DATA/COMMIT. |
+| **Upload macros to device…** | **Device → Upload macros to device…** (`Ctrl+Shift+M`) | Packs `macros/library.json` ids **0–4** to `macro_blob_v1` (162 B each), uploads in order; skips missing ids; status bar + message box report count. |
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
 Blob layout: [`../protocol/PROFILE_BLOB.md`](../protocol/PROFILE_BLOB.md).
 
-Macro flash upload is **not** implemented here (Step 17).
+Macro flash upload is implemented (Step 17).
 
 ### Headless tests
 
@@ -70,6 +71,7 @@ python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
 python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
+python scripts/smoke_macros_blob.py
 ```
 
 (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage smokes need no hardware.)

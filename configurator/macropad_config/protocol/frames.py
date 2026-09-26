@@ -1,4 +1,4 @@
-"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15/16)."""
+"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15–17)."""
 
 from __future__ import annotations
 
@@ -27,9 +27,11 @@ CFG_CMD_MACRO_BEGIN = 0x20
 CFG_CMD_MACRO_DATA = 0x21
 CFG_CMD_MACRO_COMMIT = 0x22
 CFG_CMD_MACRO_ABORT = 0x23
+CFG_CMD_MACRO_GET = 0x24
 CFG_CMD_NAK = 0x7F
 
 CFG_INFO_FLAG_STORAGE = 0x01
+CFG_INFO_FLAG_MACRO_BANK = 0x02
 
 CFG_ERR_OK = 0
 CFG_ERR_EINVAL = 1

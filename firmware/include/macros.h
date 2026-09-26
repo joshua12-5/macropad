@@ -2,14 +2,16 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /*
- * Step 9 non-blocking macro engine.
- * Built-in RAM tables; one playback at a time.
+ * Step 9/17 non-blocking macro engine.
+ * Factory defaults in flash/const; RAM working set of 5 editable slots.
+ * One playback at a time.
  */
 
 typedef enum {
@@ -45,6 +47,19 @@ bool macros_busy(void);
 void macros_abort(void);
 
 const char *macros_name(uint8_t macro_id);
+
+/* Replace RAM slot from host/firmware (aborts playback if id is active). */
+bool macros_replace(uint8_t id, const char *name,
+                    const macro_step_t *steps, uint8_t count);
+
+/* Unpack wire blob into RAM slot (see macro_blob.h). */
+bool macros_apply_blob(uint8_t id, const uint8_t *blob, size_t len);
+
+/* Pack RAM slot to wire blob. */
+bool macros_pack_slot(uint8_t id, uint8_t *dst, size_t dst_len);
+
+/* Restore all five slots from factory defaults (used on blank flash). */
+void macros_factory_reset_all(void);
 
 #ifdef __cplusplus
 }

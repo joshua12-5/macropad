@@ -55,7 +55,7 @@ def test_pack_unpack_roundtrip() -> None:
         (CFG_CMD_PING, b"PONG"),
         (CFG_CMD_ECHO, b"abc"),
         (CFG_CMD_ECHO, bytes(range(CFG_PAYLOAD_MAX))),
-        (CFG_CMD_GET_INFO, bytes([0, 16, 1, 0, 5, 1]) + b"MACROPAD"),
+        (CFG_CMD_GET_INFO, bytes([0, 17, 1, 0, 5, 3]) + b"MACROPAD"),
         (CFG_CMD_NAK, bytes([CFG_ERR_EINVAL])),
     ]:
         raw = pack_frame(cmd, seq=42, payload=payload, flags=CFG_FLAG_RESPONSE)
@@ -90,14 +90,15 @@ def test_bad_magic_rejected() -> None:
 
 
 def test_get_info_parse() -> None:
-    pl = bytes([0, 16, 1, 2, 5, 1]) + b"MACROPAD"
+    pl = bytes([0, 17, 1, 2, 5, 3]) + b"MACROPAD"
     info = parse_get_info(pl)
     expect(info["fw_major"] == 0, "major")
-    expect(info["fw_minor"] == 16, "minor")
+    expect(info["fw_minor"] == 17, "minor")
+    expect((info["flags"] & 0x03) == 0x03, f"flags={info['flags']}")
     expect(info["proto_ver"] == 1, "proto")
     expect(info["active_slot"] == 2, "slot")
     expect(info["slot_count"] == 5, "count")
-    expect(info["flags"] == 1, "flags.storage")
+    expect(info["flags"] == 3, "flags.storage+macro")
     expect(info["product_tag"] == "MACROPAD", f"tag={info['product_tag']!r}")
 
 

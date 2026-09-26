@@ -135,7 +135,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         pl[2] = CFG_PROTO_VERSION;
         pl[3] = profiles_active_index();
         pl[4] = profiles_count();
-        pl[5] = CFG_INFO_FLAG_STORAGE;
+        pl[5] = (uint8_t)(CFG_INFO_FLAG_STORAGE | CFG_INFO_FLAG_MACRO_BANK);
         memcpy(&pl[6], CFG_PRODUCT_TAG, CFG_PRODUCT_TAG_LEN);
         cfg_frame_build(resp, CFG_CMD_GET_INFO, seq, pl, (uint16_t)sizeof(pl));
         printf("cfg info seq=%u\n", seq);
@@ -152,7 +152,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
         }
-        if (storage_upload_busy()) {
+        if (storage_upload_busy() || storage_macro_upload_busy()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
         }
@@ -231,12 +231,82 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         return true;
     }
 
-    case CFG_CMD_MACRO_BEGIN:
-    case CFG_CMD_MACRO_DATA:
-    case CFG_CMD_MACRO_COMMIT:
+    case CFG_CMD_MACRO_BEGIN: {
+        if (length < 7) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (storage_upload_busy() || storage_macro_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        uint8_t id = payload[0];
+        uint16_t total_len = rd_u16_le(&payload[1]);
+        uint32_t blob_crc = rd_u32_le(&payload[3]);
+        if (!storage_macro_upload_begin(id, total_len, blob_crc)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_MACRO_BEGIN, seq, NULL, 0);
+        printf("cfg macro begin id=%u len=%u\n", id, total_len);
+        return true;
+    }
+
+    case CFG_CMD_MACRO_DATA: {
+        if (length < 2) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (!storage_macro_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint16_t offset = rd_u16_le(&payload[0]);
+        uint16_t data_len = (uint16_t)(length - 2u);
+        if (!storage_macro_upload_data(offset, &payload[2], data_len)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_MACRO_DATA, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_MACRO_COMMIT: {
+        uint8_t err = storage_macro_upload_commit();
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_MACRO_COMMIT, seq, NULL, 0);
+        printf("cfg macro commit ok\n");
+        return true;
+    }
+
     case CFG_CMD_MACRO_ABORT: {
-        /* Full macro-bank flash sync is Step 17. */
-        nak(resp, seq, CFG_ERR_ENOSYS);
+        storage_macro_upload_abort();
+        cfg_frame_build(resp, CFG_CMD_MACRO_ABORT, seq, NULL, 0);
+        printf("cfg macro abort\n");
+        return true;
+    }
+
+    case CFG_CMD_MACRO_GET: {
+        if (length < 1) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t id = payload[0];
+        uint16_t blen = 0;
+        uint32_t bcrc = 0;
+        if (!storage_macro_meta(id, &blen, &bcrc)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t pl[7];
+        pl[0] = id;
+        wr_u16_le(&pl[1], blen);
+        wr_u32_le(&pl[3], bcrc);
+        cfg_frame_build(resp, CFG_CMD_MACRO_GET, seq, pl, 7);
+        printf("cfg macro get id=%u\n", id);
         return true;
     }
 

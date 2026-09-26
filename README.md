@@ -31,15 +31,18 @@ OLED                         ENCODER
 | 14 | On-device profile select UI | Done |
 | 15 | USB config protocol (vendor HID) | Done |
 | 16 | Flash profile storage + USB upload | Done |
-| 17 | Macro-bank flash sync / polish | Next |
+| 17 | Macro-bank flash sync / polish | Done |
+| 18 | Auto app-switch / polish | Next |
 
-**Step 16** adds flash-backed profile slots and chunked USB profile upload.
-Macro-bank flash sync remains **Step 17** (`MACRO_*` → `ENOSYS`).
+**Step 17** makes host `macros/library.json` the on-device source of truth:
+flash-backed editable macro slots, USB `MACRO_*` upload, configurator sync.
+Steps **14–17** are complete; next is **Step 18** auto-switch / polish.
 
 ## Protocol
 
 Wire format and commands: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md).
 Profile binary packing: [`protocol/PROFILE_BLOB.md`](protocol/PROFILE_BLOB.md).
+Macro binary packing: [`protocol/MACRO_BLOB.md`](protocol/MACRO_BLOB.md).
 
 ## Profiles
 
@@ -49,7 +52,8 @@ Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](pr
 
 Host library (configurator source of truth): [`macros/library.json`](macros/library.json) + [`macros/SCHEMA.md`](macros/SCHEMA.md).
 
-Firmware still plays packed step tables in `firmware/src/macros.c` until Step 17 USB macro sync — host JSON and firmware may diverge until then.
+Host library uploads into the firmware RAM working set + flash bank (Step 17).
+Factory defaults in `macros.c` seed empty flash / v1 images.
 
 ## Configurator
 
@@ -62,7 +66,7 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO. **Device → Upload to device…** packs the selected profile and uploads into a chosen slot (0–4).
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO. **Device → Upload profile to device…** packs the selected profile into a slot (0–4). **Device → Upload macros to device…** uploads library ids 0–4.
 
 Headless checks:
 
@@ -73,13 +77,14 @@ python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
 python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
+python scripts/smoke_macros_blob.py
 ```
 
 ## Firmware
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step16.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step17.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 

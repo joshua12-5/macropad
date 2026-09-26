@@ -25,12 +25,12 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 16: Flash Profile Storage ===\n");
+    printf("\n=== Macropad Step 17: Macro Bank Flash Sync ===\n");
 
     profiles_init();
-    storage_init();
+    macros_init();   /* factory defaults into RAM before flash may override */
+    storage_init();  /* v2 loads profiles+macros; v1 profiles only */
     actions_init();
-    macros_init();
     matrix_init();
     encoder_init();
     usb_hid_init();

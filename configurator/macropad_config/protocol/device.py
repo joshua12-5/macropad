@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import struct
 import time
-from typing import Optional
+from typing import Callable, Iterable, Optional, Tuple
 
 from .frames import (
     CFG_CMD_GET_INFO,
+    CFG_CMD_MACRO_ABORT,
+    CFG_CMD_MACRO_BEGIN,
+    CFG_CMD_MACRO_COMMIT,
+    CFG_CMD_MACRO_DATA,
+    CFG_CMD_MACRO_GET,
     CFG_CMD_NAK,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
@@ -31,10 +36,16 @@ from .frames import (
     parse_get_info,
     unpack_frame,
 )
+from .macro_blob import (
+    MACRO_BLOB_V1_SIZE,
+    MACRO_DATA_MAX_CHUNK,
+    blob_crc as macro_blob_crc,
+    iter_macro_data_chunks,
+)
 from .profile_blob import (
     PROFILE_BLOB_V1_SIZE,
     PROFILE_DATA_MAX_CHUNK,
-    blob_crc,
+    blob_crc as profile_blob_crc,
     iter_profile_data_chunks,
 )
 
@@ -82,6 +93,19 @@ def list_config_devices(
         found.append(entry)
         _ = usage  # reserved for stricter filter later
     return found
+
+
+def iter_blob_data_chunks(
+    blob: bytes, chunk_size: int = PROFILE_DATA_MAX_CHUNK
+) -> Iterable[Tuple[int, bytes]]:
+    """Shared chunker for profile/macro DATA framing (offset + bytes)."""
+    if chunk_size < 1 or chunk_size > 50:
+        raise DeviceError(f"bad chunk_size {chunk_size}")
+    offset = 0
+    while offset < len(blob):
+        piece = blob[offset : offset + chunk_size]
+        yield offset, piece
+        offset += len(piece)
 
 
 class ConfigDevice:
@@ -133,7 +157,6 @@ class ConfigDevice:
         for d in devices:
             if d.get("_match_config"):
                 return d["path"]
-        # Fallback: first interface for this VID/PID (weak).
         if devices:
             return devices[0]["path"]
         return None
@@ -148,7 +171,6 @@ class ConfigDevice:
     def write_frame(self, frame_bytes: bytes) -> None:
         if len(frame_bytes) != CFG_REPORT_SIZE:
             raise DeviceError("frame must be 64 bytes")
-        # hidapi: leading report id 0x00 when descriptor has no report IDs.
         written = self._dev.write(b"\x00" + frame_bytes)
         if written < 0:
             raise DeviceError("hid write failed")
@@ -167,7 +189,6 @@ class ConfigDevice:
             if len(raw) == CFG_REPORT_SIZE:
                 return raw
             if len(raw) > CFG_REPORT_SIZE:
-                # Unexpected prefix — try strip one byte.
                 return raw[-CFG_REPORT_SIZE:]
         raise DeviceError("timeout waiting for device response")
 
@@ -201,13 +222,27 @@ class ConfigDevice:
             raise DeviceError(f"unexpected cmd 0x{resp.cmd:02X}")
         return parse_get_info(resp.payload)
 
-    def upload_profile(self, slot: int, blob_bytes: bytes, *, timeout_ms: int = 2000) -> None:
-        """Upload a packed profile_blob_v1 into device slot 0..4 (chunked)."""
-        if not 0 <= int(slot) <= 4:
-            raise DeviceError(f"slot must be 0..4, got {slot}")
-        if len(blob_bytes) != PROFILE_BLOB_V1_SIZE:
+    def _chunked_upload(
+        self,
+        *,
+        slot_or_id: int,
+        blob: bytes,
+        expected_size: int,
+        begin_cmd: int,
+        data_cmd: int,
+        commit_cmd: int,
+        abort_cmd: int,
+        label: str,
+        chunk_iter: Callable[[bytes], Iterable[Tuple[int, bytes]]],
+        crc_fn: Callable[[bytes], int],
+        timeout_ms: int = 2000,
+    ) -> None:
+        """Shared BEGIN/DATA/COMMIT/ABORT path for profile + macro blobs."""
+        if not 0 <= int(slot_or_id) <= 4:
+            raise DeviceError(f"{label} id/slot must be 0..4, got {slot_or_id}")
+        if len(blob) != expected_size:
             raise DeviceError(
-                f"blob must be {PROFILE_BLOB_V1_SIZE} bytes, got {len(blob_bytes)}"
+                f"{label} blob must be {expected_size} bytes, got {len(blob)}"
             )
 
         old_timeout = self._timeout_ms
@@ -215,44 +250,97 @@ class ConfigDevice:
         started = False
         committed = False
         try:
-            crc = blob_crc(blob_bytes)
-            begin_pl = struct.pack("<BHI", int(slot) & 0xFF, PROFILE_BLOB_V1_SIZE, crc)
-            resp = self.transact(CFG_CMD_PROFILE_BEGIN, self._next_seq(), begin_pl)
-            self._raise_if_nak(resp, "PROFILE_BEGIN")
-            if resp.cmd != CFG_CMD_PROFILE_BEGIN:
-                raise DeviceError(f"PROFILE_BEGIN unexpected cmd 0x{resp.cmd:02X}")
+            crc = crc_fn(blob)
+            begin_pl = struct.pack(
+                "<BHI", int(slot_or_id) & 0xFF, expected_size, crc
+            )
+            resp = self.transact(begin_cmd, self._next_seq(), begin_pl)
+            self._raise_if_nak(resp, f"{label}_BEGIN")
+            if resp.cmd != begin_cmd:
+                raise DeviceError(
+                    f"{label}_BEGIN unexpected cmd 0x{resp.cmd:02X}"
+                )
             started = True
 
-            for offset, chunk in iter_profile_data_chunks(blob_bytes, PROFILE_DATA_MAX_CHUNK):
+            for offset, chunk in chunk_iter(blob):
                 data_pl = struct.pack("<H", offset) + chunk
-                resp = self.transact(CFG_CMD_PROFILE_DATA, self._next_seq(), data_pl)
-                self._raise_if_nak(resp, f"PROFILE_DATA@{offset}")
-                if resp.cmd != CFG_CMD_PROFILE_DATA:
-                    raise DeviceError(f"PROFILE_DATA unexpected cmd 0x{resp.cmd:02X}")
+                resp = self.transact(data_cmd, self._next_seq(), data_pl)
+                self._raise_if_nak(resp, f"{label}_DATA@{offset}")
+                if resp.cmd != data_cmd:
+                    raise DeviceError(
+                        f"{label}_DATA unexpected cmd 0x{resp.cmd:02X}"
+                    )
 
-            resp = self.transact(CFG_CMD_PROFILE_COMMIT, self._next_seq(), b"")
-            self._raise_if_nak(resp, "PROFILE_COMMIT")
-            if resp.cmd != CFG_CMD_PROFILE_COMMIT:
-                raise DeviceError(f"PROFILE_COMMIT unexpected cmd 0x{resp.cmd:02X}")
+            resp = self.transact(commit_cmd, self._next_seq(), b"")
+            self._raise_if_nak(resp, f"{label}_COMMIT")
+            if resp.cmd != commit_cmd:
+                raise DeviceError(
+                    f"{label}_COMMIT unexpected cmd 0x{resp.cmd:02X}"
+                )
             committed = True
         except Exception:
             if started and not committed:
                 try:
-                    self.transact(CFG_CMD_PROFILE_ABORT, self._next_seq(), b"")
+                    self.transact(abort_cmd, self._next_seq(), b"")
                 except Exception:
                     pass
             raise
         finally:
             self._timeout_ms = old_timeout
 
+    def upload_profile(self, slot: int, blob_bytes: bytes, *, timeout_ms: int = 2000) -> None:
+        """Upload a packed profile_blob_v1 into device slot 0..4 (chunked)."""
+        self._chunked_upload(
+            slot_or_id=slot,
+            blob=blob_bytes,
+            expected_size=PROFILE_BLOB_V1_SIZE,
+            begin_cmd=CFG_CMD_PROFILE_BEGIN,
+            data_cmd=CFG_CMD_PROFILE_DATA,
+            commit_cmd=CFG_CMD_PROFILE_COMMIT,
+            abort_cmd=CFG_CMD_PROFILE_ABORT,
+            label="PROFILE",
+            chunk_iter=lambda b: iter_profile_data_chunks(b, PROFILE_DATA_MAX_CHUNK),
+            crc_fn=profile_blob_crc,
+            timeout_ms=timeout_ms,
+        )
+
+    def upload_macro(self, macro_id: int, blob_bytes: bytes, *, timeout_ms: int = 2000) -> None:
+        """Upload a packed macro_blob_v1 into device macro id 0..4 (chunked)."""
+        self._chunked_upload(
+            slot_or_id=macro_id,
+            blob=blob_bytes,
+            expected_size=MACRO_BLOB_V1_SIZE,
+            begin_cmd=CFG_CMD_MACRO_BEGIN,
+            data_cmd=CFG_CMD_MACRO_DATA,
+            commit_cmd=CFG_CMD_MACRO_COMMIT,
+            abort_cmd=CFG_CMD_MACRO_ABORT,
+            label="MACRO",
+            chunk_iter=lambda b: iter_macro_data_chunks(b, MACRO_DATA_MAX_CHUNK),
+            crc_fn=macro_blob_crc,
+            timeout_ms=timeout_ms,
+        )
+
     def profile_get_meta(self, slot: int) -> dict:
         """PROFILE_GET → {slot, len, crc}."""
-        resp = self.transact(CFG_CMD_PROFILE_GET, self._next_seq(), bytes([int(slot) & 0xFF]))
+        resp = self.transact(
+            CFG_CMD_PROFILE_GET, self._next_seq(), bytes([int(slot) & 0xFF])
+        )
         self._raise_if_nak(resp, "PROFILE_GET")
         if resp.cmd != CFG_CMD_PROFILE_GET or len(resp.payload) < 7:
             raise DeviceError("bad PROFILE_GET response")
         s, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
         return {"slot": s, "len": length, "crc": crc}
+
+    def macro_get_meta(self, macro_id: int) -> dict:
+        """MACRO_GET → {id, len, crc}."""
+        resp = self.transact(
+            CFG_CMD_MACRO_GET, self._next_seq(), bytes([int(macro_id) & 0xFF])
+        )
+        self._raise_if_nak(resp, "MACRO_GET")
+        if resp.cmd != CFG_CMD_MACRO_GET or len(resp.payload) < 7:
+            raise DeviceError("bad MACRO_GET response")
+        mid, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
+        return {"id": mid, "len": length, "crc": crc}
 
 
 def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:
@@ -260,7 +348,6 @@ def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:
     with ConfigDevice(timeout_ms=timeout_ms) as dev:
         pong = dev.ping(seq=1)
         if pong.payload not in (b"PONG", b""):
-            # Accept empty OK or PONG
             if pong.cmd != CFG_CMD_PING:
                 raise DeviceError("PING failed")
         info = dev.get_info(seq=2)
