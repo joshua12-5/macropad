@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "poll_ms": 750,
+  "fallback_profile_id": null,
+  "rules": [
+    {
+      "profile_id": "coding",
+      "process": [
+        "Code",
+        "code",
+        "code-oss",
+        "cursor",
+        "Cursor",
+        "devenv",
+        "idea64",
+        "pycharm64",
+        "sublime_text",
+        "nvim",
+        "vim",
+        "emacs",
+        "WindowsTerminal",
+        "wt",
+        "gnome-terminal",
+        "kitty",
+        "alacritty"
+      ],
+      "title_regex": null
+    },
+    {
+      "profile_id": "browser",
+      "process": [
+        "chrome",
+        "msedge",
+        "firefox",
+        "brave",
+        "opera",
+        "vivaldi",
+        "chromium",
+        "Safari",
+        "Arc"
+      ],
+      "title_regex": null
+    },
+    {
+      "profile_id": "photoshop",
+      "process": [
+        "Photoshop",
+        "photoshop",
+        "Adobe Photoshop",
+        "GIMP",
+        "gimp",
+        "Affinity Photo",
+        "Illustrator"
+      ],
+      "title_regex": null
+    },
+    {
+      "profile_id": "gaming",
+      "process": [
+        "steam",
+        "Steam",
+        "steamwebhelper",
+        "GameOverlayUI",
+        "cs2",
+        "csgo",
+        "dota2",
+        "Overwatch",
+        "League of Legends",
+        "RiotClientServices",
+        "Minecraft",
+        "javaw"
+      ],
+      "title_regex": null
+    }
+  ]
+}

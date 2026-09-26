@@ -3,7 +3,8 @@
 Step 15 — framing + PING / GET_INFO / ECHO over a **second HID interface**.
 Step 16 — flash-backed profile slots + chunked **profile upload**.
 Step 17 — flash-backed **macro bank** sync + light protocol polish.
-**Steps 14–17 are complete.** Next: Step 18+ auto app-switch / polish.
+Step 18 — host **auto app-switch** via `SET_ACTIVE` (RAM + OLED only).
+**Steps 14–18 are complete.**
 
 ## USB topology
 
@@ -62,6 +63,8 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | `0x22` | MACRO_COMMIT | empty | empty OK (after CRC + replace RAM + flash) |
 | `0x23` | MACRO_ABORT | empty | empty OK |
 | `0x24` | MACRO_GET | `id u8` | `id`, `len u16 LE`, `crc32 u32 LE` (metadata only) |
+| `0x30` | SET_ACTIVE | `slot u8` | empty OK (RAM + OLED only; **no flash write**) |
+| `0x31` | GET_ACTIVE | empty | `slot u8` (optional; GET_INFO also reports it) |
 | `0x7F` | NAK | — | device reply only; `payload[0]` = err |
 
 ### GET_INFO payload (14 bytes)
@@ -69,7 +72,7 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | Off | Type | Field |
 |-----|------|-------|
 | 0 | u8 | `fw_major` (`0`) |
-| 1 | u8 | `fw_minor` (Step 17 → `17`) |
+| 1 | u8 | `fw_minor` (Step 18 → `18`) |
 | 2 | u8 | `proto_ver` (`1`) |
 | 3 | u8 | `active_slot` |
 | 4 | u8 | `slot_count` |
@@ -106,6 +109,27 @@ Same chunked flow as profiles:
 
 **Busy mutex:** profile upload and macro upload are mutually exclusive — starting
 one while the other is active yields NAK `EBUSY`.
+
+### SET_ACTIVE / GET_ACTIVE (Step 18)
+
+Host-driven profile switch for auto app-switch:
+
+1. Host matches foreground process → profile / slot (see [`../autoswitch/SCHEMA.md`](../autoswitch/SCHEMA.md)).
+2. `SET_ACTIVE` with `slot` `0..4`.
+3. Device calls `profiles_set_active(slot)`, updates OLED idle title + toast,
+   prints UART `cfg set_active N`. If the on-device profile menu is open, the
+   menu is exited to idle after applying.
+4. Empty OK response. Bad slot → NAK `EINVAL`.
+
+**Important:** `SET_ACTIVE` does **not** erase or program flash (RAM + OLED
+only). Safe for frequent host-driven switches. Persistent active slot still
+comes from the flash image / profile COMMIT path.
+
+`GET_ACTIVE` returns the current RAM slot as a single `u8` (optional convenience;
+`GET_INFO.active_slot` is equivalent).
+
+Auto-switch requires the **configurator** (or another host agent) to be running —
+the device cannot observe host applications.
 
 ### Flash image (storage v2)
 
@@ -145,7 +169,8 @@ Unknown `cmd` → NAK `EINVAL`. Bad magic/CRC → NAK `EBADMSG` when possible.
 - HID instance **1** OUT → `config_protocol_on_host_report`
 
 UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
-`cfg macro …`, `stor load v2|v1|default`, `stor save ok|fail`,
+`cfg macro …`, `cfg set_active N`, `cfg get_active N`,
+`stor load v2|v1|default`, `stor save ok|fail`,
 `profile save ok`, `macro save ok`.
 
 ## Host library
@@ -155,10 +180,10 @@ UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 - `configurator/macropad_config/protocol/macro_blob.py` — library ↔ macro blob
 - `configurator/macropad_config/protocol/device.py` — hidapi + shared chunked upload
 - `configurator/scripts/smoke_protocol.py` / `smoke_storage.py` /
-  `smoke_macros_blob.py` — no hardware
+  `smoke_macros_blob.py` / `smoke_autoswitch.py` — no hardware
+- `autoswitch/rules.json` + `configurator/macropad_config/autoswitch/` — host matcher
 
-## Deferred (Step 18+)
+## Deferred (later)
 
-- Auto app-switching / focus detection
 - Full profile/macro download streaming
 - Further polish

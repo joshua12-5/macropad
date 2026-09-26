@@ -310,6 +310,37 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         return true;
     }
 
+    case CFG_CMD_SET_ACTIVE: {
+        /* RAM + OLED only — never erase/program flash on switch. */
+        if (length < 1) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t slot = payload[0];
+        if (!profiles_set_active(slot)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        const profile_t *p = profiles_active();
+        if (oled_ui_profile_select_active()) {
+            oled_ui_profile_select_exit();
+        }
+        if (p != NULL) {
+            oled_ui_set_profile_name(p->oled.title);
+            oled_ui_show_toast("PROFILE", p->oled.title, 900);
+        }
+        cfg_frame_build(resp, CFG_CMD_SET_ACTIVE, seq, NULL, 0);
+        printf("cfg set_active %u\n", slot);
+        return true;
+    }
+
+    case CFG_CMD_GET_ACTIVE: {
+        uint8_t pl[1] = {profiles_active_index()};
+        cfg_frame_build(resp, CFG_CMD_GET_ACTIVE, seq, pl, 1);
+        printf("cfg get_active %u\n", pl[0]);
+        return true;
+    }
+
     default: {
         nak(resp, seq, CFG_ERR_EINVAL);
         printf("cfg nak unknown cmd 0x%02X\n", cmd);

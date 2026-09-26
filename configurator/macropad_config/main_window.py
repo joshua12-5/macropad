@@ -1,4 +1,4 @@
-"""Main application window — Step 17 macro bank flash sync."""
+"""Main application window — Step 18 auto app-switch."""
 
 from __future__ import annotations
 
@@ -39,6 +39,7 @@ from .widgets.action_editor import ActionEditor
 from .widgets.macro_library_dialog import MacroLibraryDialog
 from .widgets.pad_preview import PadPreview
 from .widgets.profile_dialog import ProfileNameIdDialog
+from .widgets.autoswitch_dialog import AutoswitchDialog
 from .widgets.profile_list import ProfileListWidget
 
 DARK_STYLE = """
@@ -199,6 +200,8 @@ class MainWindow(QMainWindow):
         self._meta_loading = False
         self._applying = False
         self._last_device_info: dict | None = None
+        self._autoswitch = None
+        self._autoswitch_connected = False
 
         self._build_menus()
         self._build_ui()
@@ -283,6 +286,24 @@ class MainWindow(QMainWindow):
         )
         self._upload_macros_act.triggered.connect(self._device_upload_macros)
         device_menu.addAction(self._upload_macros_act)
+
+        device_menu.addSeparator()
+
+        self._autoswitch_act = QAction("Auto-switch &enabled", self)
+        self._autoswitch_act.setCheckable(True)
+        self._autoswitch_act.setChecked(False)
+        self._autoswitch_act.setEnabled(False)
+        self._autoswitch_act.setStatusTip(
+            "Poll foreground app and SET_ACTIVE on the device (needs connection)"
+        )
+        self._autoswitch_act.toggled.connect(self._on_autoswitch_toggled)
+        device_menu.addAction(self._autoswitch_act)
+
+        tools_menu = self.menuBar().addMenu("&Tools")
+        autoswitch_dlg_act = QAction("&Auto-switch…", self)
+        autoswitch_dlg_act.setStatusTip("Edit auto-switch rules (host → device)")
+        autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
+        tools_menu.addAction(autoswitch_dlg_act)
 
         help_menu = self.menuBar().addMenu("&Help")
         about_act = QAction("&About", self)
@@ -561,7 +582,6 @@ class MainWindow(QMainWindow):
             self._refresh_action_json(label)
         finally:
             self._applying = False
-        self._last_device_info: dict | None = None
 
     def _refresh_action_json(self, label: str) -> None:
         try:
@@ -741,6 +761,8 @@ class MainWindow(QMainWindow):
             return
 
         self._last_device_info = info
+        self._autoswitch_connected = True
+        self._autoswitch_act.setEnabled(True)
 
         lines = [
             f"Product: {info.get('product_tag', '?')}",
@@ -754,7 +776,7 @@ class MainWindow(QMainWindow):
         msg = "\n".join(lines)
         self.statusBar().showMessage(
             f"Device OK — fw {info.get('fw_major')}.{info.get('fw_minor')} "
-            f"slot {info.get('active_slot')}/{info.get('slot_count')}",
+            f"active_slot {info.get('active_slot')}/{info.get('slot_count')}",
             15000,
         )
         QMessageBox.information(self, "Device info", msg)
@@ -856,11 +878,151 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 17 — macro bank flash sync + protocol polish<br><br>"
+                "Step 18 — auto app-switch (host rules + SET_ACTIVE)<br><br>"
                 "Profile schema version: <b>1</b><br>"
                 "Macro library schema version: <b>1</b><br>"
                 "Protocol version: <b>1</b><br>"
                 "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
-                "Device → Upload profile / Upload macros sync flash banks."
+                "Device → Upload profile / macros; Tools → Auto-switch (host must be running)."
             ),
         )
+
+
+    def _ensure_autoswitch(self):
+        if self._autoswitch is not None:
+            return self._autoswitch
+        from .autoswitch.service import AutoswitchService
+
+        try:
+            ids = [p.id for p in self._profile_list.profiles()]
+        except Exception:
+            ids = []
+        if not ids:
+            ids = ["default", "gaming", "coding", "browser", "photoshop"]
+        svc = AutoswitchService(
+            self,
+            on_status=lambda msg: self.statusBar().showMessage(msg, 8000),
+            host_profile_ids=ids,
+        )
+        try:
+            svc.load()
+        except Exception:
+            pass
+        self._autoswitch = svc
+        return svc
+
+    def _open_autoswitch_dialog(self) -> None:
+        svc = self._ensure_autoswitch()
+        try:
+            rules = svc.rules
+            if rules.schema_version != 1 or not rules.rules:
+                from .autoswitch.rules import load_rules
+                rules = load_rules()
+                svc.set_rules(rules)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Auto-switch", f"Could not load rules:\n{exc}")
+            return
+        profile_ids = []
+        try:
+            profile_ids = [p.id for p in self._profile_list.profiles()]
+        except Exception:
+            profile_ids = ["default", "gaming", "coding", "browser", "photoshop"]
+        dlg = AutoswitchDialog(rules, parent=self, profile_ids=profile_ids or None)
+        if dlg.exec():
+            updated = dlg.result_rules()
+            svc.set_rules(updated)
+            # Sync checkable menu with saved enabled flag only if connected
+            if self._autoswitch_connected and updated.enabled:
+                self._autoswitch_act.blockSignals(True)
+                self._autoswitch_act.setChecked(True)
+                self._autoswitch_act.blockSignals(False)
+                svc.set_enabled(True)
+            elif not updated.enabled:
+                self._autoswitch_act.blockSignals(True)
+                self._autoswitch_act.setChecked(False)
+                self._autoswitch_act.blockSignals(False)
+                svc.set_enabled(False)
+            self.statusBar().showMessage("Auto-switch rules saved", 5000)
+
+    def _on_autoswitch_toggled(self, checked: bool) -> None:
+        if checked and not self._autoswitch_connected:
+            self._autoswitch_act.blockSignals(True)
+            self._autoswitch_act.setChecked(False)
+            self._autoswitch_act.blockSignals(False)
+            QMessageBox.information(
+                self,
+                "Auto-switch",
+                "Connect to the device first (Device → Connect / Get device info).",
+            )
+            return
+        svc = self._ensure_autoswitch()
+        # Keep rules.enabled in sync when toggling from menu
+        rules = svc.rules
+        rules.enabled = bool(checked)
+        svc.set_rules(rules)
+        svc.set_enabled(bool(checked))
+
+    def _device_upload_macros(self) -> None:
+        """Upload host macro library ids 0–4 to the device (Step 17)."""
+        try:
+            from .models.macro import load_library
+            from .protocol.device import ConfigDevice, DeviceError
+            from .protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, "Upload macros", f"Module unavailable:\n{exc}"
+            )
+            return
+
+        try:
+            library = load_library()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Upload macros", f"Could not load library:\n{exc}")
+            return
+
+        by_id = {m.id: m for m in library.macros}
+        to_upload = [(i, by_id[i]) for i in range(5) if i in by_id]
+        if not to_upload:
+            QMessageBox.information(
+                self, "Upload macros", "No macros with ids 0–4 in the library."
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Upload macros",
+            f"Upload {len(to_upload)} macro(s) (ids 0–4) to the device flash bank?",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.statusBar().showMessage("Uploading macros…")
+        uploaded = 0
+        try:
+            with ConfigDevice(timeout_ms=2000) as dev:
+                try:
+                    self._last_device_info = dev.get_info()
+                    self._autoswitch_connected = True
+                    self._autoswitch_act.setEnabled(True)
+                except DeviceError:
+                    pass
+                for mid, macro in to_upload:
+                    blob = pack_macro(macro)
+                    if len(blob) != MACRO_BLOB_V1_SIZE:
+                        raise DeviceError(
+                            f"macro {mid} blob size {len(blob)} != {MACRO_BLOB_V1_SIZE}"
+                        )
+                    dev.upload_macro(mid, blob)
+                    uploaded += 1
+        except DeviceError as exc:
+            self.statusBar().showMessage("Macro upload failed", 8000)
+            QMessageBox.warning(self, "Upload macros failed", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.statusBar().showMessage("Macro upload failed", 8000)
+            QMessageBox.warning(self, "Upload macros failed", str(exc))
+            return
+
+        msg = f"Uploaded {uploaded} macro(s) to device."
+        self.statusBar().showMessage(msg, 15000)
+        QMessageBox.information(self, "Upload macros", msg)

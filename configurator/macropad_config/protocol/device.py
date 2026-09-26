@@ -18,8 +18,10 @@ from .frames import (
     CFG_CMD_MACRO_DATA,
     CFG_CMD_MACRO_GET,
     CFG_CMD_NAK,
+    CFG_CMD_GET_ACTIVE,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
+    CFG_CMD_SET_ACTIVE,
     CFG_CMD_PROFILE_BEGIN,
     CFG_CMD_PROFILE_COMMIT,
     CFG_CMD_PROFILE_DATA,
@@ -319,6 +321,27 @@ class ConfigDevice:
             crc_fn=macro_blob_crc,
             timeout_ms=timeout_ms,
         )
+
+
+    def set_active_slot(self, slot: int) -> None:
+        """SET_ACTIVE (0x30) — switch RAM profile + OLED; no flash write."""
+        slot = int(slot)
+        if not 0 <= slot <= 4:
+            raise DeviceError(f"slot must be 0..4, got {slot}")
+        resp = self.transact(
+            CFG_CMD_SET_ACTIVE, self._next_seq(), bytes([slot & 0xFF])
+        )
+        self._raise_if_nak(resp, "SET_ACTIVE")
+        if resp.cmd != CFG_CMD_SET_ACTIVE:
+            raise DeviceError(f"SET_ACTIVE unexpected cmd 0x{resp.cmd:02X}")
+
+    def get_active_slot(self) -> int:
+        """GET_ACTIVE (0x31) → slot u8 (optional; GET_INFO also has active_slot)."""
+        resp = self.transact(CFG_CMD_GET_ACTIVE, self._next_seq(), b"")
+        self._raise_if_nak(resp, "GET_ACTIVE")
+        if resp.cmd != CFG_CMD_GET_ACTIVE or not resp.payload:
+            raise DeviceError("bad GET_ACTIVE response")
+        return int(resp.payload[0])
 
     def profile_get_meta(self, slot: int) -> dict:
         """PROFILE_GET → {slot, len, crc}."""

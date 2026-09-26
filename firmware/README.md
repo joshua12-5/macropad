@@ -1,6 +1,6 @@
 # Macropad firmware (RP2040)
 
-Build target: `macropad_step17.uf2`
+Build target: `macropad_step18.uf2`
 
 ## Step 17 — Macro bank flash sync + protocol polish
 
@@ -9,7 +9,7 @@ Build target: `macropad_step17.uf2`
 - USB `MACRO_BEGIN` / `DATA` / `COMMIT` / `ABORT` / `GET` (no longer `ENOSYS`).
 - Busy mutex: profile **or** macro upload, not both → `EBUSY`.
 - RAM working set in `macros.c`; factory tables remain as defaults.
-- `FW_VERSION_MINOR` = **17**. GET_INFO flags: bit0 storage, bit1 macro bank.
+- `FW_VERSION_MINOR` = **17** (superseded by 18). GET_INFO flags: bit0 storage, bit1 macro bank.
 
 See [`../protocol/MACRO_BLOB.md`](../protocol/MACRO_BLOB.md) and
 [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
@@ -26,7 +26,7 @@ export PICO_SDK_PATH=/path/to/pico-sdk
 mkdir -p build && cd build
 cmake -DPICO_BOARD=pico ..
 make -j$(nproc)
-# Copy macropad_step17.uf2 to the Pico USB mass-storage bootloader.
+# Copy macropad_step18.uf2 to the Pico USB mass-storage bootloader.
 ```
 
 Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers as Waveshare).
@@ -35,6 +35,10 @@ Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers as Waveshare).
 
 `stor load v2|v1 (macros factory)|default`, `stor save ok|fail`,
 `cfg macro begin|commit|abort|get`, `macro save ok`, `profile save ok`.
+
+## UART (Step 18)
+
+`cfg set_active N`, `cfg get_active N`.
 
 ## Next
 

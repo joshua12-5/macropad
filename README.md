@@ -32,11 +32,13 @@ OLED                         ENCODER
 | 15 | USB config protocol (vendor HID) | Done |
 | 16 | Flash profile storage + USB upload | Done |
 | 17 | Macro-bank flash sync / polish | Done |
-| 18 | Auto app-switch / polish | Next |
+| 18 | Auto app-switch / polish | Done |
 
-**Step 17** makes host `macros/library.json` the on-device source of truth:
-flash-backed editable macro slots, USB `MACRO_*` upload, configurator sync.
-Steps **14–17** are complete; next is **Step 18** auto-switch / polish.
+**Step 18** adds host **auto app-switch**: the configurator watches the
+foreground app, matches `autoswitch/rules.json`, and sends USB `SET_ACTIVE`
+(`0x30`) so the device switches profiles in **RAM + OLED only** (no flash wear).
+Requires the configurator to be running — the device cannot see host apps.
+Steps **14–18** are complete.
 
 ## Protocol
 
@@ -55,6 +57,12 @@ Host library (configurator source of truth): [`macros/library.json`](macros/libr
 Host library uploads into the firmware RAM working set + flash bank (Step 17).
 Factory defaults in `macros.c` seed empty flash / v1 images.
 
+## Auto-switch
+
+Rules: [`autoswitch/rules.json`](autoswitch/rules.json) + [`autoswitch/SCHEMA.md`](autoswitch/SCHEMA.md).
+Override path with `MACROPAD_AUTOSWITCH_PATH`. Matching is case-insensitive
+substring on process basename; optional `title_regex`; first rule wins.
+
 ## Configurator
 
 Desktop app: [`configurator/`](configurator/).
@@ -66,7 +74,10 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO. **Device → Upload profile to device…** packs the selected profile into a slot (0–4). **Device → Upload macros to device…** uploads library ids 0–4.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO (shows `active_slot`).
+**Device → Upload profile / macros** sync flash banks.
+**Tools → Auto-switch…** edits rules; **Device → Auto-switch enabled** polls the
+foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
 
 Headless checks:
 
@@ -78,13 +89,14 @@ python scripts/smoke_macros.py
 python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
 python scripts/smoke_macros_blob.py
+python scripts/smoke_autoswitch.py
 ```
 
 ## Firmware
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step17.uf2`.
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step18.uf2`.
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 
