@@ -17,10 +17,10 @@
 #define MATRIX_ROWS 3
 #define MATRIX_COLS 4
 
-/* Encoder EC11 (wired in Step 5) */
-#define PIN_ENC_A   2
-#define PIN_ENC_B   3
-#define PIN_ENC_SW 15
+/* Encoder: KY-040 breakout (CLK=A, DT=B, SW) — same as EC11 */
+#define PIN_ENC_A   2  /* KY-040 CLK */
+#define PIN_ENC_B   3  /* KY-040 DT  */
+#define PIN_ENC_SW 15  /* KY-040 SW  */
 
 /* OLED SSD1306 I2C0 (wired in Step 6) */
 #define PIN_OLED_SDA 4
