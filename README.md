@@ -15,17 +15,18 @@ OLED                         ENCODER
 
 | Step | Topic | Status |
 |------|--------|--------|
-| 1 | System architecture | Documented in chat / docs to follow |
+| 1 | System architecture | Done (chat) |
 | 2 | RP2040-Zero pinout | Frozen in `firmware/include/board_pins.h` |
-| 3 | Matrix scan | In `firmware/` |
-| 4 | USB HID keyboard | In `firmware/` (TinyUSB) |
-| 5+ | Encoder, OLED, profiles, configurator, PCB, enclosure | Next |
+| 3 | Matrix scan | Done |
+| 4 | USB HID keyboard | Done |
+| 5 | Rotary encoder + volume/mute | Done |
+| 6+ | OLED, profiles, configurator, PCB, enclosure | Next |
 
-## Firmware (Steps 3–4)
+## Firmware
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Target board: RP2040-Zero (use `PICO_BOARD=pico` for GPIO-identical bring-up).
+Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers).
 
 ## Pinout (locked)
 

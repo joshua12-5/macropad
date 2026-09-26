@@ -1,5 +1,9 @@
-# Firmware — Step 4 (USB HID Keyboard)
+# Firmware — Step 5 (Encoder + Consumer HID)
 
-RP2040-Zero · Pico SDK · TinyUSB HID boot keyboard · 3×4 matrix from Step 3.
+RP2040-Zero · Pico SDK · TinyUSB
 
-Test map: 1=A, 2=B, 3=Ctrl+C, 4=Ctrl+V, 5..12=C..J.
+- 3×4 matrix keyboard (Step 3–4)
+- EC11 encoder: CW Volume Up, CCW Volume Down, Press Mute
+- Pins: A=GP2, B=GP3, SW=GP15
+
+Build: see root README / Step docs. Artifact: `macropad_step5.uf2`
