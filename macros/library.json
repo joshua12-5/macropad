@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "macros": [
+    {
+      "id": 0,
+      "name": "hello",
+      "steps": [
+        {"op": "TAP", "mods": [], "key": "H"},
+        {"op": "DELAY_MS", "arg": 30},
+        {"op": "TAP", "mods": [], "key": "E"},
+        {"op": "DELAY_MS", "arg": 30},
+        {"op": "TAP", "mods": [], "key": "L"},
+        {"op": "DELAY_MS", "arg": 30},
+        {"op": "TAP", "mods": [], "key": "L"},
+        {"op": "DELAY_MS", "arg": 30},
+        {"op": "TAP", "mods": [], "key": "O"},
+        {"op": "END"}
+      ]
+    },
+    {
+      "id": 1,
+      "name": "sel+cpy",
+      "steps": [
+        {"op": "TAP", "mods": ["CTRL"], "key": "A"},
+        {"op": "DELAY_MS", "arg": 40},
+        {"op": "TAP", "mods": ["CTRL"], "key": "C"},
+        {"op": "END"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "undo/redo",
+      "steps": [
+        {"op": "TAP", "mods": ["CTRL"], "key": "Z"},
+        {"op": "DELAY_MS", "arg": 50},
+        {"op": "TAP", "mods": ["CTRL"], "key": "Y"},
+        {"op": "END"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "git st",
+      "steps": [
+        {"op": "TEXT", "arg": 2},
+        {"op": "END"}
+      ]
+    },
+    {
+      "id": 4,
+      "name": "alt-tab",
+      "steps": [
+        {"op": "KEY_DOWN", "mods": ["ALT"], "key": ""},
+        {"op": "DELAY_MS", "arg": 20},
+        {"op": "TAP", "mods": [], "key": "TAB"},
+        {"op": "DELAY_MS", "arg": 80},
+        {"op": "KEY_UP", "mods": [], "key": ""},
+        {"op": "END"}
+      ]
+    }
+  ]
+}

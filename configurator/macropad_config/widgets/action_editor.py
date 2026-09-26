@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..models.macro import BUILTIN_MACRO_NAMES, macro_names, try_load_library
 from ..models.schema import ActionType, SchemaError, validate_action
 
 # Common HID key names matching firmware JSON style.
@@ -47,13 +48,7 @@ COMMON_KEYS = [
     "`",
 ]
 
-MACRO_LABELS = {
-    0: "hello",
-    1: "sel+cpy",
-    2: "undo/redo",
-    3: "git st",
-    4: "alt-tab",
-}
+MACRO_LABELS = dict(BUILTIN_MACRO_NAMES)
 
 TEXT_LABELS = {
     0: "Hello",
@@ -133,19 +128,12 @@ class ActionEditor(QWidget):
         mods_layout.addStretch(1)
         form.addRow("Mods", self._mods_row)
 
-        # MACRO
-        self._macro_spin = QSpinBox()
-        self._macro_spin.setRange(0, 4)
-        self._macro_spin.valueChanged.connect(self._on_macro_changed)
-        self._macro_label = QLabel("")
-        self._macro_label.setObjectName("hintLabel")
-        macro_wrap = QWidget()
-        macro_layout = QHBoxLayout(macro_wrap)
-        macro_layout.setContentsMargins(0, 0, 0, 0)
-        macro_layout.addWidget(self._macro_spin)
-        macro_layout.addWidget(self._macro_label, stretch=1)
-        self._macro_row = macro_wrap
-        form.addRow("Macro id", self._macro_row)
+        # MACRO — combo of "id: name" from host library (fallback built-ins)
+        self._macro_combo = QComboBox()
+        self._macro_combo.currentIndexChanged.connect(self._on_macro_changed)
+        self._macro_row = self._macro_combo
+        form.addRow("Macro", self._macro_row)
+        self.reload_macro_names()
 
         # TEXT / URL / APP text_id
         self._text_spin = QSpinBox()
@@ -214,7 +202,6 @@ class ActionEditor(QWidget):
         self._error.hide()
         root.addWidget(self._error)
 
-        self._on_macro_changed(self._macro_spin.value())
         self._on_text_changed(self._text_spin.value())
 
     def set_enabled(self, enabled: bool) -> None:  # noqa: FBT001
@@ -252,7 +239,7 @@ class ActionEditor(QWidget):
             for name, box in self._mod_boxes.items():
                 box.setChecked(name in mod_set)
 
-            self._macro_spin.setValue(int(action.get("macro_id", 0)))
+            self._set_macro_id(int(action.get("macro_id", 0)))
             text_id = action.get("text_id", action.get("app_id", 0))
             self._text_spin.setValue(int(text_id) if text_id is not None else 0)
 
@@ -270,7 +257,6 @@ class ActionEditor(QWidget):
             self._profile_id_edit.setText(str(pid) if pid else "")
 
             self._update_field_visibility()
-            self._on_macro_changed(self._macro_spin.value())
             self._on_text_changed(self._text_spin.value())
             self._show_validation(None)
         finally:
@@ -290,7 +276,7 @@ class ActionEditor(QWidget):
             mods = [name for name, box in self._mod_boxes.items() if box.isChecked()]
             action["mods"] = mods
         elif atype == ActionType.MACRO.value:
-            action["macro_id"] = self._macro_spin.value()
+            action["macro_id"] = self._current_macro_id()
         elif atype in (ActionType.TEXT.value, ActionType.URL.value):
             action["text_id"] = self._text_spin.value()
         elif atype == ActionType.APP.value:
@@ -318,7 +304,7 @@ class ActionEditor(QWidget):
         self._set_combo_text(self._key_combo, "A")
         for box in self._mod_boxes.values():
             box.setChecked(False)
-        self._macro_spin.setValue(0)
+        self._set_macro_id(0)
         self._text_spin.setValue(0)
         self._set_combo_text(self._media_combo, "PLAY_PAUSE")
         self._usage_edit.clear()
@@ -363,9 +349,49 @@ class ActionEditor(QWidget):
         # Hide form labels for invisible rows via parent form — labels stay;
         # visibility on the field widgets is enough for usability.
 
-    def _on_macro_changed(self, value: int) -> None:
-        name = MACRO_LABELS.get(value, "?")
-        self._macro_label.setText(name)
+    def reload_macro_names(self) -> None:
+        """Refresh MACRO combo from library.json (or built-in fallback)."""
+        names = macro_names()
+        if not names:
+            names = dict(BUILTIN_MACRO_NAMES)
+        current = self._current_macro_id() if self._macro_combo.count() else 0
+        self._macro_combo.blockSignals(True)
+        self._macro_combo.clear()
+        for mid in sorted(names):
+            self._macro_combo.addItem(f"{mid}: {names[mid]}", mid)
+        # Ensure range covers library max even if names sparse
+        lib = try_load_library()
+        if lib is not None and lib.macros:
+            max_id = lib.max_id()
+            present = {self._macro_combo.itemData(i) for i in range(self._macro_combo.count())}
+            for mid in range(0, max_id + 1):
+                if mid not in present:
+                    label = names.get(mid, f"macro {mid}")
+                    # Insert in order
+                    insert_at = self._macro_combo.count()
+                    for i in range(self._macro_combo.count()):
+                        if int(self._macro_combo.itemData(i)) > mid:
+                            insert_at = i
+                            break
+                    self._macro_combo.insertItem(insert_at, f"{mid}: {label}", mid)
+        self._macro_combo.blockSignals(False)
+        self._set_macro_id(current)
+
+    def _current_macro_id(self) -> int:
+        data = self._macro_combo.currentData()
+        if data is None:
+            return 0
+        return int(data)
+
+    def _set_macro_id(self, macro_id: int) -> None:
+        idx = self._macro_combo.findData(macro_id)
+        if idx < 0:
+            # Unknown id — add a temporary entry so value is preserved
+            self._macro_combo.addItem(f"{macro_id}: ?", macro_id)
+            idx = self._macro_combo.findData(macro_id)
+        self._macro_combo.setCurrentIndex(max(0, idx))
+
+    def _on_macro_changed(self, _index: int = 0) -> None:
         self._emit_changed()
 
     def _on_text_changed(self, value: int) -> None:

@@ -1,4 +1,4 @@
-"""Main application window — Step 12 profile manager."""
+"""Main application window — Step 13 macro library editor."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from .models.profile import (
 )
 from .models.schema import SchemaError
 from .widgets.action_editor import ActionEditor
+from .widgets.macro_library_dialog import MacroLibraryDialog
 from .widgets.pad_preview import PadPreview
 from .widgets.profile_dialog import ProfileNameIdDialog
 from .widgets.profile_list import ProfileListWidget
@@ -253,10 +254,8 @@ class MainWindow(QMainWindow):
 
         profile_menu.addSeparator()
 
-        macro_lib_act = QAction("Macro library…", self)
-        macro_lib_act.setEnabled(False)
-        macro_lib_act.setToolTip("Step 13")
-        macro_lib_act.setStatusTip("Step 13")
+        macro_lib_act = QAction("Macro &library…", self)
+        macro_lib_act.triggered.connect(self._open_macro_library)
         profile_menu.addAction(macro_lib_act)
 
         device_menu = self.menuBar().addMenu("&Device")
@@ -694,10 +693,10 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                "Step 12 — profile manager (new / duplicate / delete)<br><br>"
+                "Step 13 — macro library editor<br><br>"
                 "Profile schema version: <b>1</b><br>"
-                "Loads and saves JSON in the repo <code>profiles/</code> folder.<br><br>"
-                "Macro sequence editor is Step 13. "
-                "USB upload is Steps 15–16."
+                "Macro library schema version: <b>1</b><br>"
+                "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br><br>"
+                "USB upload / device protocol is Steps 14–17."
             ),
         )

@@ -27,7 +27,10 @@ OLED                         ENCODER
 | 10 | PySide6 configurator shell | Done |
 | 11 | Key/encoder action editors | Done |
 | 12 | Profile manager (new / duplicate / delete) | Done |
-| 13+ | Macro editor, PCB, host helpers | Next |
+| 13 | Macro library editor (host JSON) | Done |
+| 14–17 | Device UI / protocol / storage | Next |
+
+**Configurator block (Steps 10–13) is complete.**
 
 ## Profiles
 
@@ -35,11 +38,13 @@ Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](pr
 
 ## Macros
 
-Built-in step tables + opcode docs: [`macros/SCHEMA.md`](macros/SCHEMA.md).
+Host library (configurator source of truth): [`macros/library.json`](macros/library.json) + [`macros/SCHEMA.md`](macros/SCHEMA.md).
+
+Firmware still plays packed step tables in `firmware/src/macros.c` until a USB sync/flash protocol exists — host JSON and firmware may diverge until then.
 
 ## Configurator
 
-Desktop app (Step 12 profile manager): [`configurator/`](configurator/).
+Desktop app (Step 13 macro library): [`configurator/`](configurator/).
 
 ```bash
 cd configurator
@@ -48,7 +53,7 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. Macro sequence editor is Step 13; USB upload is Steps 15–16.
+Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. USB upload is Steps 14–17.
 
 Headless checks:
 
@@ -56,6 +61,7 @@ Headless checks:
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
+python scripts/smoke_macros.py
 ```
 
 ## Firmware

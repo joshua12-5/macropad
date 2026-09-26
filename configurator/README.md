@@ -1,10 +1,10 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON (schema v1).
+PySide6 desktop app for editing host-side profile JSON and the macro library (schema v1).
 
-**Step 12** — profile manager: New / Duplicate / Delete (plus Step 11 action editors).
+**Steps 10–13** (configurator block) are complete: shell, action editors, profile manager, and **macro library editor**.
 
-Macro sequence editor is **Step 13** (menu stub: **Profile → Macro library…**, disabled).
+Next: Steps 14–17 device UI / protocol / storage. USB upload of macros to the RP2040 is **not** in this step — host `macros/library.json` is the configurator source of truth; firmware still uses packed C in `firmware/src/macros.c` until a sync protocol lands (they may diverge).
 
 ## Run
 
@@ -24,7 +24,9 @@ export MACROPAD_PROFILES_DIR=/path/to/profiles
 python -m macropad_config
 ```
 
-### Edit & save
+Macro library loads from `../macros/library.json` (override with `MACROPAD_MACROS_PATH`).
+
+### Edit & save profiles
 
 1. Select a profile on the left.
 2. Edit **Name** / **OLED** in the right header (marks the profile dirty).
@@ -43,7 +45,16 @@ python -m macropad_config
 
 Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
-New profiles are written on Save as `{NameWithoutSpaces}.json` under the profiles dir (falls back to `{id}.json` on clash).
+### Macro library editor (Step 13)
+
+**Profile → Macro library…** opens a dialog:
+
+- Left: list of macros (`id: name`) with New / Duplicate / Delete (stable ids; new = `max_id+1`).
+- Right: editable name; step table (Op, Mods, Key, Arg); Add / Remove / Move up/down.
+- Step editor: op combo drives mods/key, delay, text_id, or consumer fields.
+- **Save** writes `macros/library.json`; **Cancel** discards.
+
+ActionEditor **MACRO** type shows a combo of `id: name` from the library (falls back to built-in 0–4 labels if the file is missing).
 
 ### Headless tests
 
@@ -51,6 +62,7 @@ New profiles are written on Save as `{NameWithoutSpaces}.json` under the profile
 python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
+python scripts/smoke_macros.py
 ```
 
 (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display.)
@@ -65,7 +77,7 @@ python scripts/smoke_profile_mgr.py
 
 ## ActionEditor types
 
-`DISABLED`, `KEY`, `SHORTCUT` (mods + key), `MACRO` (0–4), `TEXT` / `URL` / `APP` (`text_id` 0–7), `MEDIA` (code / usage), `VOLUME`, `PROFILE` (slot / id).
+`DISABLED`, `KEY`, `SHORTCUT` (mods + key), `MACRO` (library id), `TEXT` / `URL` / `APP` (`text_id` 0–7), `MEDIA` (code / usage), `VOLUME`, `PROFILE` (slot / id).
 
 ## Packaging note
 

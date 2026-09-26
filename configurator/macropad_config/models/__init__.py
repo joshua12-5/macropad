@@ -1,5 +1,18 @@
-"""Profile models and schema helpers."""
+"""Profile and macro models and schema helpers."""
 
+from .macro import (
+    BUILTIN_MACRO_NAMES,
+    MACRO_SCHEMA_VERSION,
+    Macro,
+    MacroLibrary,
+    MacroLoadError,
+    MacroStep,
+    default_macros_path,
+    load_library,
+    macro_names,
+    save_library,
+    try_load_library,
+)
 from .profile import (
     Profile,
     ProfileLoadError,
@@ -18,19 +31,30 @@ from .schema import ACTION_TYPES, SCHEMA_VERSION, validate_action, validate_prof
 
 __all__ = [
     "ACTION_TYPES",
+    "BUILTIN_MACRO_NAMES",
+    "MACRO_SCHEMA_VERSION",
     "SCHEMA_VERSION",
+    "Macro",
+    "MacroLibrary",
+    "MacroLoadError",
+    "MacroStep",
     "Profile",
     "ProfileLoadError",
+    "default_macros_path",
     "default_profiles_dir",
     "delete_profile_file",
     "duplicate_profile",
     "is_valid_profile_id",
+    "load_library",
     "load_profile",
     "load_profiles_dir",
+    "macro_names",
     "make_blank_profile",
+    "save_library",
     "save_profile",
     "suggest_profile_id",
     "suggest_profile_path",
+    "try_load_library",
     "validate_action",
     "validate_profile_dict",
 ]
