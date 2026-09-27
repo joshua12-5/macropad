@@ -9,8 +9,9 @@ Build target: `macropad_step22.uf2`
 - `FW_VERSION_MINOR` = **22**; CMake target `macropad_step22`; USB `bcdDevice` = **0x0116** (1.22).
 - Storage erase/program runs through `flash_safe_execute()` (single-core: IRQs masked, same as
   before); the flash image is staged in the static 4 KiB sector buffer instead of the stack.
-- Size (text/data/bss): **56500 / 0 / 11160**; UF2 ≈ 110.5 KiB; image ends at `0x1000DCB8`
+- Size (text/data/bss): **56508 / 0 / 11160**; UF2 113152 B (≈ 110.5 KiB); image ends at `0x1000DCC0`
   — storage sector `0x101FF000` is ~1.9 MiB past it (checked in CI).
+  (Local gcc 14.2 numbers; CI's Ubuntu gcc 13.2 gives ~55.4 KB text, UF2 ≈ 108.5 KiB.)
 - CI: [`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) → artifact `macropad-firmware-uf2`.
 
 **Next: Step 23** — more polish/testing in the 18–24 block.

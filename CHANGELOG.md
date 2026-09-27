@@ -35,6 +35,8 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
   masked for erase+program); fails safely instead of corrupting XIP if core 1 is ever started.
 - Dropped unused `tinyusb_board` link dependency (TinyUSB BSP; no `board_*` calls in the firmware).
 - UART boot banner reads "Step 22" (was stale "Step 19").
+- `main.c`: initialise `enc_press_at` (gcc 13.2 on ubuntu-latest flagged `-Wmaybe-uninitialized`;
+  false positive — only read after a press sets it — but keeps CI at zero warnings).
 
 ### Fixed
 

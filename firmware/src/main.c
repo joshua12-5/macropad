@@ -53,7 +53,7 @@ int main(void) {
 
     absolute_time_t next_tick = get_absolute_time();
     bool enc_held = false;
-    absolute_time_t enc_press_at;
+    absolute_time_t enc_press_at = get_absolute_time();  /* set on press; init silences gcc 13 -Wmaybe-uninitialized */
     bool enc_long_fired = false;
     absolute_time_t select_deadline = get_absolute_time();
 
