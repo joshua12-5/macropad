@@ -89,8 +89,8 @@ goes to the **row** wire.
 
 **Encoder.** The firmware enables internal pull-ups on GP2, GP3 and GP15, so a bare EC11 works
 without resistors (wire its common pin `C` to GND). Power the KY-040 from **3V3, not 5 V**, because the RP2040's pins are not
-5 V tolerant. If the knob turns the wrong way, swap the `CLK` and `DT` wires, or swap the CW
-and CCW actions in the configurator.
+5 V tolerant. If the knob turns the wrong way, swap the `CLK` and `DT` wires, or swap the
+**Turn left** and **Turn right** actions in the configurator.
 
 **OLED.** Power it from 3V3. At boot the firmware probes 0x3C, then 0x3D, and runs the bus at
 400 kHz.
@@ -199,7 +199,8 @@ From source, the app edits the repo's `profiles/`, `macros/library.json` and
      app shows a warning and keeps the upload, save and auto-switch actions disabled until you
      update one side.
    - **Active slot** (0–4) and **slot count** (5).
-3. The status bar keeps the connection summary. Features that need newer firmware than you
+3. The right end of the status bar keeps a quiet summary: a **Connected** pill, the firmware
+   version and the protocol version. Features that need newer firmware than you
    have are greyed out with a tooltip. For example, idle animations need firmware 0.25.
 
 **Help → About** shows the configurator version, the protocol and firmware versions it expects,
@@ -212,7 +213,8 @@ and the schema versions.
 - **Keys** fire their action on press. KEY and SHORTCUT actions are **held** for as long as you
   hold the key, so the OS's own key repeat works. Up to 6 held keys are reported at once, and
   their modifiers combine.
-- **Encoder:** each detent fires the CW or CCW action once, and a short press fires the Press
+- **Encoder:** each detent fires the Turn right (clockwise) or Turn left (counter-clockwise)
+  action once, and a short press fires the Press
   action.
 - **OLED:** shows the active profile's title, plus short pop-ups for key presses ("Key 6"),
   volume ("VOL UP", with an estimated level; the macropad cannot read your real system volume),
@@ -236,17 +238,28 @@ and the schema versions.
 
 The main window has three columns:
 
-- **Left:** the profile list, with New / Duplicate / Delete buttons.
-- **Middle:** an OLED mock-up, the 12 keys (each labelled with its action) and the encoder slots
-  **CW**, **CCW**, **Press** and **Long**.
-- **Right:** the profile's **Name** and **OLED** title, the **action editor**, and a read-only
-  JSON view of the selected action.
+- **Left:** the profile list. Each row shows the profile name and id, plus a **Slot N** badge
+  when the configurator knows which device slot holds it; the active slot has an accent dot.
+  The **+**, copy and trash icons above the list create, duplicate and delete profiles.
+- **Middle:** a drawing of the macropad: the OLED (showing the profile's idle title), the knob
+  and the 12 keycaps, each labelled with its action. Below it are the four encoder slots
+  **Turn left**, **Turn right**, **Press** and **Hold** (hold = long press).
+- **Right:** the inspector: the profile's **Name** and **OLED title**, the selected key or slot
+  with its **action editor**, and a read-only JSON view of the action.
 
-Click a key or encoder slot, then pick a **Type**. Only the fields that type uses are shown.
+Click a keycap, the knob or an encoder slot (or move between keys with the arrow keys), then
+pick a **Type**. Only the fields that type uses are shown.
 Changes apply to the profile in memory straight away and the status bar says *Modified*.
 **File → Save** (`Ctrl+S`) writes the current profile to disk and **File → Save All**
 (`Ctrl+Shift+S`) writes every changed profile. To put changes on the macropad, use
-**Device → Upload profile to device…** (see [Profiles](#profiles)).
+**Device → Upload profile to device…** or the **Upload** button in the toolbar (see
+[Profiles](#profiles)).
+
+The toolbar also has Save, the macro library, the idle animation editor, auto-switch rules,
+**Connect**, and a sun / moon button that flips between the dark and light theme.
+**View → Theme** chooses **Match system** (the default), **Dark** or **Light**; the choice is
+remembered. **View → Toggle dark / light** (`Ctrl+Shift+L`) does the same as the toolbar
+button.
 
 ![Action editor: SHORTCUT, MACRO and MEDIA](images/action-editor.png)
 
@@ -304,10 +317,10 @@ profiles on your computer (one JSON file each) and you choose which five go onto
 
 | Task | How |
 |------|-----|
-| New profile | **Profile → New…** (`Ctrl+N`) or the **New…** button. Enter a Name; the Id is filled in from it and can be edited. Ids must be unique and match `^[a-z][a-z0-9_]*$`. A new profile has all keys `DISABLED` and the encoder set to volume up / down / mute. |
+| New profile | **Profile → New…** (`Ctrl+N`) or the **+** icon above the profile list. Enter a Name; the Id is filled in from it and can be edited. Ids must be unique and match `^[a-z][a-z0-9_]*$`. A new profile has all keys `DISABLED` and the encoder set to volume up / down / mute. |
 | Duplicate | **Profile → Duplicate…** (`Ctrl+D`): copies the selected profile under a new name and id. |
 | Delete | **Profile → Delete…**: asks first, then removes the JSON file if it was saved. |
-| Rename / OLED title | The **Name** and **OLED** fields on the right. The device stores up to **15 characters** of each. The OLED title is what the macropad shows. |
+| Rename / OLED title | The **Name** and **OLED title** fields on the right. The device stores up to **15 characters** of each. The OLED title is what the macropad shows. |
 | Open another folder | **File → Open profiles folder…** (`Ctrl+O`); **File → Reload** (`Ctrl+R`). |
 | Send to the macropad | **Device → Upload profile to device…** (`Ctrl+Shift+U`) uploads the **selected** profile into the slot (0–4) you pick, and saves it to flash immediately. The suggested slot is the device's active slot, or 0–4 for the bundled ids `default`, `gaming`, `coding`, `browser`, `photoshop`. |
 | Switch profiles | On the device: hold the knob (see [Using the macropad](#using-the-macropad)). From a key: a `PROFILE` action. From the computer: [auto-switch](#auto-switch-rules), which sends `SET_ACTIVE`. |
@@ -326,9 +339,10 @@ out the flash.
 ![Macro library](images/macro-library.png)
 
 **Profile → Macro library…** edits the macro library file (`macros/library.json`). Each macro
-has an **id**, a **name** and a list of **steps**. On the left: New / Duplicate / Delete. On the
-right: the Name, the steps table (Add step / Remove step / Move up / Move down) and a step
-editor that shows only the fields the selected op uses. **Save** writes the file; **Cancel**
+has an **id**, a **name** and a list of **steps**. On the left: the macro list with
+new / duplicate / delete icons. On the right: the Name, the steps table (**Add step**,
+**Remove step**, and up / down arrows to reorder) and a **Selected step** editor that shows only
+the fields the selected op uses. **Save** writes the file; **Cancel**
 asks before discarding changes.
 
 | Op | Fields | Effect |
@@ -382,12 +396,13 @@ the editor tells you which firmware to flash and sends nothing.
 
 ### Making an animation
 
-- **Frames:** the strip on the left. Add, Duplicate (`Ctrl+D`), Delete, ▲ Earlier / ▼ Later or
-  drag to reorder; `[` and `]` step through frames.
+- **Frames:** the thumbnail strip on the left. The icons below it add, duplicate (`Ctrl+D`),
+  delete and move the frame earlier / later (up / down arrows); you can also drag to reorder.
+  `[` and `]` step through frames.
 - **Canvas:** Pen (`P`) and Eraser (`E`); the right mouse button does the opposite. Brush size
-  1–8 px, Invert (`I`), Clear, Shift ◀ ▶ ▲ ▼ (wraps around), onion skin of the previous frame,
+  1–8 px, Invert (`I`), Clear, Shift left / right / up / down (wraps around), onion skin of the previous frame,
   grid, zoom 2–12×, Undo / Redo (`Ctrl+Z` / `Ctrl+Y`).
-- **Preview:** ▶ Play / ■ Pause (`Space`) at the chosen speed.
+- **Preview:** **Play** / **Pause** (`Space`) at the chosen speed.
 - **Presets:** *Starfield (warp)*, *Bouncing text* (default text `MACROPAD`), *Scrolling text*
   (your own text) and *Pulse / breathing*. Pick one, then **Load preset**.
 - **Name:** up to **8 characters**. That is all the device stores.
@@ -417,7 +432,7 @@ the editor tells you which firmware to flash and sends nothing.
 
 ### Sending it to the macropad
 
-Connect first (**Device → Connect / Get device info**), then use the **Device** box in the
+Connect first (**Device → Connect / Get device info**), then use the **Device** section in the
 editor:
 
 - **Upload to device:** shows a progress bar (you can cancel) and verifies the upload by

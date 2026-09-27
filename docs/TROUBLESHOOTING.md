@@ -120,7 +120,7 @@ in root's home folder.
 ## Encoder turns the wrong way, or skips or doubles steps
 
 - **Reversed direction:** swap the **CLK** (GP2) and **DT** (GP3) wires, or, without
-  soldering, swap the profile's **CW** and **CCW** actions in the configurator.
+  soldering, swap the profile's **Turn left** and **Turn right** actions in the configurator.
 - **One action every two clicks, or two actions per click:**
   - The firmware turns every **4 valid quadrature transitions** into one step
     (`DETENTS_PER_CLICK` in `firmware/src/encoder.c`), which suits the usual KY-040 / EC11 with
@@ -196,7 +196,7 @@ The version rules are in [VERSIONING.md](VERSIONING.md).
 Please open an issue at <https://github.com/joshua12-5/macropad/issues> and include:
 
 1. The OS and version, and the output of `MacropadConfigurator --version`.
-2. The **Device → Connect / Get device info** text, or a screenshot of it.
+2. A screenshot (or the text) of the **Device → Connect / Get device info** dialog.
 3. A self-test report: `MacropadConfigurator --self-test --report selftest.txt`.
 4. A **hardware-in-the-loop** report from the real device:
 

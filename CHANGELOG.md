@@ -16,6 +16,20 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
   [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) and a docs index
   [`docs/README.md`](docs/README.md).
 - Screenshot set under `docs/images/` used by the README and the user guide.
+- Configurator **theme system** (`configurator/macropad_config/ui/`): one hand-written QSS
+  template (`theme.qss`) filled from dark (graphite) and light (off-white) palettes in
+  `theme.py`, one amber accent for selection and primary actions, an 8 px spacing grid,
+  6–8 px radii, 1 px dividers instead of group boxes and a system-font type scale. The theme
+  follows the OS light/dark setting; **View → Theme** (*Match system* / *Dark* / *Light*,
+  remembered) and **View → Toggle dark / light** (`Ctrl+Shift+L`, also a toolbar button)
+  override it. `MACROPAD_THEME=dark|light` forces a mode for one run.
+- Monochrome [Lucide](https://lucide.dev) icons (ISC, vendored with their license in
+  `ui/icons/`), recoloured per theme, on flat toolbar and tool buttons.
+- `scripts/smoke_theme.py` (15th smoke): loads the theme in both modes, checks palette parity
+  and text contrast, that every QSS token and icon resolves, and that the main window and every
+  dialog render. `--self-test` also checks the theme and icons.
+- **Device info** and **About** dialogs with a status pill and a key / value layout (they were
+  plain message boxes).
 
 ### Changed
 
@@ -23,6 +37,24 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 - Changelog entries describe the changes themselves instead of internal milestone numbers;
   link references now exist only for tagged releases (v0.24.0 and later).
 - Comments and docstrings no longer cite internal milestones.
+- **Configurator UI polish** (visual only; profiles, protocol and behaviour are unchanged):
+  - Main window: the centre is now a drawing of the macropad (OLED idle-screen preview, knob,
+    3 × 4 keycaps with action legends) with the encoder slots shown as *Turn left / Turn right /
+    Press / Hold* chips; click or use the arrow keys to select. The action editor moved into a
+    right-hand inspector under the profile's *Name* / *OLED title*. The profile list shows
+    name + id, a *Slot N* badge and the active device slot. A toolbar holds Save, Macros, Idle
+    animation, Auto-switch rules, the theme toggle, **Connect** and a primary **Upload**
+    button. The status bar shows a connection pill, firmware and protocol version.
+  - Action editor: modifiers are toggle chips (Ctrl / Shift / Alt / Win·Cmd·Super).
+  - Macro library, auto-switch rules, profile and import dialogs: consistent margins, form
+    layout and section headers; tables without grid lines and with 32 px rows; icon buttons
+    for add / remove / move.
+  - Idle animation editor: section headers instead of group boxes, a thumbnail frame strip,
+    icon tool buttons, Play / Pause without glyphs, a primary *Upload to device* button.
+  - The old hard-coded dark stylesheet in `main_window.py` is gone.
+  - The PyInstaller spec bundles `theme.qss` and the icons.
+- Screenshots in `docs/images/` and the README gallery refreshed (plus a light-theme main
+  window); the user guide and configurator README describe the new layout.
 
 ### Fixed
 

@@ -29,7 +29,7 @@ configurator (**Tools → Idle animation…**) and stored in a dedicated flash r
 * **Frames** strip with thumbnails — add, duplicate (Ctrl+D), delete, move earlier/later or drag
   to reorder.
 * **Canvas** — 128×64 pixels at 2–12× zoom with an 8-px page grid. Pen / eraser (P / E), right
-  mouse button does the opposite, brush 1–8 px, invert (I), clear, shift ◀▶▲▼ (wraps), onion
+  mouse button does the opposite, brush 1–8 px, invert (I), clear, shift left / right / up / down (wraps), onion
   skin of the previous frame, undo / redo (Ctrl+Z / Ctrl+Y), `[` / `]` previous / next frame.
 * **Preview** — plays the frames at the chosen fps (Space).
 * **Presets** — generated in Python: *Starfield (warp)*, *Bouncing text* (default `MACROPAD`),

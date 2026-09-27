@@ -42,6 +42,8 @@ only needed for setup (and for optional automatic profile switching).
 | **Profiles:** create, duplicate, upload to a slot | **Auto-switch rules:** app → profile |
 | ![Device info](docs/images/device-info.png) | ![About](docs/images/about.png) |
 | **Device → Connect:** version handshake | **Help → About** |
+| ![Main window, light theme](docs/images/main-window-light.png) | |
+| **Light theme:** follows the OS, or pick it under **View → Theme** | |
 
 ## Quick start
 
@@ -60,8 +62,9 @@ only needed for setup (and for optional automatic profile switching).
    | macOS 12+ (Apple Silicon / Intel) | `MacropadConfigurator-X.Y.Z-macos-arm64.zip` / `-macos-x86_64.zip` | Move the `.app` to Applications; allow it once under *Privacy & Security* (unsigned) |
    | Linux x86_64 (glibc ≥ 2.35) | `macropad-configurator-X.Y.Z-linux-x86_64.tar.gz` | Extract, `./install.sh` (udev rule), run `MacropadConfigurator/MacropadConfigurator` |
 
-5. **Connect and configure:** use **Device → Connect / Get device info**, edit keys, then
-   **Device → Upload profile to device…**.
+5. **Connect and configure:** click **Connect** in the toolbar (**Device → Connect / Get device
+   info**), click a key on the drawn macropad to edit it, then click **Upload** (**Device →
+   Upload profile to device…**).
 
 Check downloads against `SHA256SUMS.txt`. Firmware `0.N` goes with configurator `0.N.x`.
 
