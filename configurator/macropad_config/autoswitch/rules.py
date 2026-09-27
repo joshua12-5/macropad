@@ -57,8 +57,10 @@ class AutoswitchRules:
 
 
 def _repo_root() -> Path:
-    # macropad_config/autoswitch/rules.py → repo root = parents[3]
-    return Path(__file__).resolve().parents[3]
+    # Source checkout → repo root; frozen build → per-user data dir.
+    from ..paths import data_root
+
+    return data_root()
 
 
 def default_rules_path() -> Path:

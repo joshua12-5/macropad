@@ -1,9 +1,13 @@
-# Macropad Configurator — Step 15 (USB config protocol)
+# Macropad Configurator — runtime dependencies (Step 24)
 PySide6>=6.6,<6.9
 
-# Optional: vendor HID channel (Device → Connect / Get info). App runs without it.
-hid>=1.0.4
+# Vendor HID channel (Device menu). App runs without it.
+# cython-hidapi: wheels embed the native hidapi library, so no system
+# libhidapi is needed (on Linux the package's `hidraw` module is used).
+# The older pyhidapi binding (`pip install hid`, needs system libhidapi) is
+# still supported by protocol/device.py — install one or the other, both
+# provide the top-level module `hid`.
+hidapi>=0.14
 
-# Optional packaging (not required to run):
-#   pip install pyinstaller
-#   pyinstaller --onefile --windowed -n macropad-config -m macropad_config
+# Release builds: see packaging/requirements-build.txt (pinned) and
+# docs/RELEASE.md — `pyinstaller packaging/macropad_configurator.spec`.

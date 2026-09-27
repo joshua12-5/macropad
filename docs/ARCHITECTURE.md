@@ -122,4 +122,15 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
   debounced active persist skipped when flash already matches
 - Host fixes: `ConfigDevice` supports both `hid` (pyhidapi, pinned) and `hidapi` (cython) APIs;
   `pack_macro` truncates after the first `END` like firmware
-- Next: **Step 24** — last polish/testing step of the 18–24 block
+
+## Step 24 release packaging
+
+- `release.yml` on tag `vX.Y.Z`: version/changelog gate (`packaging/release_tools.py`) →
+  firmware (reusable `firmware.yml`) + PyInstaller one-dir matrix (Windows x64, macOS arm64,
+  macOS x86_64 experimental, Linux x86_64 on Ubuntu 22.04) → headless `--self-test` per package →
+  GitHub prerelease with `SHA256SUMS.txt`; `workflow_dispatch` = dry run
+- `macropad_config/paths.py`: frozen builds read bundled defaults from `<bundle>/data`, user data
+  in the OS per-user dir (seeded once); source checkouts unchanged
+- `macropad_config/selftest.py` + `--version` / `--self-test` / `--hil` in `app.py`
+- hidapi via cython-hidapi wheels (native lib embedded); Linux prefers its `hidraw` module
+- Firmware 0.24 / host 0.24.0: version bump only

@@ -1,4 +1,4 @@
-"""Main application window — Step 23 HIL test tooling."""
+"""Main application window — Step 24 release packaging."""
 
 from __future__ import annotations
 
@@ -1028,8 +1028,8 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 23 "
-                "hardware-in-the-loop test tooling<br><br>"
+                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 24 "
+                "release packaging (tag-triggered builds, --self-test)<br><br>"
                 f"Protocol (host): <b>{app_version.PROTO_VER}</b><br>"
                 f"Expected firmware: <b>{app_version.FW_VERSION_MAJOR_EXPECTED}."
                 f"{app_version.FW_VERSION_MINOR_CURRENT}</b><br>"

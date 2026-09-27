@@ -220,13 +220,16 @@ def suggest_profile_path(
 
 
 def default_profiles_dir() -> Path:
-    """Resolve profiles directory: MACROPAD_PROFILES_DIR or repo profiles/."""
+    """Resolve profiles directory: MACROPAD_PROFILES_DIR, else paths.data_root()/profiles.
+
+    Source checkout → repo ``profiles/``; frozen build → per-user data dir.
+    """
     env = os.environ.get("MACROPAD_PROFILES_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    # configurator/ is parent of macropad_config/; repo root is parent of configurator/
-    configurator_dir = Path(__file__).resolve().parents[2]
-    return (configurator_dir.parent / "profiles").resolve()
+    from ..paths import data_root
+
+    return (data_root() / "profiles").resolve()
 
 
 def load_profile(path: Path | str) -> Profile:

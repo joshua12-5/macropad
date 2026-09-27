@@ -1,10 +1,20 @@
 # Macropad firmware (RP2040)
 
-Build target: `macropad_step23.uf2`
+Build target: `macropad_step24.uf2` (released as `macropad-fw-X.Y.Z.uf2` on the
+[Releases page](https://github.com/joshua12-5/macropad/releases))
 
-## Step 23 — HIL support: blob readback + quieter debounce
+## Step 24 — Release packaging
 
-- `FW_VERSION_MINOR` = **23**; CMake target `macropad_step23`; USB `bcdDevice` = **0x0117** (1.23).
+- `FW_VERSION_MINOR` = **24**; CMake target `macropad_step24`; USB `bcdDevice` = **0x0118** (1.24).
+  No firmware behaviour, protocol or blob changes.
+- `.github/workflows/firmware.yml` is now also a reusable workflow (`workflow_call`) and uploads
+  the `.elf` next to the `.uf2`; `.github/workflows/release.yml` calls it on tag `vX.Y.Z` and
+  publishes `macropad-fw-X.Y.Z.uf2` / `.elf` / `.uf2.sha256` (see [`../docs/RELEASE.md`](../docs/RELEASE.md)).
+- Size: text 56916 (+8 B vs Step 23, banner string), bss 11160, UF2 114176 B.
+
+## Step 23 — HIL support: blob readback + quieter debounce (kept)
+
+- Step 23 set `FW_VERSION_MINOR` 23, target `macropad_step23`, `bcdDevice` 0x0117.
 - `CFG_CMD_PROFILE_READ` (`0x15`) / `CFG_CMD_MACRO_READ` (`0x25`): chunked readback (≤ 48 B per
   response) of the packed RAM blobs; GET_INFO flags **bit2** (`CFG_INFO_FLAG_READBACK`).
 - Debounced `SET_ACTIVE` persist is skipped when flash already holds a v2 image matching RAM with
@@ -78,7 +88,7 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware   # this directory
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step23.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad_step24.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 Notes:

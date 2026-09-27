@@ -1,0 +1,273 @@
+# Release pipeline (Step 24).
+#
+#   git tag v0.24.0 && git push origin v0.24.0     → build, self-test, publish prerelease
+#   Actions → Release → Run workflow                → same builds, NO publish (dry run);
+#                                                     assets uploaded as the "release-dry-run" artifact
+#
+# Jobs: meta (tag ↔ version.py ↔ FW_VERSION ↔ CHANGELOG) → firmware (reuses
+# firmware.yml) + configurator matrix (PyInstaller one-dir, headless
+# --self-test on every runner, archive re-extracted and re-tested) → release.
+# See docs/RELEASE.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to validate the sources against (dry run only; default v<version.py>)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  meta:
+    name: Version / changelog check
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Resolve tag + verify sources
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"; publish=true
+          else
+            host=$(python3 packaging/release_tools.py versions | python3 -c 'import json,sys; print(json.load(sys.stdin)["host"])')
+            tag="${INPUT_TAG:-v$host}"; publish=false
+          fi
+          python3 packaging/release_tools.py check "$tag"
+          python3 packaging/release_tools.py notes "$tag" -o release-notes.md
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          { echo "### Release $tag (publish=$publish)"; echo; cat release-notes.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  firmware:
+    name: Firmware
+    needs: meta
+    uses: ./.github/workflows/firmware.yml
+
+  configurator:
+    name: Configurator (${{ matrix.platform }})
+    needs: meta
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: windows-x64, experimental: false }
+          - { os: macos-latest, platform: macos-arm64, experimental: false }
+          - { os: macos-15-intel, platform: macos-x86_64, experimental: true }
+          - { os: ubuntu-22.04, platform: linux-x86_64, experimental: false }
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: packaging/requirements-build.txt
+
+      - name: Linux system libraries (Qt xcb/EGL; bundled or required at runtime)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
+
+      - name: Install pinned build deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r packaging/requirements-build.txt
+          python -m pip list
+
+      - name: Self-test from source (pinned deps)
+        working-directory: configurator
+        run: python -m macropad_config --self-test
+
+      - name: PyInstaller build
+        run: pyinstaller --noconfirm --clean packaging/macropad_configurator.spec
+
+      - name: Self-test frozen build
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            macOS)  exe="dist/MacropadConfigurator.app/Contents/MacOS/MacropadConfigurator" ;;
+            Windows) exe="dist/MacropadConfigurator/MacropadConfigurator.exe" ;;
+            *)      exe="dist/MacropadConfigurator/MacropadConfigurator" ;;
+          esac
+          echo "EXE=$exe" >> "$GITHUB_ENV"
+          python packaging/ci_selftest.py "$exe" "selftest-$PLATFORM.txt" --expect-version "$VERSION"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          case "$RUNNER_OS" in
+            macOS)
+              name="MacropadConfigurator-$VERSION-$PLATFORM.zip"
+              # ditto keeps symlinks, xattrs and the ad-hoc signature intact.
+              ditto -c -k --sequesterRsrc --keepParent dist/MacropadConfigurator.app "out/$name"
+              ;;
+            Windows)
+              name="MacropadConfigurator-$VERSION-$PLATFORM.zip"
+              stage="MacropadConfigurator-$VERSION-$PLATFORM"
+              mkdir -p "$stage"
+              cp -r dist/MacropadConfigurator "$stage/"
+              python -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', '.', sys.argv[2])" "out/${name%.zip}" "$stage"
+              ;;
+            *)
+              name="macropad-configurator-$VERSION-$PLATFORM.tar.gz"
+              stage="macropad-configurator-$VERSION-$PLATFORM"
+              mkdir -p "$stage"
+              cp -a dist/MacropadConfigurator "$stage/"
+              cp packaging/linux/70-macropad.rules packaging/linux/INSTALL.txt \
+                 packaging/linux/macropad-configurator.desktop packaging/linux/install.sh "$stage/"
+              chmod +x "$stage/install.sh"
+              tar -czf "out/$name" "$stage"
+              ;;
+          esac
+          echo "ARCHIVE=out/$name" >> "$GITHUB_ENV"
+          ls -l out
+
+      - name: Re-test from extracted archive
+        run: |
+          set -euo pipefail
+          rm -rf retest && mkdir retest
+          case "$RUNNER_OS" in
+            macOS)
+              ditto -x -k "$ARCHIVE" retest
+              exe="retest/MacropadConfigurator.app/Contents/MacOS/MacropadConfigurator"
+              codesign --verify --deep --verbose=2 retest/MacropadConfigurator.app || true
+              ;;
+            Windows)
+              python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$ARCHIVE" retest
+              exe="retest/MacropadConfigurator-$VERSION-$PLATFORM/MacropadConfigurator/MacropadConfigurator.exe"
+              ;;
+            *)
+              tar -xzf "$ARCHIVE" -C retest
+              exe="retest/macropad-configurator-$VERSION-$PLATFORM/MacropadConfigurator/MacropadConfigurator"
+              ;;
+          esac
+          python packaging/ci_selftest.py "$exe" "out/selftest-$PLATFORM.txt" --expect-version "$VERSION"
+          du -sh "$(dirname "$exe")" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: configurator-${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Assemble + publish
+    needs: [meta, firmware, configurator]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      PUBLISH: ${{ needs.meta.outputs.publish }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macropad-firmware-uf2
+          path: fw
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: configurator-*
+          path: cfg
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+
+      - name: Assemble assets
+        run: |
+          set -euo pipefail
+          mkdir -p assets reports
+          uf2=$(ls fw/macropad_step*.uf2); elf=$(ls fw/macropad_step*.elf)
+          cp "$uf2" "assets/macropad-fw-$VERSION.uf2"
+          cp "$elf" "assets/macropad-fw-$VERSION.elf"
+          (cd assets && sha256sum "macropad-fw-$VERSION.uf2" > "macropad-fw-$VERSION.uf2.sha256")
+          mv cfg/selftest-*.txt reports/ 2>/dev/null || true
+          cp cfg/* assets/
+          python3 packaging/release_tools.py sha256sums assets
+          missing=0
+          for f in "macropad-fw-$VERSION.uf2" \
+                   "MacropadConfigurator-$VERSION-windows-x64.zip" \
+                   "MacropadConfigurator-$VERSION-macos-arm64.zip" \
+                   "macropad-configurator-$VERSION-linux-x86_64.tar.gz"; do
+            [ -f "assets/$f" ] || { echo "::error::missing required asset $f"; missing=1; }
+          done
+          [ -f "assets/MacropadConfigurator-$VERSION-macos-x86_64.zip" ] || \
+            echo "::warning::optional macOS x86_64 build missing (experimental leg failed)"
+          ls -l assets reports
+          {
+            echo "### Assets ($TAG)"; echo; echo '```'; ls -l assets; echo '```'
+            echo; echo "### Self-test reports"; for r in reports/*.txt; do echo; echo "**$(basename "$r")**"; echo '```'; tail -12 "$r"; echo '```'; done
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $missing
+
+      - name: Dry run — upload bundle instead of publishing
+        if: needs.meta.outputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: |
+            assets/*
+            reports/*
+            release-notes.md
+
+      - name: Publish GitHub Release (prerelease)
+        if: needs.meta.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "$VERSION" in 0.*) prerelease="--prerelease" ;; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — uploading/replacing assets"
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" assets/* $prerelease --verify-tag \
+              --title "Macropad $TAG" --notes-file release-notes.md
+          fi
+          gh release view "$TAG"

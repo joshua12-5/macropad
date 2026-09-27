@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .. import version as ver
+from ..paths import resource_root
 from ..protocol import frames as F
 from ..protocol.device import (
     CFG_USAGE_PAGE,
@@ -42,7 +43,7 @@ from ..protocol.profile_blob import (
 )
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
-_REPO = Path(__file__).resolve().parents[3]
+_REPO = resource_root()  # bundled defaults (repo root in a checkout)
 HARDWARE_TEST_DOC = "docs/HARDWARE_TEST.md"
 
 

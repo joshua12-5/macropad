@@ -2,9 +2,11 @@
 
 Requires an optional hidapi binding. Both Python APIs are supported (Step 23):
 
-* ``pip install hid`` (pyhidapi / ctypes): ``hid.Device(path=...)`` — the one
-  pinned in ``requirements.txt``;
-* ``pip install hidapi`` (cython-hidapi): ``hid.device().open_path(...)``.
+* ``pip install hidapi`` (cython-hidapi): ``hid.device().open_path(...)`` —
+  pinned in ``requirements.txt`` since Step 24 (wheels embed native hidapi;
+  on Linux the ``hidraw`` module of the same package is preferred);
+* ``pip install hid`` (pyhidapi / ctypes): ``hid.Device(path=...)`` — needs a
+  system libhidapi.
 
 Without hardware or without the module, callers get a clear DeviceError — GUI
 stays usable. Tests can inject any object exposing ``enumerate`` plus either
@@ -14,6 +16,7 @@ stays usable. Tests can inject any object exposing ``enumerate`` plus either
 from __future__ import annotations
 
 import struct
+import sys
 import time
 from typing import Callable, Iterable, Optional, Tuple
 
@@ -95,17 +98,52 @@ def err_name(code: int) -> str:
 
 
 def _import_hid():
+    """Return the hidapi binding module.
+
+    Step 24: release builds ship cython-hidapi (``pip install hidapi``), whose
+    wheels embed the native hidapi library. On Linux that package provides two
+    modules — ``hid`` (libusb backend, needs /dev/bus/usb access and detaches
+    kernel drivers) and ``hidraw`` (hidraw backend, works with the shipped
+    udev rule and reports usage pages). Prefer ``hidraw`` there; everything
+    else uses ``hid`` (either cython-hidapi or pyhidapi).
+    """
+    if sys.platform.startswith("linux"):
+        try:
+            import hidraw  # type: ignore
+
+            if hasattr(hidraw, "enumerate") and hasattr(hidraw, "device"):
+                return hidraw
+        except ImportError:
+            pass
     try:
         import hid  # type: ignore
     except ImportError as exc:
         detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
         raise DeviceError(
             "Python module 'hid' (hidapi) is not available: "
-            f"{detail}. pip install hid (needs the system hidapi library, "
-            "e.g. apt install libhidapi-hidraw0 / brew install hidapi) "
-            "or pip install hidapi"
+            f"{detail}. pip install hidapi (bundles the native library) "
+            "or pip install hid (needs the system hidapi library, "
+            "e.g. apt install libhidapi-hidraw0 / brew install hidapi)"
         ) from exc
     return hid
+
+
+def hid_binding_info(hid_module=None) -> dict:
+    """Describe the active binding: module name, API flavour, version."""
+    mod = hid_module if hid_module is not None else _import_hid()
+    if hasattr(mod, "device"):
+        api = "cython-hidapi"
+    elif hasattr(mod, "Device"):
+        api = "pyhidapi"
+    else:
+        api = "unknown"
+    version = getattr(mod, "__version__", None) or getattr(mod, "version_str", None)
+    if callable(version):
+        try:
+            version = version()
+        except Exception:
+            version = None
+    return {"module": getattr(mod, "__name__", "?"), "api": api, "version": version}
 
 
 class _HidHandle:

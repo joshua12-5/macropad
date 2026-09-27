@@ -1,0 +1,8 @@
+# Macropad (RP2040-Zero, VID 0x2E8A / PID 0xC001) — vendor config HID access.
+# Lets the logged-in desktop user (systemd-logind "uaccess") open the
+# /dev/hidraw* node used by Macropad Configurator without root.
+#
+# Install:  sudo install -m 0644 70-macropad.rules /etc/udev/rules.d/
+#           sudo udevadm control --reload-rules && sudo udevadm trigger
+# then unplug / replug the macropad.
+KERNEL=="hidraw*", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="c001", MODE="0660", TAG+="uaccess"

@@ -1,12 +1,12 @@
 # Hardware test checklist
 
-Use after flashing `macropad_step23.uf2` (or current step UF2) on a real
+Use after flashing `macropad_step24.uf2` / release `macropad-fw-X.Y.Z.uf2` (or current step UF2) on a real
 RP2040-Zero + matrix + EC11 + SSD1306 build. **Run the automated HIL suite
 first** (section 0), then tick the manual items below — the protocol items it
 covers are marked *(HIL)*.
 
 **Prep:** Pico SDK 2.1.1 build (`PICO_BOARD=waveshare_rp2040_zero`) or CI `macropad-firmware-uf2` artifact → copy UF2 while BOOTSEL held → wait for USB re-enum.
-Configurator: `cd configurator && python -m macropad_config` (optional `hid`).
+Configurator: release bundle (`MacropadConfigurator --hil …` runs the suite below) or `cd configurator && python -m macropad_config` (`hidapi` from requirements.txt).
 
 ## 0. Automated HIL suite (Step 23)
 
@@ -20,9 +20,11 @@ python scripts/hil_test.py --interactive # + guided key / encoder checklist
 python scripts/hil_test.py --mock --allow-flash-write                   # no hardware (CI uses this)
 ```
 
-Host needs the hidapi shared library for `hid` (`apt install libhidapi-hidraw0`,
-`brew install hidapi`, or `hidapi.dll` on Windows). On Linux grant access to the
-config interface, e.g. `/etc/udev/rules.d/70-macropad.rules`:
+Host needs a hidapi binding: `pip install hidapi` (in `requirements.txt`; native library bundled —
+release builds include it too). The older `pip install hid` also works but needs the system
+library (`apt install libhidapi-hidraw0` / `brew install hidapi` / `hidapi.dll`). On Linux grant
+access to the config interface with `packaging/linux/70-macropad.rules` (shipped in the Linux
+tarball) in `/etc/udev/rules.d/`:
 
 ```
 KERNEL=="hidraw*", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="c001", MODE="0660", TAG+="uaccess"

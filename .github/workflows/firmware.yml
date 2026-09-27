@@ -1,5 +1,7 @@
 # Firmware build (Step 22): RP2040-Zero UF2 via Pico SDK + TinyUSB.
 # Pinned SDK tag / board must match firmware/README.md and docs/VERSIONING.md.
+# Step 24: also a reusable workflow (workflow_call) — release.yml calls it and
+# renames the uploaded .uf2/.elf to macropad-fw-<version>.*.
 name: Firmware build
 
 on:
@@ -8,6 +10,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 env:
   PICO_SDK_TAG: "2.1.1"
@@ -69,9 +72,11 @@ jobs:
             echo "::error::firmware image overlaps storage sector"; exit 1
           fi
 
-      - name: Upload UF2 artifact
+      - name: Upload UF2 + ELF artifact
         uses: actions/upload-artifact@v4
         with:
           name: macropad-firmware-uf2
-          path: macropad/firmware/build/macropad_step*.uf2
+          path: |
+            macropad/firmware/build/macropad_step*.uf2
+            macropad/firmware/build/macropad_step*.elf
           if-no-files-found: error

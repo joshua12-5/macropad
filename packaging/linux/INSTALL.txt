@@ -1,0 +1,40 @@
+Macropad Configurator — Linux x86_64 build
+==========================================
+
+Contents
+  MacropadConfigurator/MacropadConfigurator   the application (PyInstaller one-dir bundle)
+  70-macropad.rules                           udev rule for non-root access to the macropad
+  macropad-configurator.desktop               desktop launcher template
+  install.sh                                  optional: installs the udev rule + launcher
+
+Requirements
+  * x86_64, glibc 2.35 or newer (built on Ubuntu 22.04: Ubuntu 22.04+, Debian 12+,
+    Fedora 36+, …).
+  * An X11 or Wayland desktop. Qt 6.5+ needs libxcb-cursor0 on X11:
+      Debian/Ubuntu:  sudo apt install libxcb-cursor0
+      Fedora:         sudo dnf install xcb-util-cursor
+  * Nothing else: Qt, Python and hidapi (hidraw backend) are bundled.
+
+Install
+  1. tar xzf macropad-configurator-<version>-linux-x86_64.tar.gz
+  2. cd macropad-configurator-<version>-linux-x86_64
+  3. ./install.sh          (or copy 70-macropad.rules to /etc/udev/rules.d/ by hand,
+                            then: sudo udevadm control --reload-rules && sudo udevadm trigger)
+  4. Unplug / replug the macropad.
+  5. ./MacropadConfigurator/MacropadConfigurator
+
+Without the udev rule the app still runs, but Device → Connect fails with
+"permission denied" on /dev/hidraw*.
+
+Your data
+  Profiles, the macro library and auto-switch rules are stored in
+  ${XDG_DATA_HOME:-~/.local/share}/macropad-configurator/ (seeded from the
+  bundled defaults on first start; never overwritten by upgrades).
+
+Checks
+  ./MacropadConfigurator/MacropadConfigurator --version
+  ./MacropadConfigurator/MacropadConfigurator --self-test     (headless, exit 0 = OK)
+  ./MacropadConfigurator/MacropadConfigurator --hil --list    (hardware test tool)
+
+Firmware: flash macropad-fw-<version>.uf2 by holding BOOT while plugging in the
+RP2040-Zero and copying the file to the RPI-RP2 drive.

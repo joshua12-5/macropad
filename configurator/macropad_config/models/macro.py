@@ -284,12 +284,13 @@ def validate_library_dict(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def default_macros_path() -> Path:
-    """Resolve library path: MACROPAD_MACROS_PATH or repo macros/library.json."""
+    """Resolve library path: MACROPAD_MACROS_PATH, else paths.data_root()/macros/library.json."""
     env = os.environ.get("MACROPAD_MACROS_PATH")
     if env:
         return Path(env).expanduser().resolve()
-    configurator_dir = Path(__file__).resolve().parents[2]
-    return (configurator_dir.parent / "macros" / "library.json").resolve()
+    from ..paths import data_root
+
+    return (data_root() / "macros" / "library.json").resolve()
 
 
 def load_library(path: Path | str | None = None) -> MacroLibrary:

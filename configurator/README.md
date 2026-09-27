@@ -2,14 +2,14 @@
 
 PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–20: framing, uploads, autoswitch, SAVE_ALL, versioning).
 
-**Steps 10–23** cover the configurator through versioning polish, CI, a verified firmware build (Step 22) and hardware-in-the-loop test tooling (Step 23). **Next: Step 24.**
+**Steps 10–24** cover the configurator through versioning polish, CI, a verified firmware build (Step 22), hardware-in-the-loop test tooling (Step 23) and release packaging (Step 24: prebuilt Windows / macOS / Linux bundles on the [Releases page](https://github.com/joshua12-5/macropad/releases)).
 Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). Versions: [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 
 ## Hardware-in-the-loop tests (Step 23)
 
 ```bash
 cd configurator
-pip install -r requirements.txt          # includes `hid` (needs the system hidapi lib)
+pip install -r requirements.txt          # includes `hidapi` (native lib bundled in the wheel)
 python scripts/hil_test.py --list        # VID 0x2E8A / PID 0xC001 interfaces; CONFIG = usage page 0xFF00
 python scripts/hil_test.py               # flash-free suite (safe to run any time)
 python scripts/hil_test.py --allow-flash-write --json hil-report.json   # + COMMIT round-trips + SAVE_ALL
@@ -80,7 +80,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
 
 Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If `proto_ver` ≠ host `PROTO_VER`, a **warning** dialog appears and upload / autoswitch / SAVE_ALL stay disabled. Firmware too old for a feature disables that action with a tooltip (see `macropad_config/version.py`).
-Help → About lists host **0.23.0**, proto, expected fw, schema versions.
+Help → About lists host **0.24.0**, proto, expected fw, schema versions.
 Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
@@ -126,6 +126,22 @@ Override rules path with `MACROPAD_AUTOSWITCH_PATH`.
 
 `DISABLED`, `KEY`, `SHORTCUT` (mods + key), `MACRO` (library id), `TEXT` / `URL` / `APP` (`text_id` 0–7), `MEDIA` (code / usage), `VOLUME`, `PROFILE` (slot / id).
 
-## Packaging note
+## Command line (Step 24)
 
-Optional: `pip install pyinstaller` then build a one-file binary if desired.
+```bash
+python -m macropad_config --version              # "Macropad Configurator 0.24.0 (source; …)"
+QT_QPA_PLATFORM=offscreen python -m macropad_config --self-test [--report st.txt]   # exit 0/1
+python -m macropad_config --hil --mock           # HIL tool (same as scripts/hil_test.py)
+```
+
+Release bundles accept the same flags (`MacropadConfigurator --self-test`).
+
+## Packaging (Step 24)
+
+Release builds come from `.github/workflows/release.yml` (tag `vX.Y.Z`): PyInstaller **one-dir**
+bundles via [`../packaging/macropad_configurator.spec`](../packaging/macropad_configurator.spec)
+with pinned deps in [`../packaging/requirements-build.txt`](../packaging/requirements-build.txt).
+Frozen builds keep profiles / macros / rules in a per-user data dir
+(`%APPDATA%\MacropadConfigurator`, `~/Library/Application Support/MacropadConfigurator`,
+`~/.local/share/macropad-configurator`; override `MACROPAD_USER_DATA`), seeded from the bundled
+defaults on first start. See [`../docs/RELEASE.md`](../docs/RELEASE.md).

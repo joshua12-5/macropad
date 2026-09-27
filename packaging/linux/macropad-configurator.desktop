@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Macropad Configurator
+Comment=Edit profiles, macros and auto-switch rules for the RP2040 macropad
+Exec=MacropadConfigurator
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;

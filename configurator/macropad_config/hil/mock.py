@@ -29,6 +29,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
+from ..paths import resource_root
 from ..protocol import frames as F
 from ..protocol.device import USB_PID, USB_VID
 from ..protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
@@ -45,7 +46,7 @@ PRODUCT_TAG = b"MACROPAD"
 
 UPLOAD_NONE, UPLOAD_PROFILE, UPLOAD_MACRO = 0, 1, 2
 
-_REPO = Path(__file__).resolve().parents[3]
+_REPO = resource_root()  # bundled defaults (repo root in a checkout)
 _PROFILE_FILES = ("Default", "Gaming", "Coding", "Browser", "Photoshop")
 
 

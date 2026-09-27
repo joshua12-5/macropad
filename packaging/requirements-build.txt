@@ -1,0 +1,10 @@
+# Pinned build environment for release artifacts (Step 24, .github/workflows/release.yml).
+# Runtime deps match configurator/requirements.txt; PySide6-Essentials is the
+# QtCore/QtGui/QtWidgets subset of PySide6 (the app uses nothing else) and
+# keeps bundles ~3x smaller than the full PySide6 meta-package.
+PySide6-Essentials==6.8.3
+# cython-hidapi: wheels embed the native hidapi library (Windows/macOS) or
+# bundle libudev/libusb via auditwheel (Linux) — nothing to install on the
+# user's machine. Provides top-level modules `hid` (+ `hidraw` on Linux).
+hidapi==0.15.0
+pyinstaller==6.22.3

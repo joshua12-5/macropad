@@ -5,7 +5,8 @@ Step 16 — flash-backed profile slots + chunked **profile upload**.
 Step 17 — flash-backed **macro bank** sync + light protocol polish.
 Step 18 — host **auto app-switch** via `SET_ACTIVE`.
 Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
-Step 23 — HIL test tooling + `PROFILE_READ` / `MACRO_READ` readback (`FW_VERSION` 0.23, host 0.23.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
+Step 23 — HIL test tooling + `PROFILE_READ` / `MACRO_READ` readback.
+Step 24 — release packaging only; protocol unchanged (`FW_VERSION` 0.24, host 0.24.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 **Steps 14–20 are complete.**
 
 ## USB topology

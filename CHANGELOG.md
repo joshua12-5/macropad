@@ -10,7 +10,49 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 ### Planned
 
-- Further polish in the Steps 18–24 block (packaging, more hardware coverage).
+- Code signing / notarisation for the Windows and macOS configurator builds.
+- More hardware coverage (HIL runs on real boards per release).
+
+## [0.24.0] — 2026-09-27
+
+### Added
+
+- **Tag-triggered release pipeline** `.github/workflows/release.yml`: pushing `vX.Y.Z` verifies the
+  tag against `version.py`, `macropad_config.__version__`, firmware `FW_VERSION` and a CHANGELOG
+  section, builds the firmware (reusing `firmware.yml` via `workflow_call`) and the configurator on
+  Windows x64, macOS arm64, macOS x86_64 (experimental leg) and Linux x86_64 (Ubuntu 22.04 / glibc
+  2.35), runs a headless `--self-test` on every packaged build (and again after re-extracting the
+  archive), then publishes a GitHub prerelease with the CHANGELOG section as notes, all assets and
+  `SHA256SUMS.txt`. `workflow_dispatch` runs everything as a dry run and uploads the would-be
+  assets as the `release-dry-run` artifact instead of publishing.
+- **Release assets**: `macropad-fw-<ver>.uf2` (+ `.elf`, `.uf2.sha256`),
+  `MacropadConfigurator-<ver>-windows-x64.zip`, `MacropadConfigurator-<ver>-macos-arm64.zip`
+  (ad-hoc signed `.app`), `macropad-configurator-<ver>-linux-x86_64.tar.gz` (app + udev rule
+  `70-macropad.rules`, `INSTALL.txt`, `.desktop` template, `install.sh`), `SHA256SUMS.txt`.
+- **Packaging** `packaging/`: PyInstaller one-dir spec, pinned build requirements
+  (PySide6-Essentials 6.8.3, hidapi 0.15.0, PyInstaller 6.22.3), `release_tools.py`
+  (`check` / `notes` / `sha256sums` / `versions`), `ci_selftest.py`, Linux extras.
+- **Configurator CLI**: `--version`, `--self-test [--report FILE]` (imports every module, frame/CRC
+  roundtrip, bundled profiles/macros/rules load + blob pack, hidapi binding loads + enumerates,
+  HIL suite vs mock device for both hid APIs, MainWindow on Qt `offscreen`; exit 0/1) and
+  `--hil ARGS` (the HIL tool inside the packaged app). Windowed Windows builds attach to the parent
+  console for output.
+- `macropad_config/paths.py`: frozen builds read bundled defaults from the bundle and keep user data
+  in `%APPDATA%\MacropadConfigurator`, `~/Library/Application Support/MacropadConfigurator` or
+  `$XDG_DATA_HOME/macropad-configurator` (seeded on first run, never overwritten).
+  `MACROPAD_USER_DATA` overrides; source checkouts behave as before.
+- `scripts/smoke_packaging.py` (11th host smoke): release_tools checks, CHANGELOG extraction,
+  SHA256SUMS, user-data seeding, `--version`, non-Qt self-test checks.
+
+### Changed
+
+- **hidapi binding**: `requirements.txt` now uses `hidapi` (cython-hidapi, wheels embed the native
+  library — no system libhidapi / `hidapi.dll` needed) instead of `hid` (pyhidapi, still supported).
+  On Linux the package's `hidraw` backend is preferred over its libusb-based `hid` module.
+- Firmware **0.24** / host **0.24.0**, UF2 target `macropad_step24`, `bcdDevice` `0x0118`.
+  No protocol or blob changes (`CFG_PROTO_VERSION` 1, schemas 1).
+- `docs/RELEASE.md` rewritten around the pipeline; README download section.
+- `smokes.yml` also runs the full `--self-test` (incl. Qt offscreen).
 
 ## [0.23.0] — 2026-09-27
 
@@ -159,7 +201,8 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 - On-device profile select UI: long-press encoder → OLED menu; rotate / short-press to confirm.
 
-[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.24.0
 [0.23.0]: https://github.com/joshua12-5/macropad/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/joshua12-5/macropad/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.21.0

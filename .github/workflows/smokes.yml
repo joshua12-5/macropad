@@ -1,6 +1,7 @@
 # Host-only smokes — no Pico SDK / firmware build required.
 # Step 23: run_all_smokes includes smoke_hil_mock.py; the full HIL suite also
 # runs against the mock device and its JSON report is kept as an artifact.
+# Step 24: smoke_packaging.py (11 smokes) + full `--self-test` incl. Qt offscreen.
 name: Host smokes
 
 on:
@@ -24,6 +25,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Qt runtime libraries (offscreen needs libEGL / fontconfig)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
       - name: Install configurator dependencies
         run: pip install -r requirements.txt
 
@@ -31,6 +37,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/run_all_smokes.py
+
+      - name: Self-test (python -m macropad_config --self-test)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m macropad_config --self-test
 
       - name: HIL suite (mock device, flash writes enabled)
         run: python scripts/hil_test.py --mock --allow-flash-write --no-color --json hil-mock-report.json
