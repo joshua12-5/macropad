@@ -25,6 +25,11 @@ datas += [
     (str(REPO / "macros" / "library.json"), "data/macros"),
     (str(REPO / "autoswitch" / "rules.json"), "data/autoswitch"),
 ]
+# UI theme: QSS template + vendored Lucide SVG icons (and their ISC LICENSE),
+# loaded next to macropad_config/ui/theme.py at runtime.
+UI = CONF / "macropad_config" / "ui"
+datas += [(str(UI / "theme.qss"), "macropad_config/ui")]
+datas += [(str(p), "macropad_config/ui/icons") for p in sorted((UI / "icons").iterdir()) if p.is_file()]
 
 # cython-hidapi: `hid` everywhere, `hidraw` (preferred) on Linux. The
 # extension modules embed hidapi (Windows/macOS); the Linux wheel's

@@ -10,10 +10,10 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -28,6 +28,8 @@ from ..autoswitch.rules import (
     save_rules,
     validate_rules,
 )
+from ..ui import theme
+from ..ui.widgets import dialog_margins, divider, icon_button, label, polish_table, style_form
 
 
 class AutoswitchDialog(QDialog):
@@ -50,7 +52,7 @@ class AutoswitchDialog(QDialog):
         ]
         self._rules = clone_rules(rules)
 
-        layout = QVBoxLayout(self)
+        layout = dialog_margins(QVBoxLayout(self))
 
         hint = QLabel(
             "Host watches the foreground app and sends USB SET_ACTIVE "
@@ -83,7 +85,21 @@ class AutoswitchDialog(QDialog):
             if idx >= 0:
                 self._fallback.setCurrentIndex(idx)
         form.addRow("Fallback profile", self._fallback)
+        style_form(form)
         layout.addLayout(form)
+        layout.addSpacing(theme.SPACE["xs"])
+
+        rules_head = QHBoxLayout()
+        rules_head.setSpacing(2)
+        rules_head.addWidget(label("Rules", "sectionTitle"))
+        rules_head.addStretch(1)
+        add_btn = icon_button("plus", "Add a rule", text="Add rule")
+        add_btn.clicked.connect(self._add_row)
+        del_btn = icon_button("minus", "Remove the selected rules", text="Remove selected")
+        del_btn.clicked.connect(self._remove_selected)
+        rules_head.addWidget(add_btn)
+        rules_head.addWidget(del_btn)
+        layout.addLayout(rules_head)
 
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(
@@ -93,17 +109,9 @@ class AutoswitchDialog(QDialog):
         self._table.setColumnWidth(0, 110)
         self._table.setColumnWidth(1, 320)
         self._table.setColumnWidth(2, 140)
-        layout.addWidget(self._table)
-
-        row_btns = QHBoxLayout()
-        add_btn = QPushButton("Add rule")
-        add_btn.clicked.connect(self._add_row)
-        del_btn = QPushButton("Remove selected")
-        del_btn.clicked.connect(self._remove_selected)
-        row_btns.addWidget(add_btn)
-        row_btns.addWidget(del_btn)
-        row_btns.addStretch(1)
-        layout.addLayout(row_btns)
+        polish_table(self._table)
+        self._table.setFrameShape(QFrame.Shape.StyledPanel)
+        layout.addWidget(self._table, 1)
 
         for rule in self._rules.rules:
             self._append_rule(rule)
@@ -113,6 +121,7 @@ class AutoswitchDialog(QDialog):
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
+        layout.addWidget(divider())
         layout.addWidget(buttons)
 
     def _append_rule(self, rule: Rule) -> None:

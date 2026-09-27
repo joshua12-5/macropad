@@ -7,18 +7,26 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPainter
 from PySide6.QtWidgets import (
+    QApplication,
     QFormLayout,
-    QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
+    QStatusBar,
+    QStyle,
+    QStyleOption,
     QTextEdit,
+    QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -36,163 +44,50 @@ from .models.profile import (
     suggest_profile_path,
 )
 from .models.schema import SchemaError
-from .widgets.action_editor import ActionEditor
+from .ui import theme
+from .ui.widgets import StatusPill, divider, label, style_form
+from .widgets.action_editor import INSPECTOR_LABEL_W, ActionEditor
 from .widgets.autoswitch_dialog import AutoswitchDialog
+from .widgets.info_dialogs import AboutDialog, DeviceInfoDialog
 from .widgets.macro_library_dialog import MacroLibraryDialog
-from .widgets.pad_preview import PadPreview
+from .widgets.pad_preview import ENCODER_SLOT_LABELS, PadPreview, action_summary
 from .widgets.profile_dialog import ProfileNameIdDialog
 from .widgets.profile_list import ProfileListWidget
 
-DARK_STYLE = """
-QMainWindow, QWidget {
-    background-color: #1e1f22;
-    color: #e8e8ea;
-    font-family: "Segoe UI", "Ubuntu", "Cantarell", sans-serif;
-    font-size: 13px;
-}
-QMenuBar {
-    background-color: #2b2d31;
-    color: #e8e8ea;
-}
-QMenuBar::item:selected { background-color: #3c3f45; }
-QMenu {
-    background-color: #2b2d31;
-    color: #e8e8ea;
-    border: 1px solid #3c3f45;
-}
-QMenu::item:selected { background-color: #404249; }
-QMenu::item:disabled { color: #6d6f78; }
-QStatusBar {
-    background-color: #2b2d31;
-    color: #b5bac1;
-}
-QLabel#sectionHeading {
-    font-weight: 600;
-    color: #b5bac1;
-    padding: 4px 2px;
-}
-QLabel#oledTitle {
-    background-color: #0a0a0a;
-    color: #9ee493;
-    border: 2px solid #3a3a3a;
-    border-radius: 4px;
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 18px;
-    font-weight: bold;
-    letter-spacing: 2px;
-    padding: 8px;
-}
-QLabel#encoderKnob {
-    background-color: #2b2d31;
-    border: 3px solid #5865f2;
-    border-radius: 36px;
-    font-size: 28px;
-    color: #c9cdfb;
-}
-QLabel#hintLabel {
-    color: #80848e;
-    font-size: 11px;
-}
-QLabel#validationError {
-    color: #f23f43;
-    font-size: 11px;
-    padding: 2px 0;
-}
-QFrame#keyGridFrame {
-    background-color: #2b2d31;
-    border: 1px solid #3c3f45;
-    border-radius: 8px;
-}
-QPushButton#keyButton {
-    background-color: #383a40;
-    color: #e8e8ea;
-    border: 1px solid #4e5058;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 11px;
-}
-QPushButton#keyButton:hover { background-color: #404249; }
-QPushButton#keyButton:checked {
-    background-color: #5865f2;
-    border-color: #7983f5;
-    color: #ffffff;
-}
-QPushButton#encoderButton {
-    background-color: #383a40;
-    color: #e8e8ea;
-    border: 1px solid #4e5058;
-    border-radius: 4px;
-    padding: 6px;
-    font-size: 11px;
-}
-QPushButton#encoderButton:hover { background-color: #404249; }
-QPushButton#encoderButton:checked {
-    background-color: #5865f2;
-    border-color: #7983f5;
-}
-QPushButton#profileToolButton {
-    background-color: #383a40;
-    color: #e8e8ea;
-    border: 1px solid #4e5058;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-}
-QPushButton#profileToolButton:hover { background-color: #404249; }
-QPushButton#profileToolButton:disabled {
-    color: #6d6f78;
-    background-color: #2b2d31;
-}
-QListWidget#profileList {
-    background-color: #2b2d31;
-    border: 1px solid #3c3f45;
-    border-radius: 6px;
-    padding: 4px;
-    outline: none;
-}
-QListWidget#profileList::item {
-    padding: 8px 10px;
-    border-radius: 4px;
-}
-QListWidget#profileList::item:selected {
-    background-color: #5865f2;
-    color: #ffffff;
-}
-QListWidget#profileList::item:hover:!selected {
-    background-color: #35373c;
-}
-QTextEdit#detailsPanel {
-    background-color: #2b2d31;
-    border: 1px solid #3c3f45;
-    border-radius: 6px;
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 12px;
-    color: #dce0e6;
-    padding: 6px;
-}
-QLineEdit, QComboBox, QSpinBox {
-    background-color: #383a40;
-    color: #e8e8ea;
-    border: 1px solid #4e5058;
-    border-radius: 4px;
-    padding: 4px 6px;
-    selection-background-color: #5865f2;
-}
-QComboBox::drop-down { border: none; }
-QCheckBox { spacing: 6px; }
-QSplitter::handle {
-    background-color: #3c3f45;
-    width: 2px;
-}
-"""
+
+class _StatusBar(QStatusBar):
+    """Status bar whose transient message sits on the 16 px content margin."""
+
+    def paintEvent(self, ev) -> None:
+        msg = self.currentMessage()
+        if not msg:
+            super().paintEvent(ev)
+            return
+        p = QPainter(self)
+        opt = QStyleOption()
+        opt.initFrom(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_PanelStatusBar, opt, p, self)
+        right = self.width() - theme.SPACE["lg"]
+        for w in self.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
+            if w.isVisible() and w.x() > self.width() // 3:
+                right = min(right, w.x() - theme.SPACE["sm"])
+        rect = QRect(theme.SPACE["lg"], 0, max(0, right - theme.SPACE["lg"]), self.height())
+        p.setPen(theme.color("text_muted"))
+        text = self.fontMetrics().elidedText(msg, Qt.TextElideMode.ElideRight, rect.width())
+        p.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), text)
+        p.end()
+
+
+# Stock firmware slot layout (the upload dialog's default slot; sidebar badges).
+BUILTIN_SLOTS = {"default": 0, "gaming": 1, "coding": 2, "browser": 3, "photoshop": 4}
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Macropad Configurator")
-        self.resize(1100, 700)
-        self.setStyleSheet(DARK_STYLE)
+        self.resize(1200, 760)
+        theme.ensure_theme(QApplication.instance())
 
         self._profiles_dir = default_profiles_dir()
         self._current: Profile | None = None
@@ -204,9 +99,12 @@ class MainWindow(QMainWindow):
         self._anim_dialog = None
         self._autoswitch = None
         self._autoswitch_connected = False
+        self._slot_by_id: dict[str, int] = dict(BUILTIN_SLOTS)
 
         self._build_menus()
+        self._build_toolbar()
         self._build_ui()
+        self._build_status_bar()
         self.reload_profiles()
 
     def _build_menus(self) -> None:
@@ -261,17 +159,19 @@ class MainWindow(QMainWindow):
 
         profile_menu.addSeparator()
 
-        macro_lib_act = QAction("Macro &library…", self)
-        macro_lib_act.triggered.connect(self._open_macro_library)
-        profile_menu.addAction(macro_lib_act)
+        self._macro_lib_act = QAction("Macro &library…", self)
+        self._macro_lib_act.triggered.connect(self._open_macro_library)
+        profile_menu.addAction(self._macro_lib_act)
+
+        self._build_view_menu()
 
         device_menu = self.menuBar().addMenu("&Device")
 
-        connect_act = QAction("&Connect / Get device info", self)
-        connect_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
-        connect_act.setStatusTip("PING + GET_INFO over vendor HID")
-        connect_act.triggered.connect(self._device_connect_info)
-        device_menu.addAction(connect_act)
+        self._connect_act = QAction("&Connect / Get device info", self)
+        self._connect_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
+        self._connect_act.setStatusTip("PING + GET_INFO over vendor HID")
+        self._connect_act.triggered.connect(self._device_connect_info)
+        device_menu.addAction(self._connect_act)
 
         self._upload_act = QAction("&Upload profile to device…", self)
         self._upload_act.setShortcut(QKeySequence("Ctrl+Shift+U"))
@@ -306,10 +206,10 @@ class MainWindow(QMainWindow):
         device_menu.addAction(self._autoswitch_act)
 
         tools_menu = self.menuBar().addMenu("&Tools")
-        autoswitch_dlg_act = QAction("&Auto-switch…", self)
-        autoswitch_dlg_act.setStatusTip("Edit auto-switch rules (host → device)")
-        autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
-        tools_menu.addAction(autoswitch_dlg_act)
+        self._autoswitch_dlg_act = QAction("&Auto-switch…", self)
+        self._autoswitch_dlg_act.setStatusTip("Edit auto-switch rules (host → device)")
+        self._autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
+        tools_menu.addAction(self._autoswitch_dlg_act)
 
         # OLED idle animation editor (authoring works offline; device
         # actions inside are gated on GET_INFO flag bit3 / fw 0.25+).
@@ -334,76 +234,295 @@ class MainWindow(QMainWindow):
         arch_help.triggered.connect(self._show_architecture_tip)
         help_menu.addAction(arch_help)
 
+    def _build_view_menu(self) -> None:
+        view_menu = self.menuBar().addMenu("&View")
+        theme_menu = QMenu("&Theme", self)
+        view_menu.addMenu(theme_menu)
+        self._theme_menu = theme_menu
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self._theme_acts: dict[str, QAction] = {}
+        for mode, text in (("system", "Match &system"), ("dark", "&Dark"), ("light", "&Light")):
+            act = QAction(text, self)
+            act.setCheckable(True)
+            act.setData(mode)
+            act.triggered.connect(lambda _checked=False, m=mode: self._set_theme_mode(m))
+            group.addAction(act)
+            theme_menu.addAction(act)
+            self._theme_acts[mode] = act
+        view_menu.addSeparator()
+        self._toggle_theme_act = QAction("Toggle &dark / light", self)
+        self._toggle_theme_act.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self._toggle_theme_act.triggered.connect(self._toggle_theme)
+        view_menu.addAction(self._toggle_theme_act)
+        theme.manager().changed.connect(self._on_theme_changed)
+        self._sync_theme_actions()
+
+    def _set_theme_mode(self, mode: str) -> None:
+        theme.apply_theme(QApplication.instance(), mode, persist=True)
+        self._sync_theme_actions()
+
+    def _toggle_theme(self) -> None:
+        self._set_theme_mode("light" if theme.manager().scheme == "dark" else "dark")
+
+    def _sync_theme_actions(self) -> None:
+        mode = theme.manager().mode
+        for m, act in getattr(self, "_theme_acts", {}).items():
+            act.setChecked(m == mode)
+
+    def _on_theme_changed(self, scheme: str) -> None:
+        btn = getattr(self, "_theme_btn", None)
+        if btn is not None:
+            btn.setIcon(theme.icon("sun" if scheme == "dark" else "moon", "text_muted", mode=scheme))
+            btn.setToolTip("Switch to light theme" if scheme == "dark" else "Switch to dark theme")
+        self._sync_theme_actions()
+
+    def _build_toolbar(self) -> None:
+        tb = QToolBar("Main toolbar", self)
+        tb.setObjectName("mainToolbar")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.setIconSize(QSize(18, 18))
+        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        tb.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
+        self._toolbar = tb
+
+        theme.bind_icon(self._save_act, "save")
+        self._save_act.setIconText("Save")
+        theme.bind_icon(self._macro_lib_act, "list-ordered")
+        self._macro_lib_act.setIconText("Macros")
+        theme.bind_icon(self._anim_act, "film")
+        self._anim_act.setIconText("Idle animation")
+        theme.bind_icon(self._autoswitch_dlg_act, "repeat")
+        self._autoswitch_dlg_act.setIconText("Auto-switch rules")
+        theme.bind_icon(self._connect_act, "plug")
+        self._connect_act.setIconText("Connect")
+        theme.bind_icon(self._upload_act, "upload", "accent_text")
+        self._upload_act.setIconText("Upload")
+
+        tb.addAction(self._save_act)
+        tb.addSeparator()
+        tb.addAction(self._macro_lib_act)
+        tb.addAction(self._anim_act)
+        tb.addAction(self._autoswitch_dlg_act)
+        for act in (self._save_act, self._macro_lib_act, self._anim_act, self._autoswitch_dlg_act):
+            w = tb.widgetForAction(act)
+            if w is not None:
+                w.setToolTip(
+                    act.text().replace("&", "").rstrip("…")
+                    + (f"  ({act.shortcut().toString()})" if not act.shortcut().isEmpty() else "")
+                )
+                w.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        spacer.setStyleSheet("background: transparent;")
+        tb.addWidget(spacer)
+
+        self._theme_btn = QToolButton()
+        self._theme_btn.setObjectName("themeToggle")
+        self._theme_btn.setAutoRaise(True)
+        self._theme_btn.setIconSize(QSize(18, 18))
+        self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._theme_btn.clicked.connect(self._toggle_theme)
+        tb.addWidget(self._theme_btn)
+        self._on_theme_changed(theme.manager().scheme)
+        tb.addSeparator()
+
+        connect_btn = QToolButton()
+        connect_btn.setDefaultAction(self._connect_act)
+        connect_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        connect_btn.setProperty("textBeside", True)
+        connect_btn.setIconSize(QSize(16, 16))
+        connect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        connect_btn.setToolTip("Connect and read device info (Ctrl+Shift+I)")
+        tb.addWidget(connect_btn)
+        self._connect_btn = connect_btn
+
+        upload_btn = QToolButton()
+        upload_btn.setObjectName("primaryAction")
+        upload_btn.setDefaultAction(self._upload_act)
+        upload_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        upload_btn.setIconSize(QSize(16, 16))
+        upload_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        tb.addWidget(upload_btn)
+        self._upload_btn = upload_btn
+
     def _build_ui(self) -> None:
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(10, 10, 10, 10)
-
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("mainSplitter")
+        splitter.setHandleWidth(1)
+        splitter.setChildrenCollapsible(False)
+        self.setCentralWidget(splitter)
 
+        # Left: profiles
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(0, 0, 0, 0)
         self._profile_list = ProfileListWidget()
         self._profile_list.profile_selected.connect(self._on_profile_selected)
         self._profile_list.new_requested.connect(self._new_profile)
         self._profile_list.duplicate_requested.connect(self._duplicate_profile)
         self._profile_list.delete_requested.connect(self._delete_profile)
-        splitter.addWidget(self._profile_list)
+        self._profile_list.set_slot_map(self._slot_by_id)
+        side_layout.addWidget(self._profile_list)
+        sidebar.setMinimumWidth(200)
+        splitter.addWidget(sidebar)
 
+        # Center: the device
+        canvas = QWidget()
+        canvas.setObjectName("canvasArea")
+        canvas.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        canvas_layout = QVBoxLayout(canvas)
+        canvas_layout.setContentsMargins(
+            theme.SPACE["lg"], theme.SPACE["lg"], theme.SPACE["lg"], theme.SPACE["lg"]
+        )
         self._pad = PadPreview()
         self._pad.selection_changed.connect(self._on_selection_changed)
-        splitter.addWidget(self._pad)
+        canvas_layout.addWidget(self._pad, 1)
+        splitter.addWidget(canvas)
 
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(6)
+        # Right: inspector
+        inspector = QWidget()
+        inspector.setObjectName("inspector")
+        inspector.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        right_layout = QVBoxLayout(inspector)
+        pad = theme.SPACE["lg"]
+        right_layout.setContentsMargins(pad, theme.SPACE["md"], pad, pad)
+        right_layout.setSpacing(theme.SPACE["md"])
 
-        meta_heading = QLabel("Profile")
-        meta_heading.setObjectName("sectionHeading")
+        meta_heading = label("Profile", "sectionTitle")
+        meta_heading.setFixedHeight(28)  # same header height as the sidebar (icon buttons)
         right_layout.addWidget(meta_heading)
-
         meta_form = QFormLayout()
         meta_form.setContentsMargins(0, 0, 0, 0)
-        meta_form.setSpacing(4)
         self._name_edit = QLineEdit()
         self._name_edit.setPlaceholderText("Profile name")
         self._name_edit.textChanged.connect(self._on_meta_changed)
         self._oled_edit = QLineEdit()
-        self._oled_edit.setPlaceholderText("OLED title")
+        self._oled_edit.setPlaceholderText("Shown on the device display")
         self._oled_edit.textChanged.connect(self._on_meta_changed)
         meta_form.addRow("Name", self._name_edit)
-        meta_form.addRow("OLED", self._oled_edit)
+        meta_form.addRow("OLED title", self._oled_edit)
+        style_form(meta_form, label_width=INSPECTOR_LABEL_W)
         right_layout.addLayout(meta_form)
 
-        action_heading = QLabel("Selected action")
-        action_heading.setObjectName("sectionHeading")
-        right_layout.addWidget(action_heading)
+        right_layout.addSpacing(theme.SPACE["xs"])
+        right_layout.addWidget(divider())
+        right_layout.addSpacing(theme.SPACE["xs"])
+
+        sel_head = QVBoxLayout()
+        sel_head.setSpacing(2)
+        self._selection_title = label("No selection", "panelTitle")
+        self._selection_hint = label(
+            "Select a key or the encoder to edit its action.", "hintLabel", wrap=True
+        )
+        sel_head.addWidget(self._selection_title)
+        sel_head.addWidget(self._selection_hint)
+        right_layout.addLayout(sel_head)
 
         self._action_editor = ActionEditor()
         self._action_editor.actionChanged.connect(self._on_action_changed)
         right_layout.addWidget(self._action_editor)
 
-        json_heading = QLabel("Action JSON")
-        json_heading.setObjectName("sectionHeading")
-        right_layout.addWidget(json_heading)
-
+        right_layout.addSpacing(theme.SPACE["xs"])
+        right_layout.addWidget(divider())
+        right_layout.addSpacing(theme.SPACE["xs"])
+        right_layout.addWidget(label("Action JSON", "sectionTitle"))
         self._action_view = QTextEdit()
         self._action_view.setObjectName("detailsPanel")
         self._action_view.setReadOnly(True)
-        self._action_view.setMaximumHeight(160)
-        self._action_view.setPlaceholderText("Click a key or encoder slot…")
+        self._action_view.setMinimumHeight(96)
+        self._action_view.setMaximumHeight(280)
+        self._action_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._action_view.document().contentsChanged.connect(self._fit_json_height)
+        self._action_view.setPlaceholderText("Select a key or encoder slot")
+        self._action_view.setFont(theme.mono_font())
         right_layout.addWidget(self._action_view)
-
         right_layout.addStretch(1)
 
-        splitter.addWidget(right)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
-        splitter.setStretchFactor(2, 2)
-        splitter.setSizes([200, 520, 340])
+        scroll = QScrollArea()
+        scroll.setObjectName("inspectorScroll")
+        scroll.setWidget(inspector)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setMinimumWidth(320)
+        splitter.addWidget(scroll)
 
-        layout.addWidget(splitter)
-        self.statusBar().showMessage("Ready")
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+        splitter.setSizes([240, 600, 360])
+
+    def _fit_json_height(self) -> None:
+        """Size the JSON panel to its content (96–280 px) instead of a fixed box."""
+        view = self._action_view
+        doc = view.document()
+        doc.setTextWidth(max(50, view.viewport().width()))
+        # document height (incl. its 4 px margin) + 8 px QSS padding and 1 px border per side
+        h = int(doc.size().height()) + 2 * (8 + 1) + 4
+        view.setFixedHeight(max(96, min(280, h)))
+
+    def _build_status_bar(self) -> None:
+        sb = _StatusBar(self)
+        self.setStatusBar(sb)
+        sb.setSizeGripEnabled(False)
+        self._conn_pill = StatusPill("Not connected", "neutral")
+        self._conn_pill.setToolTip("Device → Connect / Get device info (Ctrl+Shift+I)")
+        self._fw_label = QLabel("Firmware —")
+        self._fw_label.setObjectName("statusMeta")
+        self._proto_label = QLabel(f"Protocol v{app_version.PROTO_VER} (host)")
+        self._proto_label.setObjectName("statusMeta")
+        self._proto_label.setToolTip(
+            f"Host protocol v{app_version.PROTO_VER}; host app {app_version.HOST_APP_VERSION}"
+        )
+        sb.addPermanentWidget(self._fw_label)
+        sb.addPermanentWidget(self._proto_label)
+        sb.addPermanentWidget(self._conn_pill)
+        spacer = QWidget()
+        spacer.setFixedWidth(theme.SPACE["sm"])
+        sb.addPermanentWidget(spacer)
+        sb.showMessage("Ready")
+
+    def _set_device_status(self, info: dict | None, *, failed: bool = False) -> None:
+        """Status-bar pill + firmware/protocol text (display only)."""
+        if info is None:
+            self._conn_pill.set_state(
+                "No device" if failed else "Not connected", "danger" if failed else "neutral"
+            )
+            return
+        fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
+        proto = info.get("proto_ver", "?")
+        ok, _ = app_version.check_proto_ver(info.get("proto_ver", -1))
+        self._conn_pill.set_state("Connected" if ok else "Protocol mismatch", "success" if ok else "warning")
+        self._fw_label.setText(f"Firmware {fw}")
+        self._proto_label.setText(f"Protocol v{proto}")
+        self._proto_label.setToolTip(f"Device protocol v{proto}; host expects v{app_version.PROTO_VER}")
+        try:
+            active = int(info.get("active_slot"))
+        except (TypeError, ValueError):
+            active = None
+        self._profile_list.set_active_slot(active)
+
+    def _update_selection_header(self) -> None:
+        sel = self._selection
+        if sel is None or self._current is None:
+            self._selection_title.setText("No selection")
+            self._selection_hint.setText(
+                "Select a key or the encoder to edit its action." if self._current else "No profile selected."
+            )
+            return
+        kind, sid = sel
+        if kind == "key":
+            self._selection_title.setText(f"Key {sid}")
+            action = self._current.action_for_key(int(sid))
+        else:
+            self._selection_title.setText(f"Encoder · {ENCODER_SLOT_LABELS.get(str(sid), str(sid))}")
+            action = self._current.action_for_encoder(str(sid))
+        self._selection_hint.setText(action_summary(action, self._pad._macros))
 
     # --- dirty tracking -------------------------------------------------
 
@@ -536,6 +655,7 @@ class MainWindow(QMainWindow):
         has = profile is not None
         self._dup_profile_act.setEnabled(has)
         self._del_profile_act.setEnabled(has)
+        self._update_selection_header()
 
     def _on_selection_changed(self, kind: str, selection_id: object) -> None:
         if not kind or self._current is None:
@@ -543,6 +663,7 @@ class MainWindow(QMainWindow):
             self._action_editor.set_enabled(False)
             self._action_editor.set_action(None)
             self._action_view.clear()
+            self._update_selection_header()
             return
 
         self._selection = (kind, selection_id)
@@ -556,6 +677,7 @@ class MainWindow(QMainWindow):
         self._action_editor.set_enabled(True)
         self._action_editor.set_action(dict(action) if action else {"type": "DISABLED"})
         self._refresh_action_json(label)
+        self._update_selection_header()
         if action:
             self.statusBar().showMessage(f"{label}: {action.get('type', '?')}")
 
@@ -597,6 +719,7 @@ class MainWindow(QMainWindow):
             self._pad.refresh_captions()
             self._mark_dirty()
             self._refresh_action_json(label)
+            self._update_selection_header()
         finally:
             self._applying = False
 
@@ -736,6 +859,8 @@ class MainWindow(QMainWindow):
     def _open_macro_library(self) -> None:
         dlg = MacroLibraryDialog(parent=self)
         dlg.exec()
+        self._pad.reload_macro_names()
+        self._update_selection_header()
 
     def _open_anim_editor(self) -> None:
         from .widgets.anim_editor import AnimationEditorDialog
@@ -876,6 +1001,7 @@ class MainWindow(QMainWindow):
             info = connect_and_info()
         except DeviceError as exc:
             self.statusBar().showMessage("No device / connect failed", 8000)
+            self._set_device_status(None, failed=True)
             QMessageBox.information(
                 self,
                 "Device",
@@ -889,27 +1015,12 @@ class MainWindow(QMainWindow):
 
         self._last_device_info = info
         self._autoswitch_connected = True
+        self._set_device_status(info)
         proto_ok = self._warn_proto_if_needed(info)
         self._apply_device_feature_gates(info)
 
         fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
         proto = info.get("proto_ver", "?")
-        lines = [
-            f"Host app: {app_version.HOST_APP_VERSION}",
-            f"Firmware: {fw}   (major.minor)",
-            f"Protocol: v{proto}  (host expects {app_version.PROTO_VER})",
-            "",
-            f"Product: {info.get('product_tag', '?')}",
-            f"Active slot: {info.get('active_slot', '?')}",
-            f"Slot count: {info.get('slot_count', '?')}",
-            f"Flags: {info.get('flags', 0)}",
-            f"PING: {info.get('ping_payload', '')!r}",
-            "",
-            app_version.compat_summary(info),
-        ]
-        if not proto_ok:
-            lines.insert(3, "*** PROTOCOL MISMATCH — see warning ***")
-        msg = "\n".join(lines)
         status = (
             f"Device {'WARN' if not proto_ok else 'OK'} — fw {fw}  "
             f"proto v{proto}  "
@@ -917,7 +1028,7 @@ class MainWindow(QMainWindow):
             f"host {app_version.HOST_APP_VERSION}"
         )
         self.statusBar().showMessage(status, 15000)
-        QMessageBox.information(self, "Device info", msg)
+        DeviceInfoDialog(info, proto_ok, self).exec()
 
     def _device_upload_profile(self) -> None:
         """Pack the selected profile and upload into a chosen device slot."""
@@ -941,15 +1052,8 @@ class MainWindow(QMainWindow):
                 default_slot = int(self._last_device_info.get("active_slot", 0))
             except (TypeError, ValueError):
                 default_slot = 0
-        builtin = {
-            "default": 0,
-            "gaming": 1,
-            "coding": 2,
-            "browser": 3,
-            "photoshop": 4,
-        }
-        if self._current.id in builtin:
-            default_slot = builtin[self._current.id]
+        if self._current.id in BUILTIN_SLOTS:
+            default_slot = BUILTIN_SLOTS[self._current.id]
 
         slot, ok = QInputDialog.getInt(
             self,
@@ -995,30 +1099,16 @@ class MainWindow(QMainWindow):
 
         msg = f"Uploaded {self._current.name} ({self._current.id}) into device slot {slot}."
         self.statusBar().showMessage(msg, 15000)
+        # Sidebar badge: this profile now lives in `slot` (display only).
+        self._slot_by_id = {k: v for k, v in self._slot_by_id.items() if v != slot}
+        self._slot_by_id[self._current.id] = slot
+        self._profile_list.set_slot_map(self._slot_by_id)
+        if self._last_device_info is not None:
+            self._set_device_status(self._last_device_info)
         QMessageBox.information(self, "Upload", msg)
 
     def _show_about(self) -> None:
-        QMessageBox.about(
-            self,
-            "About Macropad Configurator",
-            (
-                "<b>Macropad Configurator</b><br>"
-                f"Version <b>{app_version.HOST_APP_VERSION}</b><br>"
-                "Desktop configurator for the RP2040 macropad.<br><br>"
-                f"Protocol (host): <b>{app_version.PROTO_VER}</b><br>"
-                f"Expected firmware: <b>{app_version.FW_VERSION_MAJOR_EXPECTED}."
-                f"{app_version.FW_VERSION_MINOR_CURRENT}</b><br>"
-                f"Profile / macro / autoswitch schemas: <b>"
-                f"{app_version.PROFILE_SCHEMA_VERSION}/"
-                f"{app_version.MACRO_SCHEMA_VERSION}/"
-                f"{app_version.AUTOSWITCH_SCHEMA_VERSION}</b><br><br>"
-                "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br>"
-                "Compatibility: <code>docs/VERSIONING.md</code><br>"
-                "Architecture: <code>docs/ARCHITECTURE.md</code><br>"
-                "Device → Connect shows fw / proto; mismatches warn and gate features.<br><br>"
-                f"{app_version.COPYRIGHT} — MIT License"
-            ),
-        )
+        AboutDialog(self).exec()
 
     def _show_architecture_tip(self) -> None:
         self.statusBar().showMessage(
@@ -1067,6 +1157,8 @@ class MainWindow(QMainWindow):
         else:
             self._autoswitch_act.setEnabled(True)
             self._save_device_act.setEnabled(True)
+        if self._last_device_info is not None:
+            self._set_device_status(self._last_device_info)
         msg = "Device state saved (profiles + macros + active_slot)."
         self.statusBar().showMessage(msg, 10000)
         QMessageBox.information(self, "Save device state", msg)
@@ -1209,6 +1301,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Upload macros failed", str(exc))
             return
 
+        if self._last_device_info is not None:
+            self._set_device_status(self._last_device_info)
         msg = f"Uploaded {uploaded} macro(s) to device."
         self.statusBar().showMessage(msg, 15000)
         QMessageBox.information(self, "Upload macros", msg)

@@ -20,8 +20,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
+from PySide6.QtCore import QModelIndex, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -45,7 +44,9 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QSlider,
     QSpinBox,
-    QToolButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -55,12 +56,15 @@ from ..animation import codec as A
 from ..animation import presets as P
 from ..animation.gifwriter import write_oled_gif
 from ..animation.project import SUFFIX, AnimationProject, ProjectError, animations_dir, blob_name
+from ..ui import theme
+from ..ui.theme import set_primary
+from ..ui.widgets import dialog_margins, divider, icon_button, label, style_form
 
 OLED_ON = QColor(0xE6, 0xF3, 0xFF)
 OLED_OFF = QColor(0x06, 0x08, 0x0E)
-ONION = QColor(0x2E, 0x55, 0x80)
-GRID = QColor(0x1C, 0x22, 0x2E)
-PAGE_LINE = QColor(0x30, 0x3A, 0x4C)
+ONION = QColor(0x6A, 0x43, 0x1E)  # dimmed accent: previous frame
+GRID = QColor(0x1A, 0x1B, 0x1E)
+PAGE_LINE = QColor(0x33, 0x34, 0x39)
 W, H = A.WIDTH, A.HEIGHT
 UNDO_LIMIT = 60
 
@@ -104,14 +108,54 @@ class OledView(QWidget):
 
     def paintEvent(self, _ev) -> None:
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(0x15, 0x17, 0x1C))
-        p.setPen(QPen(QColor(0x3A, 0x3F, 0x4A), 2))
-        p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 6, 6)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(theme.color("device_edge"), 1))
+        p.setBrush(theme.color("device_body"))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+        p.setRenderHint(QPainter.Antialiasing, False)
         target = self.rect().adjusted(8, 8, -8, -8)
         p.fillRect(target, OLED_OFF)
         if self._img is not None:
             p.drawImage(target, self._img)
         p.end()
+
+
+class _FrameDelegate(QStyledItemDelegate):
+    """Frame strip row: number gutter + framed 128×64 thumbnail."""
+
+    GUTTER = 28
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        return QSize(self.GUTTER + W + 16, H + 12)
+
+    def paint(self, p: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        pal = theme.palette()
+        c = {k: theme.qcolor(v) for k, v in pal.items()}
+        r = QRectF(option.rect).adjusted(4, 2, -4, -2)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing)
+        if selected or hover:
+            p.setPen(Qt.NoPen)
+            p.setBrush(c["selected"] if selected else c["hover"])
+            p.drawRoundedRect(r, 6, 6)
+        num = QRectF(r.left(), r.top(), self.GUTTER - 6, r.height())
+        f = QFont(option.font)
+        f.setPixelSize(theme.FONT_PX["caption"])
+        f.setWeight(QFont.Weight.DemiBold if selected else QFont.Weight.Normal)
+        p.setFont(f)
+        p.setPen(c["text"] if selected else c["text_faint"])
+        p.drawText(num, Qt.AlignRight | Qt.AlignVCenter, str(index.row() + 1))
+        thumb = QRectF(r.left() + self.GUTTER, r.center().y() - H / 2, W, H)
+        icon = index.data(Qt.DecorationRole)
+        if isinstance(icon, QIcon):
+            p.setRenderHint(QPainter.SmoothPixmapTransform, False)
+            p.drawPixmap(thumb.toRect(), icon.pixmap(QSize(W, H)))
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(c["accent"] if selected else c["border_strong"], 1.5 if selected else 1))
+        p.drawRoundedRect(thumb.adjusted(-1.5, -1.5, 1.5, 1.5), 3, 3)
+        p.restore()
 
 
 class PixelCanvas(QWidget):
@@ -271,7 +315,7 @@ class ImportDialog(QDialog):
                 self._images.append(IM.read_image_frames(pth)[0][0])
         self._gray_cache: dict = {}
 
-        lay = QVBoxLayout(self)
+        lay = dialog_margins(QVBoxLayout(self))
         src = Path(paths[0]).name + (f" (+{len(paths) - 1} more)" if len(paths) > 1 else "")
         size = self._images[0].size()
         info = QLabel(
@@ -284,7 +328,7 @@ class ImportDialog(QDialog):
         self._src_view = QLabel()
         self._src_view.setFixedSize(W * 2 + 16, H * 2 + 16)
         self._src_view.setAlignment(Qt.AlignCenter)
-        self._src_view.setStyleSheet("background:#222; border:1px solid #444;")
+        self._src_view.setObjectName("imagePreview")
         self._view = OledView(2)
         row.addWidget(self._labeled("Source", self._src_view))
         row.addWidget(self._labeled("OLED result", self._view))
@@ -338,6 +382,7 @@ class ImportDialog(QDialog):
         self._use_fps.setChecked(bool(self.fps_guess))
         self._use_fps.setEnabled(bool(self.fps_guess))
         form.addRow("", self._use_fps)
+        style_form(form)
         lay.addLayout(form)
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -352,7 +397,8 @@ class ImportDialog(QDialog):
         box = QWidget()
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 0)
-        v.addWidget(QLabel(title))
+        v.setSpacing(theme.SPACE["xs"])
+        v.addWidget(label(title, "formLabel"))
         v.addWidget(w)
         return box
 
@@ -448,93 +494,110 @@ class AnimationEditorDialog(QDialog):
     # UI
     # ======================================================================
     def _build(self) -> None:
+        S = theme.SPACE
         root = QVBoxLayout(self)
+        root.setContentsMargins(S["lg"], S["lg"], S["lg"], S["md"])
+        root.setSpacing(S["md"])
         body = QHBoxLayout()
+        body.setSpacing(S["lg"])
         root.addLayout(body, 1)
 
         # ---- frame strip ----------------------------------------------------
         left = QVBoxLayout()
-        left.addWidget(QLabel("<b>Frames</b>"))
+        left.setSpacing(S["sm"])
+        left.addWidget(label("Frames", "sectionTitle"))
         self.frame_list = QListWidget()
+        self.frame_list.setObjectName("frameStrip")
         self.frame_list.setIconSize(QSize(W, H))
         self.frame_list.setViewMode(QListWidget.ListMode)
-        self.frame_list.setSpacing(2)
-        self.frame_list.setFixedWidth(W + 90)
+        self.frame_list.setItemDelegate(_FrameDelegate(self.frame_list))
+        self.frame_list.setUniformItemSizes(True)
+        self.frame_list.setFixedWidth(W + 72)
+        self.frame_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.frame_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.frame_list.setDefaultDropAction(Qt.MoveAction)
         self.frame_list.currentRowChanged.connect(self._on_row_changed)
         self.frame_list.model().rowsMoved.connect(self._on_rows_moved)
         left.addWidget(self.frame_list, 1)
-        grid = QGridLayout()
-        self.btn_add = QPushButton("Add")
-        self.btn_dup = QPushButton("Duplicate")
-        self.btn_del = QPushButton("Delete")
-        self.btn_up = QPushButton("▲ Earlier")
-        self.btn_down = QPushButton("▼ Later")
-        self.btn_add.setToolTip("Insert a blank frame after the current one")
-        self.btn_dup.setToolTip("Duplicate the current frame (Ctrl+D)")
+        frame_btns = QHBoxLayout()
+        frame_btns.setSpacing(2)
+        self.btn_add = icon_button("plus", "Insert a blank frame after the current one")
+        self.btn_dup = icon_button("copy", "Duplicate the current frame (Ctrl+D)")
+        self.btn_del = icon_button("trash", "Delete the current frame")
+        self.btn_up = icon_button("arrow-up", "Move the frame earlier")
+        self.btn_down = icon_button("arrow-down", "Move the frame later")
         self.btn_add.clicked.connect(self.add_frame)
         self.btn_dup.clicked.connect(self.duplicate_frame)
         self.btn_del.clicked.connect(self.delete_frame)
         self.btn_up.clicked.connect(lambda: self.move_frame(-1))
         self.btn_down.clicked.connect(lambda: self.move_frame(1))
-        grid.addWidget(self.btn_add, 0, 0)
-        grid.addWidget(self.btn_dup, 0, 1)
-        grid.addWidget(self.btn_del, 1, 0, 1, 2)
-        grid.addWidget(self.btn_up, 2, 0)
-        grid.addWidget(self.btn_down, 2, 1)
-        left.addLayout(grid)
+        for b in (self.btn_add, self.btn_dup, self.btn_del):
+            frame_btns.addWidget(b)
+        frame_btns.addStretch(1)
+        frame_btns.addWidget(self.btn_up)
+        frame_btns.addWidget(self.btn_down)
+        left.addLayout(frame_btns)
         body.addLayout(left)
+        body.addWidget(divider(vertical=True))
 
         # ---- canvas + tools --------------------------------------------------
         center = QVBoxLayout()
+        center.setSpacing(S["sm"])
         tools = QHBoxLayout()
-        self.tool_pen = QToolButton()
-        self.tool_pen.setText("✏ Pen")
-        self.tool_erase = QToolButton()
-        self.tool_erase.setText("⌫ Eraser")
-        for b in (self.tool_pen, self.tool_erase):
-            b.setCheckable(True)
-            b.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        tools.setSpacing(S["xs"])
+        self.tool_pen = icon_button(
+            "pencil", "Draw (P). Right mouse button erases.", text="Pen", checkable=True
+        )
+        self.tool_erase = icon_button(
+            "eraser", "Erase (E). Right mouse button draws.", text="Eraser", checkable=True
+        )
         self.tool_pen.setChecked(True)
         grp = QButtonGroup(self)
         grp.setExclusive(True)
         grp.addButton(self.tool_pen)
         grp.addButton(self.tool_erase)
         self.tool_pen.toggled.connect(lambda on: self.canvas.set_draw_mode(on))
-        self.tool_pen.setToolTip("Draw (P). Right mouse button erases.")
-        self.tool_erase.setToolTip("Erase (E). Right mouse button draws.")
         tools.addWidget(self.tool_pen)
         tools.addWidget(self.tool_erase)
-        tools.addWidget(QLabel("Brush"))
+        tools.addSpacing(S["sm"])
+        tools.addWidget(label("Brush", "formLabel"))
         self.brush = QSpinBox()
         self.brush.setRange(1, 8)
         self.brush.setSuffix(" px")
         tools.addWidget(self.brush)
-        tools.addSpacing(10)
-        self.btn_invert = QPushButton("Invert")
-        self.btn_clear = QPushButton("Clear")
+        tools.addSpacing(S["sm"])
+        tools.addWidget(divider(vertical=True))
+        tools.addSpacing(S["sm"])
+        self.btn_invert = icon_button("contrast", "Invert the frame (I)", text="Invert")
+        self.btn_clear = icon_button("x", "Clear the frame", text="Clear")
         self.btn_invert.clicked.connect(self.invert_frame)
         self.btn_clear.clicked.connect(self.clear_frame)
         tools.addWidget(self.btn_invert)
         tools.addWidget(self.btn_clear)
-        tools.addSpacing(10)
-        tools.addWidget(QLabel("Shift"))
-        for label, dx, dy, tip in (
-            ("◀", -1, 0, "left"),
-            ("▶", 1, 0, "right"),
-            ("▲", 0, -1, "up"),
-            ("▼", 0, 1, "down"),
+        tools.addSpacing(S["sm"])
+        tools.addWidget(divider(vertical=True))
+        tools.addSpacing(S["sm"])
+        tools.addWidget(label("Shift", "formLabel"))
+        for name, dx, dy, tip in (
+            ("arrow-left", -1, 0, "left"),
+            ("arrow-right", 1, 0, "right"),
+            ("arrow-up", 0, -1, "up"),
+            ("arrow-down", 0, 1, "down"),
         ):
-            b = QToolButton()
-            b.setText(label)
-            b.setToolTip(f"Shift frame {tip} by 1 px (wraps around)")
+            b = icon_button(name, f"Shift frame {tip} by 1 px (wraps around)")
             b.clicked.connect(lambda _=False, a=dx, c=dy: self.shift_frame(a, c))
             tools.addWidget(b)
         tools.addStretch(1)
+        self.btn_undo = icon_button("undo-2", "Undo (Ctrl+Z)")
+        self.btn_redo = icon_button("redo-2", "Redo (Ctrl+Y)")
+        self.btn_undo.clicked.connect(self.undo)
+        self.btn_redo.clicked.connect(self.redo)
+        tools.addWidget(self.btn_undo)
+        tools.addWidget(self.btn_redo)
         center.addLayout(tools)
 
         opts = QHBoxLayout()
+        opts.setSpacing(S["lg"])
         self.onion = QCheckBox("Onion skin (previous frame)")
         self.onion.setChecked(True)
         self.onion.toggled.connect(lambda _: self._show_current())
@@ -543,19 +606,16 @@ class AnimationEditorDialog(QDialog):
         self.grid_cb.toggled.connect(lambda on: self.canvas.set_grid(on))
         opts.addWidget(self.onion)
         opts.addWidget(self.grid_cb)
-        opts.addWidget(QLabel("Zoom"))
+        zoom_row = QHBoxLayout()
+        zoom_row.setSpacing(S["sm"])
+        zoom_row.addWidget(label("Zoom", "formLabel"))
         self.zoom = QSpinBox()
         self.zoom.setRange(2, 12)
         self.zoom.setValue(6)
         self.zoom.setSuffix("×")
-        opts.addWidget(self.zoom)
-        self.btn_undo = QPushButton("Undo")
-        self.btn_redo = QPushButton("Redo")
-        self.btn_undo.clicked.connect(self.undo)
-        self.btn_redo.clicked.connect(self.redo)
+        zoom_row.addWidget(self.zoom)
+        opts.addLayout(zoom_row)
         opts.addStretch(1)
-        opts.addWidget(self.btn_undo)
-        opts.addWidget(self.btn_redo)
         center.addLayout(opts)
 
         self.canvas = PixelCanvas()
@@ -566,18 +626,23 @@ class AnimationEditorDialog(QDialog):
         )
         self.brush.valueChanged.connect(self.canvas.set_brush)
         self.zoom.valueChanged.connect(self.canvas.set_zoom)
+        center.addSpacing(S["xs"])
         center.addWidget(self.canvas, 0, Qt.AlignLeft | Qt.AlignTop)
         info_row = QHBoxLayout()
-        self.frame_label = QLabel()
-        self.pos_label = QLabel(" ")
-        self.pos_label.setStyleSheet("color:#777;")
+        self.frame_label = label("", "hintLabel")
+        self.pos_label = label(" ", "monoLabel")
         info_row.addWidget(self.frame_label)
         info_row.addStretch(1)
         info_row.addWidget(self.pos_label)
         center.addLayout(info_row)
+        center.addSpacing(S["sm"])
+        center.addWidget(divider())
+        center.addSpacing(S["xs"])
 
-        preset_box = QGroupBox("Presets && import")
-        pl = QGridLayout(preset_box)
+        center.addWidget(label("Presets & import", "sectionTitle"))
+        pl = QGridLayout()
+        pl.setHorizontalSpacing(S["sm"])
+        pl.setVerticalSpacing(S["sm"])
         self.preset_combo = QComboBox()
         for key, pr in P.PRESETS.items():
             self.preset_combo.addItem(pr.label, key)
@@ -587,45 +652,53 @@ class AnimationEditorDialog(QDialog):
         self.btn_preset = QPushButton("Load preset")
         self.btn_preset.clicked.connect(self.load_preset)
         self.btn_import = QPushButton("Import GIF / images…")
+        theme.bind_icon(self.btn_import, "image-plus")
         self.btn_import.clicked.connect(self.import_images)
-        pl.addWidget(QLabel("Preset"), 0, 0)
+        pl.addWidget(label("Preset", "formLabel"), 0, 0)
         pl.addWidget(self.preset_combo, 0, 1)
         pl.addWidget(self.preset_text, 0, 2)
         pl.addWidget(self.btn_preset, 0, 3)
-        pl.addWidget(self.btn_import, 1, 3)
         pl.addWidget(
-            QLabel(
-                "GIF, PNG sequence (multi-select) or single image; "
-                "resized to fit 128×64, threshold or dithering."
+            label(
+                "GIF, PNG sequence (multi-select) or single image; resized to fit 128×64, threshold or dithering.",
+                "hintLabel",
+                wrap=True,
             ),
             1,
-            0,
             1,
-            3,
+            1,
+            2,
         )
+        pl.addWidget(self.btn_import, 1, 3)
         pl.setColumnStretch(2, 1)
-        center.addWidget(preset_box)
+        center.addLayout(pl)
         center.addStretch(1)
         body.addLayout(center, 1)
+        body.addWidget(divider(vertical=True))
 
         # ---- right column: preview, settings, device ----------------------------
         right = QVBoxLayout()
-        pv = QGroupBox("Preview")
-        pvl = QVBoxLayout(pv)
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(S["sm"])
+        right.addWidget(label("Preview", "sectionTitle"))
         self.preview = OledView(2)
-        pvl.addWidget(self.preview, 0, Qt.AlignHCenter)
+        right.addWidget(self.preview, 0, Qt.AlignLeft)
         prow = QHBoxLayout()
-        self.btn_play = QPushButton("▶ Play")
+        prow.setSpacing(S["sm"])
+        self.btn_play = QPushButton("Play")
         self.btn_play.setCheckable(True)
+        theme.bind_icon(self.btn_play, "play", "text", checked_role="text")
         self.btn_play.toggled.connect(self.set_playing)
-        self.play_label = QLabel("")
+        self.play_label = label("", "hintLabel")
         prow.addWidget(self.btn_play)
         prow.addWidget(self.play_label, 1)
-        pvl.addLayout(prow)
-        right.addWidget(pv)
+        right.addLayout(prow)
+        right.addSpacing(S["sm"])
+        right.addWidget(divider())
+        right.addSpacing(S["xs"])
 
-        st = QGroupBox("Animation")
-        sf = QFormLayout(st)
+        right.addWidget(label("Animation", "sectionTitle"))
+        sf = QFormLayout()
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(8)
         self.name_edit.setToolTip("Stored in the device header (max 8 ASCII characters)")
@@ -639,10 +712,14 @@ class AnimationEditorDialog(QDialog):
         sf.addRow("Name", self.name_edit)
         sf.addRow("Speed", self.fps)
         sf.addRow("", self.loop)
-        right.addWidget(st)
+        style_form(sf)
+        right.addLayout(sf)
+        right.addSpacing(S["sm"])
+        right.addWidget(divider())
+        right.addSpacing(S["xs"])
 
-        idle = QGroupBox("Idle behaviour (device)")
-        idf = QFormLayout(idle)
+        right.addWidget(label("Idle behaviour (device)", "sectionTitle"))
+        idf = QFormLayout()
         self.idle_enabled = QCheckBox("Play animation when idle")
         self.idle_timeout = QSpinBox()
         self.idle_timeout.setRange(0, 65535)
@@ -664,21 +741,36 @@ class AnimationEditorDialog(QDialog):
         idf.addRow("", self.idle_enabled)
         idf.addRow("Start after", self.idle_timeout)
         idf.addRow("Screen off after", self.blank_timeout)
-        hint = QLabel("Any key or encoder input wakes the display; the waking input is not sent to the PC.")
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color:#777;")
-        idf.addRow(hint)
-        right.addWidget(idle)
+        style_form(idf)
+        right.addLayout(idf)
+        right.addWidget(
+            label(
+                "Any key or encoder input wakes the display; the waking input is not sent to the PC.",
+                "caption",
+                wrap=True,
+            )
+        )
+        right.addSpacing(S["sm"])
+        right.addWidget(divider())
+        right.addSpacing(S["xs"])
 
         self.stats = QLabel()
+        self.stats.setObjectName("hintLabel")
         self.stats.setWordWrap(True)
         self.stats.setTextFormat(Qt.RichText)
         right.addWidget(self.stats)
+        right.addSpacing(S["sm"])
+        right.addWidget(divider())
+        right.addSpacing(S["xs"])
 
-        dev = QGroupBox("Device")
-        dl = QGridLayout(dev)
+        right.addWidget(label("Device", "sectionTitle"))
+        dl = QGridLayout()
+        dl.setHorizontalSpacing(S["sm"])
+        dl.setVerticalSpacing(S["sm"])
         self.btn_upload = QPushButton("Upload to device")
         self.btn_upload.setToolTip("Write the animation to the macropad's flash (ANIM_BEGIN/DATA/COMMIT)")
+        theme.bind_icon(self.btn_upload, "upload", "accent_text")
+        set_primary(self.btn_upload)
         self.btn_upload.clicked.connect(self.upload_to_device)
         self.btn_dev_preview = QPushButton("Preview on device")
         self.btn_dev_preview.clicked.connect(lambda: self.device_preview(A.PREVIEW_PLAY))
@@ -694,25 +786,25 @@ class AnimationEditorDialog(QDialog):
         self.push_with_upload = QCheckBox("Also push idle settings on upload")
         self.push_with_upload.setChecked(True)
         dl.addWidget(self.btn_upload, 0, 0, 1, 2)
-        dl.addWidget(self.btn_dev_preview, 1, 0)
-        dl.addWidget(self.btn_dev_stop, 1, 1)
-        dl.addWidget(self.btn_push, 2, 0)
-        dl.addWidget(self.btn_readback, 2, 1)
-        dl.addWidget(self.btn_builtin, 3, 0)
-        dl.addWidget(self.push_with_upload, 4, 0, 1, 2)
-        self.dev_status = QLabel("Firmware 0.25+ required for device actions.")
-        self.dev_status.setWordWrap(True)
-        self.dev_status.setStyleSheet("color:#777;")
-        dl.addWidget(self.dev_status, 5, 0, 1, 2)
-        right.addWidget(dev)
+        dl.addWidget(self.push_with_upload, 1, 0, 1, 2)
+        dl.addWidget(self.btn_dev_preview, 2, 0)
+        dl.addWidget(self.btn_dev_stop, 2, 1)
+        dl.addWidget(self.btn_push, 3, 0)
+        dl.addWidget(self.btn_readback, 3, 1)
+        dl.addWidget(self.btn_builtin, 4, 0)
+        right.addLayout(dl)
+        self.dev_status = label("Firmware 0.25+ required for device actions.", "caption", wrap=True)
+        right.addWidget(self.dev_status)
         right.addStretch(1)
         rw = QWidget()
         rw.setLayout(right)
-        rw.setFixedWidth(W * 2 + 120)
+        rw.setFixedWidth(W * 2 + 88)
         body.addWidget(rw)
 
         # ---- bottom bar -------------------------------------------------------------
+        root.addWidget(divider())
         bottom = QHBoxLayout()
+        bottom.setSpacing(S["sm"])
         self.btn_new = QPushButton("New")
         self.btn_open = QPushButton("Open…")
         self.btn_save = QPushButton("Save")
@@ -725,17 +817,14 @@ class AnimationEditorDialog(QDialog):
         self.btn_save_as.clicked.connect(lambda: self.save_project(ask=True))
         self.btn_export_gif.clicked.connect(self.export_gif)
         self.btn_export_bin.clicked.connect(self.export_blob)
-        for b in (
-            self.btn_new,
-            self.btn_open,
-            self.btn_save,
-            self.btn_save_as,
-            self.btn_export_gif,
-            self.btn_export_bin,
-        ):
+        for b in (self.btn_new, self.btn_open, self.btn_save, self.btn_save_as):
             bottom.addWidget(b)
-        self.path_label = QLabel()
-        self.path_label.setStyleSheet("color:#777;")
+        bottom.addSpacing(S["sm"])
+        bottom.addWidget(self.btn_export_gif)
+        bottom.addWidget(self.btn_export_bin)
+        bottom.addSpacing(S["sm"])
+        self.path_label = label("", "caption")
+        self.path_label.setMinimumWidth(40)
         bottom.addWidget(self.path_label, 1)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
@@ -758,7 +847,7 @@ class AnimationEditorDialog(QDialog):
         ):
             QShortcut(seq, self, activated=fn)
         self._preset_changed()
-        self.resize(1320, 860)
+        self.resize(1320, 880)
 
     # ======================================================================
     # Model helpers
@@ -966,7 +1055,8 @@ class AnimationEditorDialog(QDialog):
             self.btn_play.blockSignals(True)
             self.btn_play.setChecked(on)
             self.btn_play.blockSignals(False)
-        self.btn_play.setText("■ Pause" if on else "▶ Play")
+        self.btn_play.setText("Pause" if on else "Play")
+        theme.bind_icon(self.btn_play, "pause" if on else "play", "text", checked_role="text")
         if on:
             self._play_idx = 0
             self._play_timer.start(max(1, round(1000 / self.fps.value())))
@@ -998,19 +1088,20 @@ class AnimationEditorDialog(QDialog):
             blob = self.project().to_blob()
             st = A.blob_stats(blob)
         except (ProjectError, A.AnimFormatError) as exc:
-            self.stats.setText(f"<span style='color:#c33'>{exc}</span>")
+            self.stats.setText(f"<span style='color:{theme.palette()['danger']}'>{exc}</span>")
             return
         pct = 100.0 * st["total_len"] / A.REGION_SIZE
         enc = st["encodings"]
         dur = len(self.frames) / max(1, self.fps.value())
-        color = "#2a7" if st["fits"] else "#c33"
+        pal = theme.palette()
+        color = pal["success"] if st["fits"] else pal["danger"]
         warn = (
             ""
             if st["fits"]
-            else "<br><b style='color:#c33'>Too large for the device region — remove frames or simplify.</b>"
+            else f"<br><b style='color:{pal['danger']}'>Too large for the device region — remove frames or simplify.</b>"
         )
         self.stats.setText(
-            f"<b>{len(self.frames)}</b> frames · {dur:.1f} s per loop<br>"
+            f"<span style='color:{pal['text']}'><b>{len(self.frames)}</b> frames · {dur:.1f} s per loop</span><br>"
             f"Encoded <b style='color:{color}'>{st['total_len']:,} B</b> of {A.REGION_SIZE // 1024} KiB "
             f"({pct:.1f} %) · raw {st['raw_len']:,} B<br>"
             f"RLE {enc['RLE']} · delta {enc['DELTA']} · raw {enc['RAW']}{warn}"

@@ -1,5 +1,5 @@
 # Host-only checks — no Pico SDK / firmware build required:
-#   ruff (lint + format check) → run_all_smokes.py (14 smokes) → --self-test (Qt offscreen)
+#   ruff (lint + format check) → run_all_smokes.py (15 smokes) → --self-test (Qt offscreen)
 #   → full HIL suite against the mock device (JSON report kept as an artifact).
 name: Host smokes
 

@@ -30,6 +30,7 @@ SMOKES = [
     "smoke_anim_codec.py",
     "smoke_anim_device.py",
     "smoke_packaging.py",
+    "smoke_theme.py",
 ]
 
 

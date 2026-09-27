@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..models.profile import is_valid_profile_id, suggest_profile_id
+from ..ui.widgets import dialog_margins, style_form
 
 
 class ProfileNameIdDialog(QDialog):
@@ -32,7 +33,8 @@ class ProfileNameIdDialog(QDialog):
         self._existing_ids = set(existing_ids)
         self._id_manual = False
 
-        layout = QVBoxLayout(self)
+        self.setMinimumWidth(380)
+        layout = dialog_margins(QVBoxLayout(self))
         form = QFormLayout()
 
         self._name_edit = QLineEdit(initial_name)
@@ -44,6 +46,7 @@ class ProfileNameIdDialog(QDialog):
         self._id_edit.setPlaceholderText("unique_id")
         self._id_edit.textChanged.connect(self._on_id_edited)
         form.addRow("Id", self._id_edit)
+        style_form(form, label_width=48)
 
         layout.addLayout(form)
 

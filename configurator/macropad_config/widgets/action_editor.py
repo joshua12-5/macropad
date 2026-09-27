@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +20,18 @@ from PySide6.QtWidgets import (
 
 from ..models.macro import BUILTIN_MACRO_NAMES, macro_names, try_load_library
 from ..models.schema import ActionType, SchemaError, validate_action
+from ..ui import theme
+from ..ui.widgets import label, style_form
+
+# Label column width shared with the main window's Profile form (aligned fields).
+INSPECTOR_LABEL_W = 76
+if sys.platform == "darwin":
+    GUI_LABEL = "Cmd"
+elif sys.platform.startswith("win"):
+    GUI_LABEL = "Win"
+else:
+    GUI_LABEL = "Super"
+MOD_LABELS = {"CTRL": "Ctrl", "SHIFT": "Shift", "ALT": "Alt", "GUI": GUI_LABEL}
 
 # Common HID key names matching firmware JSON style.
 COMMON_KEYS = [
@@ -90,11 +103,10 @@ class ActionEditor(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(6)
+        root.setSpacing(theme.SPACE["sm"])
 
         form = QFormLayout()
         form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(6)
         self._form = form
 
         self._type = QComboBox()
@@ -119,9 +131,13 @@ class ActionEditor(QWidget):
         self._mods_row = QWidget()
         mods_layout = QHBoxLayout(self._mods_row)
         mods_layout.setContentsMargins(0, 0, 0, 0)
+        mods_layout.setSpacing(theme.SPACE["xs"] + 2)
         self._mod_boxes: dict[str, QCheckBox] = {}
         for name in ("CTRL", "SHIFT", "ALT", "GUI"):
-            box = QCheckBox(name)
+            box = QCheckBox(MOD_LABELS[name])
+            box.setObjectName("chip")
+            box.setCursor(Qt.CursorShape.PointingHandCursor)
+            box.setToolTip(f"{name} modifier")
             box.stateChanged.connect(self._emit_changed)
             mods_layout.addWidget(box)
             self._mod_boxes[name] = box
@@ -161,7 +177,7 @@ class ActionEditor(QWidget):
         media_wrap = QWidget()
         media_layout = QVBoxLayout(media_wrap)
         media_layout.setContentsMargins(0, 0, 0, 0)
-        media_layout.setSpacing(4)
+        media_layout.setSpacing(theme.SPACE["sm"])
         media_layout.addWidget(self._media_combo)
         media_layout.addWidget(self._usage_edit)
         self._media_row = media_wrap
@@ -184,9 +200,9 @@ class ActionEditor(QWidget):
         profile_wrap = QWidget()
         profile_layout = QVBoxLayout(profile_wrap)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(4)
+        profile_layout.setSpacing(theme.SPACE["sm"])
         slot_line = QHBoxLayout()
-        slot_line.addWidget(QLabel("Slot"))
+        slot_line.addWidget(label("Slot", "formLabel"))
         slot_line.addWidget(self._slot_spin)
         slot_line.addStretch(1)
         profile_layout.addLayout(slot_line)
@@ -194,6 +210,7 @@ class ActionEditor(QWidget):
         self._profile_row = profile_wrap
         form.addRow("Profile", self._profile_row)
 
+        style_form(form, label_width=INSPECTOR_LABEL_W)
         root.addLayout(form)
 
         self._error = QLabel("")

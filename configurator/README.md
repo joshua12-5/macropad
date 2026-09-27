@@ -49,8 +49,8 @@ Optional `hid` (cython-hidapi) is listed in `requirements.txt` for Device menu a
 ### Edit & save profiles
 
 1. Select a profile on the left.
-2. Edit **Name** / **OLED** in the right header (marks the profile dirty).
-3. Click a key (1–12) or encoder slot; change **Type** and type-specific fields.
+2. Edit **Name** / **OLED title** at the top of the right-hand inspector (marks the profile dirty).
+3. Click a keycap (1–12), the knob or an encoder slot (Turn left / Turn right / Press / Hold); change **Type** and type-specific fields.
 4. Changes **auto-apply** into the in-memory profile; status bar shows *Modified*.
 5. **File → Save** (`Ctrl+S`) writes the current profile JSON; **Save All** writes every dirty profile.
 6. Reload / quit prompts if unsaved changes remain.
@@ -59,9 +59,9 @@ Optional `hid` (cython-hidapi) is listed in `requirements.txt` for Device menu a
 
 | Action | UI | Notes |
 |--------|-----|--------|
-| **New…** | Profile list buttons or **Profile → New…** (`Ctrl+N`) | Dialog: Name (required) + Id (auto from name, editable). Blank profile (all keys DISABLED; encoder volume up/down/mute). Marked dirty until Save. |
-| **Duplicate…** | Buttons or **Profile → Duplicate…** (`Ctrl+D`) | Deep-copies the selected profile with a new name/id. |
-| **Delete…** | Buttons or **Profile → Delete…** | Confirms; removes JSON from disk if saved; warns if it would empty the list. |
+| **New…** | **+** icon above the profile list or **Profile → New…** (`Ctrl+N`) | Dialog: Name (required) + Id (auto from name, editable). Blank profile (all keys DISABLED; encoder volume up/down/mute). Marked dirty until Save. |
+| **Duplicate…** | Copy icon or **Profile → Duplicate…** (`Ctrl+D`) | Deep-copies the selected profile with a new name/id. |
+| **Delete…** | Trash icon or **Profile → Delete…** | Confirms; removes JSON from disk if saved; warns if it would empty the list. |
 
 Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
@@ -73,8 +73,8 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
 | Action | UI | Notes |
 |--------|-----|--------|
-| **Connect / Get device info** | **Device → Connect / Get device info** (`Ctrl+Shift+I`) | Opens vendor HID (VID `0x2E8A` / PID `0xC001` / usage page `0xFF00`), sends PING + GET_INFO, shows a dialog + status bar. |
-| **Upload profile to device…** | **Device → Upload profile to device…** (`Ctrl+Shift+U`) | Packs the **selected** profile to `profile_blob_v1` (148 B), asks for slot **0–4** (defaults to last GET_INFO active slot, or built-in id map `default/gaming/coding/browser/photoshop` → 0..4), then BEGIN/DATA/COMMIT. |
+| **Connect / Get device info** | **Device → Connect / Get device info** (`Ctrl+Shift+I`) | Opens vendor HID (VID `0x2E8A` / PID `0xC001` / usage page `0xFF00`), sends PING + GET_INFO, shows the device info dialog and updates the status bar (connection pill, firmware, protocol). Also the **Connect** toolbar button. |
+| **Upload profile to device…** | **Device → Upload profile to device…** (`Ctrl+Shift+U`) | Packs the **selected** profile to `profile_blob_v1` (148 B), asks for slot **0–4** (defaults to last GET_INFO active slot, or built-in id map `default/gaming/coding/browser/photoshop` → 0..4), then BEGIN/DATA/COMMIT. Also the **Upload** toolbar button. |
 | **Upload macros to device…** | **Device → Upload macros to device…** (`Ctrl+Shift+M`) | Packs `macros/library.json` ids **0–4** to `macro_blob_v1` (162 B each), uploads in order; skips missing ids; status bar + message box report count. |
 | **Auto-switch…** | **Tools → Auto-switch…** | Edit `autoswitch/rules.json` (enable, poll_ms, fallback, rules table). |
 | **Auto-switch enabled** | **Device → Auto-switch enabled** (checkable) | Needs a prior Connect. Polls foreground app; sends `SET_ACTIVE`. Status: `Auto-switch: coding (Code)`. Disconnect mid-run stops cleanly (one reconnect attempt). |
@@ -106,9 +106,10 @@ python scripts/smoke_hil_mock.py
 python scripts/smoke_packaging.py
 python scripts/smoke_anim_codec.py    # MPAN codec vs compiled firmware anim_codec.c, presets, GIF, imaging
 python scripts/smoke_anim_device.py   # ANIM_* protocol vs mock (+ seeded bugs), editor GUI
+python scripts/smoke_theme.py         # theme in dark + light: QSS tokens, palette contrast, icons resolve, windows/dialogs render
 ```
 
-14 smokes in total (`run_all_smokes.py`). (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
+15 smokes in total (`run_all_smokes.py`). (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
 
 ### Auto-switch
 
@@ -122,9 +123,22 @@ Override rules path with `MACROPAD_AUTOSWITCH_PATH`.
 
 | Area | Content |
 |------|---------|
-| Left | Profile list + New / Duplicate / Delete |
-| Center | OLED title mock, 3×4 keys (type captions), encoder slots |
-| Right | Name / OLED fields, **ActionEditor**, read-only action JSON mirror |
+| Toolbar | Save · Macros · Idle animation · Auto-switch rules · theme toggle · **Connect** · **Upload** (primary) |
+| Left | Profile list (name, id, **Slot N** badge, accent dot on the active device slot) + new / duplicate / delete icons |
+| Center | Drawn device (`widgets/pad_preview.py`): OLED idle-screen preview, knob, 3×4 keycaps with action legends, encoder slot chips Turn left / Turn right / Press / Hold. Click or arrow keys select. |
+| Right | Inspector: Name / OLED title, selected key or slot, **ActionEditor**, read-only action JSON mirror |
+| Status bar | Messages on the left; connection pill, firmware and protocol version on the right |
+
+### Theme
+
+`macropad_config/ui/theme.py` + `ui/theme.qss` hold the single hand-written stylesheet. The QSS
+is a template: `{{token}}` placeholders come from the dark / light palettes in `theme.py`,
+`{{icon:name:role}}` renders a vendored SVG in a palette colour. **View → Theme** picks
+*Match system* (default), *Dark* or *Light* (saved in QSettings; `MACROPAD_THEME=dark|light`
+overrides it for a run); **View → Toggle dark / light** is `Ctrl+Shift+L`. Icons are
+[Lucide](https://lucide.dev) SVGs (ISC, see `ui/icons/LICENSE`), recoloured per theme. Shared
+helpers (dividers, form styling, table polish, icon buttons, status pill) are in
+`ui/widgets.py`. `smoke_theme.py` checks both modes.
 
 ### Idle animation editor
 
@@ -134,8 +148,8 @@ explains which version to flash and sends nothing.
 
 | Area | What it does |
 |------|--------------|
-| Frames | thumbnail strip; add / duplicate (`Ctrl+D`) / delete / move / drag-reorder; `[` `]` step |
-| Canvas | 128×64 at 2–12× zoom, page grid; pen / eraser (right button = opposite colour), brush 1–8 px; invert, clear, shift ◀▶▲▼ (wrap), onion skin of the previous frame; undo / redo |
+| Frames | thumbnail strip; add / duplicate (`Ctrl+D`) / delete / move up·down (icon buttons) / drag-reorder; `[` `]` step |
+| Canvas | 128×64 at 2–12× zoom, page grid; pen / eraser (right button = opposite colour), brush 1–8 px; invert, clear, shift left / right / up / down (wrap), onion skin of the previous frame; undo / redo |
 | Preview | live playback at the chosen fps (`Space`), OLED-styled |
 | Presets | *Starfield (warp)*, *Bouncing text* (default `MACROPAD`), *Scrolling text* (your text), *Pulse / breathing* — generated in `macropad_config/animation/presets.py` |
 | Import | animated GIF, PNG/JPEG/BMP sequence (multi-select, natural sort) or a single image → fit (keep aspect, centred) or stretch, threshold or Floyd–Steinberg dithering, invert, replace / append / insert |

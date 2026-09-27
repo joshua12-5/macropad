@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -17,7 +18,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -36,7 +36,9 @@ from ..models.macro import (
     save_library,
 )
 from ..models.schema import SchemaError
-from .action_editor import COMMON_KEYS, TEXT_LABELS
+from ..ui import theme
+from ..ui.widgets import dialog_margins, divider, icon_button, label, polish_table, style_form
+from .action_editor import COMMON_KEYS, MOD_LABELS, TEXT_LABELS
 
 # Consumer usage presets (label, value).
 CONSUMER_PRESETS: list[tuple[str, int]] = [
@@ -73,41 +75,46 @@ class MacroLibraryDialog(QDialog):
         self._load_or_empty()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-
-        path_label = QLabel(f"File: {self._path}")
-        path_label.setObjectName("hintLabel")
-        path_label.setWordWrap(True)
-        root.addWidget(path_label)
+        S = theme.SPACE
+        root = dialog_margins(QVBoxLayout(self))
 
         body = QHBoxLayout()
+        body.setSpacing(S["lg"])
 
         # --- left: macro list + CRUD ---
         left = QVBoxLayout()
-        left.addWidget(QLabel("Macros"))
+        left.setSpacing(S["sm"])
+        head = QHBoxLayout()
+        head.setSpacing(2)
+        head.addWidget(label("Macros", "sectionTitle"))
+        head.addStretch(1)
+        self._btn_new = icon_button("plus", "New macro")
+        self._btn_new.setObjectName("profileToolButton")
+        self._btn_new.clicked.connect(self._new_macro)
+        self._btn_dup = icon_button("copy", "Duplicate macro")
+        self._btn_dup.setObjectName("profileToolButton")
+        self._btn_dup.clicked.connect(self._duplicate_macro)
+        self._btn_del = icon_button("trash", "Delete macro")
+        self._btn_del.setObjectName("profileToolButton")
+        self._btn_del.clicked.connect(self._delete_macro)
+        for b in (self._btn_new, self._btn_dup, self._btn_del):
+            head.addWidget(b)
+        left.addLayout(head)
         self._list = QListWidget()
         self._list.setObjectName("profileList")
         self._list.currentRowChanged.connect(self._on_macro_selected)
         left.addWidget(self._list, stretch=1)
-
-        crud = QHBoxLayout()
-        self._btn_new = QPushButton("New")
-        self._btn_new.setObjectName("profileToolButton")
-        self._btn_new.clicked.connect(self._new_macro)
-        self._btn_dup = QPushButton("Duplicate")
-        self._btn_dup.setObjectName("profileToolButton")
-        self._btn_dup.clicked.connect(self._duplicate_macro)
-        self._btn_del = QPushButton("Delete")
-        self._btn_del.setObjectName("profileToolButton")
-        self._btn_del.clicked.connect(self._delete_macro)
-        crud.addWidget(self._btn_new)
-        crud.addWidget(self._btn_dup)
-        crud.addWidget(self._btn_del)
-        left.addLayout(crud)
-        body.addLayout(left, stretch=1)
+        left_w = QWidget()
+        left_w.setLayout(left)
+        left.setContentsMargins(0, 0, 0, 0)
+        left_w.setMinimumWidth(220)
+        left_w.setMaximumWidth(280)
+        body.addWidget(left_w, stretch=1)
+        body.addWidget(divider(vertical=True))
 
         # --- right: name + steps ---
         right = QVBoxLayout()
+        right.setSpacing(S["sm"])
         form = QFormLayout()
         self._name_edit = QLineEdit()
         self._name_edit.setPlaceholderText("Macro name")
@@ -116,9 +123,30 @@ class MacroLibraryDialog(QDialog):
         self._id_label.setObjectName("hintLabel")
         form.addRow("Id", self._id_label)
         form.addRow("Name", self._name_edit)
+        style_form(form, label_width=64)
         right.addLayout(form)
+        right.addSpacing(S["sm"])
 
-        right.addWidget(QLabel("Steps"))
+        steps_head = QHBoxLayout()
+        steps_head.setSpacing(2)
+        steps_head.addWidget(label("Steps", "sectionTitle"))
+        steps_head.addStretch(1)
+        self._btn_add_step = icon_button("plus", "Add a step after the selected one", text="Add step")
+        self._btn_add_step.setObjectName("profileToolButton")
+        self._btn_add_step.clicked.connect(self._add_step)
+        self._btn_rm_step = icon_button("minus", "Remove the selected step", text="Remove step")
+        self._btn_rm_step.setObjectName("profileToolButton")
+        self._btn_rm_step.clicked.connect(self._remove_step)
+        self._btn_up = icon_button("arrow-up", "Move the selected step up")
+        self._btn_up.setObjectName("profileToolButton")
+        self._btn_up.clicked.connect(lambda: self._move_step(-1))
+        self._btn_down = icon_button("arrow-down", "Move the selected step down")
+        self._btn_down.setObjectName("profileToolButton")
+        self._btn_down.clicked.connect(lambda: self._move_step(1))
+        for b in (self._btn_add_step, self._btn_rm_step, self._btn_up, self._btn_down):
+            steps_head.addWidget(b)
+        right.addLayout(steps_head)
+
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Op", "Mods", "Key", "Arg"])
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -128,35 +156,16 @@ class MacroLibraryDialog(QDialog):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemSelectionChanged.connect(self._on_step_selected)
+        polish_table(self._table)
+        self._table.setFrameShape(QFrame.Shape.StyledPanel)
         right.addWidget(self._table, stretch=1)
-
-        step_btns = QHBoxLayout()
-        self._btn_add_step = QPushButton("Add step")
-        self._btn_add_step.setObjectName("profileToolButton")
-        self._btn_add_step.clicked.connect(self._add_step)
-        self._btn_rm_step = QPushButton("Remove step")
-        self._btn_rm_step.setObjectName("profileToolButton")
-        self._btn_rm_step.clicked.connect(self._remove_step)
-        self._btn_up = QPushButton("Move up")
-        self._btn_up.setObjectName("profileToolButton")
-        self._btn_up.clicked.connect(lambda: self._move_step(-1))
-        self._btn_down = QPushButton("Move down")
-        self._btn_down.setObjectName("profileToolButton")
-        self._btn_down.clicked.connect(lambda: self._move_step(1))
-        for b in (
-            self._btn_add_step,
-            self._btn_rm_step,
-            self._btn_up,
-            self._btn_down,
-        ):
-            step_btns.addWidget(b)
-        step_btns.addStretch(1)
-        right.addLayout(step_btns)
+        right.addSpacing(S["sm"])
+        right.addWidget(label("Selected step", "sectionTitle"))
 
         # Step editor panel
         editor_box = QWidget()
         editor_layout = QFormLayout(editor_box)
-        editor_layout.setContentsMargins(0, 8, 0, 0)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
         self._editor_form = editor_layout
 
         self._op_combo = QComboBox()
@@ -167,9 +176,12 @@ class MacroLibraryDialog(QDialog):
         self._mods_row = QWidget()
         mods_layout = QHBoxLayout(self._mods_row)
         mods_layout.setContentsMargins(0, 0, 0, 0)
+        mods_layout.setSpacing(S["xs"] + 2)
         self._mod_boxes: dict[str, QCheckBox] = {}
         for name in ("CTRL", "SHIFT", "ALT", "GUI"):
-            box = QCheckBox(name)
+            box = QCheckBox(MOD_LABELS[name])
+            box.setObjectName("chip")
+            box.setToolTip(f"{name} modifier")
             box.stateChanged.connect(self._apply_step_editor)
             mods_layout.addWidget(box)
             self._mod_boxes[name] = box
@@ -203,8 +215,8 @@ class MacroLibraryDialog(QDialog):
         editor_layout.addRow("Text id", text_wrap)
 
         self._consumer_combo = QComboBox()
-        for label, _val in CONSUMER_PRESETS:
-            self._consumer_combo.addItem(label)
+        for preset_label, _val in CONSUMER_PRESETS:
+            self._consumer_combo.addItem(preset_label)
         self._consumer_combo.currentIndexChanged.connect(self._on_consumer_preset)
         self._consumer_edit = QLineEdit()
         self._consumer_edit.setPlaceholderText("usage hex e.g. 0x00CD")
@@ -212,11 +224,12 @@ class MacroLibraryDialog(QDialog):
         consumer_wrap = QWidget()
         consumer_layout = QVBoxLayout(consumer_wrap)
         consumer_layout.setContentsMargins(0, 0, 0, 0)
-        consumer_layout.setSpacing(4)
+        consumer_layout.setSpacing(S["sm"])
         consumer_layout.addWidget(self._consumer_combo)
         consumer_layout.addWidget(self._consumer_edit)
         editor_layout.addRow("Consumer", consumer_wrap)
 
+        style_form(editor_layout, label_width=64)
         right.addWidget(editor_box)
         self._editor_box = editor_box
         self._editor_rows = {
@@ -236,15 +249,23 @@ class MacroLibraryDialog(QDialog):
         self._error.hide()
         root.addWidget(self._error)
 
+        root.addWidget(divider())
+        footer = QHBoxLayout()
+        path_label = label(str(self._path), "caption")
+        path_label.setToolTip(f"Macro library file: {self._path}")
+        path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        footer.addWidget(path_label, 1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
+        footer.addWidget(buttons)
+        root.addLayout(footer)
 
         self._set_editor_enabled(False)
         self._update_op_fields()
+        self._list.setFocus()
 
     # --- load / save ----------------------------------------------------
 

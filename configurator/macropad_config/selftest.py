@@ -51,6 +51,10 @@ MODULES = (
     "macropad_config.widgets.profile_dialog",
     "macropad_config.widgets.profile_list",
     "macropad_config.widgets.anim_editor",
+    "macropad_config.widgets.info_dialogs",
+    "macropad_config.ui",
+    "macropad_config.ui.theme",
+    "macropad_config.ui.widgets",
     "macropad_config.animation",
     "macropad_config.animation.codec",
     "macropad_config.animation.font5x7",
@@ -189,6 +193,20 @@ def _chk_qt() -> str:
     from .main_window import MainWindow
 
     app = QApplication.instance() or QApplication([sys.argv[0], "-platform", os.environ["QT_QPA_PLATFORM"]])
+    # Theme: QSS template + bundled Lucide icons must load in both schemes
+    # (catches missing PyInstaller datas in frozen builds).
+    from .ui import theme
+
+    icons = theme.icon_names()
+    if len(icons) < 20 or not (theme.ICON_DIR / "LICENSE").is_file():
+        raise RuntimeError(f"theme icons missing in {theme.ICON_DIR} ({len(icons)} found)")
+    for scheme in ("light", "dark"):
+        theme.apply_theme(app, scheme)
+        qss = app.styleSheet()
+        if "{{" in qss or len(qss) < 2000:
+            raise RuntimeError(f"theme stylesheet not rendered for {scheme}")
+        if theme.render_icon(icons[0], theme.PALETTES[scheme]["text"], 16).isNull():
+            raise RuntimeError(f"icon {icons[0]} did not render")
     win = MainWindow()
     win.show()
     for _ in range(5):
@@ -206,7 +224,10 @@ def _chk_qt() -> str:
     dlg.close()
     win.close()
     app.processEvents()
-    return f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on '{app.platformName()}' ({title})"
+    return (
+        f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on '{app.platformName()}' ({title}); "
+        f"theme light+dark, {len(icons)} icons"
+    )
 
 
 CHECKS: tuple[tuple[str, Callable[[], str]], ...] = (
