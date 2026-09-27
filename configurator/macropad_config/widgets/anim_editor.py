@@ -920,7 +920,7 @@ class AnimationEditorDialog(QDialog):
             self.btn_play.blockSignals(True)
             self.btn_play.setChecked(on)
             self.btn_play.blockSignals(False)
-        self.btn_play.setText("⏸ Pause" if on else "▶ Play")
+        self.btn_play.setText("■ Pause" if on else "▶ Play")
         if on:
             self._play_idx = 0
             self._play_timer.start(max(1, round(1000 / self.fps.value())))
