@@ -201,6 +201,7 @@ class MainWindow(QMainWindow):
         self._meta_loading = False
         self._applying = False
         self._last_device_info: dict | None = None
+        self._anim_dialog = None
         self._autoswitch = None
         self._autoswitch_connected = False
 
@@ -313,6 +314,15 @@ class MainWindow(QMainWindow):
         autoswitch_dlg_act.setStatusTip("Edit auto-switch rules (host → device)")
         autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
         tools_menu.addAction(autoswitch_dlg_act)
+
+        # Step 24b: OLED idle animation editor (authoring works offline; device
+        # actions inside are gated on GET_INFO flag bit3 / fw 0.25+).
+        self._anim_act = QAction("&Idle animation…", self)
+        self._anim_act.setStatusTip(
+            "Design OLED idle animations, import GIFs, upload to the macropad (fw 0.25+)"
+        )
+        self._anim_act.triggered.connect(self._open_anim_editor)
+        tools_menu.addAction(self._anim_act)
 
         arch_tip_act = QAction("Architecture &overview…", self)
         arch_tip_act.setStatusTip(
@@ -754,6 +764,19 @@ class MainWindow(QMainWindow):
         dlg = MacroLibraryDialog(parent=self)
         dlg.exec()
 
+
+    def _open_anim_editor(self) -> None:
+        from .widgets.anim_editor import AnimationEditorDialog
+
+        dlg = AnimationEditorDialog(self, device_info=self._last_device_info)
+        info = self._last_device_info
+        if info and not app_version.fw_supports_anim(info.get("fw_major"), info.get("fw_minor")):
+            dlg.dev_status.setText(
+                app_version.feature_disabled_tooltip("Idle animation upload", app_version.MIN_FW_MINOR_ANIM)
+            )
+        self._anim_dialog = dlg
+        dlg.exec()
+        self._anim_dialog = None
 
     def _apply_device_feature_gates(self, info: dict | None) -> None:
         """Enable/disable upload / autoswitch / SAVE_ALL from GET_INFO fw."""

@@ -1,9 +1,41 @@
 # Macropad firmware (RP2040)
 
-Build target: `macropad_step24.uf2` (released as `macropad-fw-X.Y.Z.uf2` on the
+Build target: `macropad_step24b.uf2` (released as `macropad-fw-X.Y.Z.uf2` on the
 [Releases page](https://github.com/joshua12-5/macropad/releases))
 
-## Step 24 — Release packaging
+## Step 24b — OLED idle animations
+
+- `FW_VERSION_MINOR` = **25**; CMake target `macropad_step24b`; USB `bcdDevice` = **0x0119** (1.25).
+- `anim.c`: idle state machine ACTIVE → PLAYING (after `idle_timeout_s`, default 60 s, 0 = off)
+  → BLANK (after `blank_timeout_s`, default 600 s, 0 = never; display off). Any key / encoder
+  input wakes to the normal UI; the waking key is suppressed in the HID report until released
+  (`usb_hid_suppress_key`), a waking encoder turn / press is dropped (press also cancels the
+  long-press menu). Built-in procedural starfield (48 stars, 20 fps) when nothing is uploaded.
+- `oled_driver.c`: non-blocking flush — `oled_driver_task()` streams the 1 KiB framebuffer in
+  16-byte I2C chunks, ≤ 2 per main-loop tick. **I2C timing at 400 kHz:** ≈ 26.1 ms bus time per
+  1 KiB frame (64 × 18-byte transactions + window command); the old blocking update stalled the
+  loop that long on every repaint, now each tick spends ≤ ≈ 0.81 ms on I2C and a frame lands in
+  ≈ 33 ms (≈ 30 fps ceiling; the format caps fps at 30). ANIM_INFO reports the measured bus / wall
+  µs of the last frame.
+- Animation region: 128 KiB at flash `0x1DF000`–`0x1FEFFF`, directly below the MPFL sector
+  (`anim.h`; static-asserted, boot-checked against `__flash_binary_end`, CI fails if the image
+  reaches `0x101DF000`). `MPAN` v1 blob (`anim_format.h`, decoder `anim_codec.c`): 32-byte header
+  (magic, version, frame count, fps, loop, CRC32) + per-frame RAW / PackBits-RLE / XOR-delta-RLE
+  records in SSD1306 page order. Max **127 frames** worst case (all RAW), 255 by header field;
+  typical presets need 120–230 B/frame. Uploads erase + program only the covered sectors via
+  `flash_safe_execute()`.
+- Protocol `0x40`–`0x48`: ANIM_BEGIN / DATA / COMMIT / ABORT / INFO / READ, ANIM_SETTINGS_GET /
+  SET, ANIM_PREVIEW; GET_INFO flags **bit3** (`CFG_INFO_FLAG_ANIM`); same chunk / CRC / `EBUSY`
+  rules as profile / macro uploads (see [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md)).
+- Storage: MPFL **v3** = v2 + 8-byte idle settings (enabled, idle / blank timeouts); v2 / v1
+  images still load (settings default) and are rewritten as v3 on the next save.
+- Size (gcc 14.2): text **65428** (+8512 vs Step 24), bss **18692** (+7532: 4 KiB upload sector
+  buffer, decode + I2C snapshot + validate frames, stars), UF2 **131072** B (+16896); image ends at
+  `0x1000FF98`, ≈ 1.8 MiB below the animation region. Zero warnings.
+- Flash map: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md#flash-map-step-24b); formats and
+  authoring: [`../docs/ANIMATION.md`](../docs/ANIMATION.md).
+
+## Step 24 — Release packaging (kept)
 
 - `FW_VERSION_MINOR` = **24**; CMake target `macropad_step24`; USB `bcdDevice` = **0x0118** (1.24).
   No firmware behaviour, protocol or blob changes.
@@ -88,7 +120,7 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware   # this directory
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step24.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad_step24b.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 Notes:
@@ -99,11 +131,15 @@ Notes:
 - SDK 2.x fetches and builds `picotool` from source on first configure if none is installed
   (needs network + a host C++ compiler). Install picotool 2.1.1 to skip that.
 - CMake warns if `PICO_SDK_VERSION_STRING` is not the verified `2.1.1`.
-- Storage lives in the last 4 KiB sector (`0x1FF000`); CI fails if `__flash_binary_end`
-  ever reaches it.
+- Storage lives in the last 4 KiB sector (`0x1FF000`), the animation region in the 128 KiB below
+  it (`0x1DF000`); CI fails if `__flash_binary_end` ever reaches the animation region.
 
 ## UART debug
 
 `stor load v2|v1 (macros factory)|default`, `stor save ok|fail`,
 `stor debounce save`, `cfg macro …`, `cfg set_active N`, `cfg save_all ok`, `stor debounce skip (unchanged)`,
-`macro save ok`, `profile save ok`.
+`macro save ok`, `profile save ok`,
+`anim idle: on|off, idle N s, blank N s`, `anim stored: N frames @ F fps, … B` /
+`anim: no stored animation (builtin)`, `anim play builtin|stored`, `anim blank`, `anim wake`,
+`anim upload begin len=N`, `anim commit ok (N sectors)` / `anim commit rejected err=N`,
+`anim upload abort`, `anim flash rc=N sector=N`.

@@ -1,4 +1,5 @@
-"""Hardware-in-the-loop test suite for the vendor config HID channel (Step 23).
+"""Hardware-in-the-loop test suite for the vendor config HID channel (Step 23;
+OLED idle-animation tests added in Step 24b).
 
 Talks to a flashed macropad (or ``hil.mock``) through the production host
 stack: ``protocol.device.ConfigDevice`` + ``protocol.frames``. No framing is
@@ -11,6 +12,12 @@ the firmware rejects *before* touching flash) is flash-free. SET_ACTIVE
 schedules a debounced flash rewrite; on fw 0.23+ that rewrite is skipped when
 the original slot is restored, so the active-slot test is flash-free there and
 needs ``allow_flash_write`` on older firmware.
+
+Step 24b animation tests: ANIM_INFO / PREVIEW / protocol error paths / EBUSY
+are flash-free (uploads are aborted before the first 4 KiB sector fills).
+ANIM_SETTINGS_SET rewrites the MPFL sector and a completed or bad-CRC
+ANIM_COMMIT programs the animation region, so the settings and round-trip
+tests need ``allow_flash_write``; both restore the original state.
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ from ..protocol.device import (
     err_name,
     list_config_devices,
 )
+from ..animation import codec as A
 from ..protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
 from ..protocol.profile_blob import (
     PROFILE_BLOB_V1_SIZE,
@@ -171,6 +179,11 @@ class HilContext:
         self.orig_macro_crc: dict[int, int] = {}
         self.rng = random.Random(opts.seed)
         self.notes: list[str] = []
+        # Step 24b
+        self.anim = False
+        self.orig_anim_info: Optional[dict] = None
+        self.orig_anim_settings: Optional[dict] = None
+        self.orig_anim_blob: Optional[bytes] = None
 
     # -- helpers ------------------------------------------------------------
     def req(self, cmd: int, payload: bytes = b"", *, timeout_ms: Optional[int] = None) -> F.Frame:
@@ -214,7 +227,10 @@ class HilContext:
     def abort_uploads(self) -> None:
         if self.dev is None:
             return
-        for cmd in (F.CFG_CMD_PROFILE_ABORT, F.CFG_CMD_MACRO_ABORT):
+        cmds = [F.CFG_CMD_PROFILE_ABORT, F.CFG_CMD_MACRO_ABORT]
+        if self.anim:
+            cmds.append(F.CFG_CMD_ANIM_ABORT)
+        for cmd in cmds:
             try:
                 self.dev.request(cmd)
             except DeviceError:
@@ -315,7 +331,11 @@ def t_info(ctx: HilContext, res: TestResult) -> None:
         "autoswitch": ver.fw_supports_autoswitch(major, minor),
         "save_all": ver.fw_supports_save_all(major, minor),
         "readback": ctx.readback,
+        "anim": bool(flags & F.CFG_INFO_FLAG_ANIM),
     }
+    ctx.anim = bool(flags & F.CFG_INFO_FLAG_ANIM)
+    if ctx.anim != ver.fw_supports_anim(major, minor):
+        res.notes.append(f"WARN anim flag={ctx.anim} but fw {major}.{minor}")
     res.metrics["features"] = gates
     ctx.orig_active = info["active_slot"]
     # Snapshot for restore_check.
@@ -730,9 +750,244 @@ def t_restore_check(ctx: HilContext, res: TestResult) -> None:
             diffs.append(f"profile {i}")
         if ctx.meta("macro", i)["crc"] != ctx.orig_macro_crc.get(i):
             diffs.append(f"macro {i}")
+    anim_note = ""
+    if ctx.anim and ctx.orig_anim_info is not None:
+        ai = ctx.dev.anim_info()
+        o = ctx.orig_anim_info
+        if (ai["stored_valid"], ai["crc"] if ai["stored_valid"] else 0) != \
+                (o["stored_valid"], o["crc"] if o["stored_valid"] else 0):
+            diffs.append("stored animation")
+        if ai["uploading"]:
+            diffs.append("animation upload still open")
+        if ctx.orig_anim_settings is not None and ctx.dev.anim_settings_get() != ctx.orig_anim_settings:
+            diffs.append("idle settings")
+        anim_note = "; animation + idle settings identical"
     if diffs:
         raise Fail(f"device state differs from start: {', '.join(diffs)}")
-    res.detail = f"active slot {active}, 5 profile + 5 macro CRCs identical to start; no upload open"
+    res.detail = (f"active slot {active}, 5 profile + 5 macro CRCs identical to start{anim_note}; "
+                  "no upload open")
+
+
+# --------------------------------------------------------------------------
+# Step 24b — OLED idle animation
+# --------------------------------------------------------------------------
+
+def _need_anim(ctx: HilContext) -> None:
+    ctx.need_device()
+    if not ctx.anim:
+        raise Skip(f"firmware lacks OLED idle animation (GET_INFO flag bit3, fw 0.{ver.MIN_FW_MINOR_ANIM}+)")
+
+
+def hil_anim_blob(frames: int = 12) -> bytes:
+    """Small deterministic test animation (bouncing 'HIL' text)."""
+    from ..animation import presets as P
+
+    fr, _fps = P.bouncing_text("HIL", frames=frames, scale=2)
+    return A.build_blob(fr, 10, loop=True, name="hiltest")
+
+
+def t_anim_info(ctx: HilContext, res: TestResult) -> None:
+    _need_anim(ctx)
+    assert ctx.dev is not None
+    info = ctx.dev.anim_info()
+    ctx.orig_anim_info = info
+    ctx.orig_anim_settings = ctx.dev.anim_settings_get()
+    ctx.check(info["region_size"] == A.REGION_SIZE, f"region_size {info['region_size']} != {A.REGION_SIZE}")
+    ctx.check(info["max_frames_raw"] == A.MAX_FRAMES_RAW, f"max_frames_raw {info['max_frames_raw']}")
+    ctx.check(info["format_version"] == A.VERSION, f"format version {info['format_version']}")
+    ctx.check(not info["uploading"], "an animation upload is already open")
+    ctx.check(info["region_ok"], "firmware reports the animation region overlaps the image")
+    if info["stored_valid"]:
+        blob = ctx.dev.anim_download()
+        ctx.check(blob is not None and len(blob) == info["total_len"], "ANIM_READ length mismatch")
+        ctx.check(F.crc32(blob) == info["crc"], "ANIM_READ CRC != ANIM_INFO crc")
+        parsed = A.parse_blob(blob)
+        ctx.check(len(parsed.frames) == info["frame_count"], "frame_count mismatch")
+        ctx.orig_anim_blob = blob
+    res.metrics.update(info=info, settings=ctx.orig_anim_settings)
+    stored = (f"stored '{info['name']}' {info['frame_count']} frames @ {info['fps']} fps "
+              f"{info['total_len']} B (read back + parsed)" if info["stored_valid"] else "no stored animation")
+    t = ""
+    if info["last_frame_bus_us"]:
+        t = f"; last OLED frame {info['last_frame_bus_us']} us bus / {info['last_frame_wall_us']} us wall"
+    s = ctx.orig_anim_settings
+    res.detail = (f"{stored}; settings enabled={s['enabled']} idle={s['idle_timeout_s']} s "
+                  f"blank={s['blank_timeout_s']} s{t}")
+
+
+def t_anim_protocol(ctx: HilContext, res: TestResult) -> None:
+    _need_anim(ctx)
+    assert ctx.dev is not None
+    blob = hil_anim_blob()
+    crc = F.crc32(blob)
+    n = 0
+
+    def begin(total=len(blob), c=crc):
+        return ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", total, c))
+
+    def data(off, chunk):
+        return ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk)
+
+    try:
+        ctx.expect_nak(begin(total=8), F.CFG_ERR_EINVAL, "ANIM_BEGIN len 8")
+        ctx.expect_nak(begin(total=A.REGION_SIZE + 1), F.CFG_ERR_EINVAL, "ANIM_BEGIN len > region")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_BEGIN, b"\x00\x01"), F.CFG_ERR_EINVAL, "ANIM_BEGIN short payload")
+        ctx.expect_nak(data(0, blob[:16]), F.CFG_ERR_EINVAL, "ANIM_DATA without BEGIN")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT), F.CFG_ERR_EINVAL, "ANIM_COMMIT without BEGIN")
+        n += 5
+        ctx.expect_ok(begin(), F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN")
+        ctx.expect_nak(begin(), F.CFG_ERR_EBUSY, "ANIM_BEGIN twice")
+        ctx.expect_ok(data(0, blob[:48]), F.CFG_CMD_ANIM_DATA, "ANIM_DATA @0")
+        ctx.expect_nak(data(96, blob[96:144]), F.CFG_ERR_EINVAL, "ANIM_DATA out of order")
+        ctx.expect_nak(data(0, blob[:48]), F.CFG_ERR_EINVAL, "ANIM_DATA replay")
+        ctx.expect_ok(data(48, blob[48:96]), F.CFG_CMD_ANIM_DATA, "ANIM_DATA @48")
+        info = ctx.dev.anim_info()
+        ctx.check(info["uploading"] and info["upload_got"] == 96, f"ANIM_INFO during upload {info}")
+        # EBUSY across upload kinds while the animation upload is open.
+        pb = test_profile_blob()
+        ctx.expect_nak(ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
+                       F.CFG_ERR_EBUSY, "PROFILE_BEGIN during anim upload")
+        mb = test_macro_blob()
+        ctx.expect_nak(ctx.req(F.CFG_CMD_MACRO_BEGIN, struct.pack("<BHI", 0, len(mb), F.crc32(mb))),
+                       F.CFG_ERR_EBUSY, "MACRO_BEGIN during anim upload")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_SAVE_ALL), F.CFG_ERR_EBUSY, "SAVE_ALL during anim upload")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, A.pack_settings(True, 60, 600)),
+                       F.CFG_ERR_EBUSY, "ANIM_SETTINGS_SET during anim upload")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", 0)), F.CFG_ERR_EBUSY,
+                       "ANIM_READ during anim upload")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_PREVIEW, bytes([A.PREVIEW_PLAY])), F.CFG_ERR_EBUSY,
+                       "ANIM_PREVIEW during anim upload")
+        # Incomplete COMMIT auto-aborts (nothing was flushed: < 4 KiB sent).
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT), F.CFG_ERR_EINVAL, "ANIM_COMMIT incomplete")
+        ctx.check(not ctx.dev.anim_info()["uploading"], "upload still open after failed COMMIT")
+        n += 14
+        # ABORT path.
+        ctx.expect_ok(begin(), F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN (abort test)")
+        ctx.expect_ok(data(0, blob[:48]), F.CFG_CMD_ANIM_DATA, "ANIM_DATA @0")
+        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_ABORT), F.CFG_CMD_ANIM_ABORT, "ANIM_ABORT")
+        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_ABORT), F.CFG_CMD_ANIM_ABORT, "ANIM_ABORT idempotent")
+        n += 4
+        # Reverse EBUSY: animation BEGIN while a profile upload is open.
+        ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
+                      F.CFG_CMD_PROFILE_BEGIN, "PROFILE_BEGIN")
+        ctx.expect_nak(begin(), F.CFG_ERR_EBUSY, "ANIM_BEGIN during profile upload")
+        ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_ABORT), F.CFG_CMD_PROFILE_ABORT, "PROFILE_ABORT")
+        n += 3
+        # Stored animation untouched (no sector was written).
+        after = ctx.dev.anim_info()
+        if ctx.orig_anim_info is not None:
+            ctx.check(after["stored_valid"] == ctx.orig_anim_info["stored_valid"]
+                      and after["crc"] == ctx.orig_anim_info["crc"], "stored animation changed")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", A.REGION_SIZE)), F.CFG_ERR_EINVAL,
+                       "ANIM_READ past region")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x02" + bytes(7)), F.CFG_ERR_EINVAL,
+                       "ANIM_SETTINGS_SET enabled=2")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x01"), F.CFG_ERR_EINVAL,
+                       "ANIM_SETTINGS_SET short")
+        n += 4
+    finally:
+        ctx.abort_uploads()
+    res.metrics.update(checks=n)
+    res.detail = (f"bad BEGIN/DATA/COMMIT → EINVAL, sequential DATA only, EBUSY both ways vs profile/macro/"
+                  f"SAVE_ALL/settings/read/preview, incomplete COMMIT auto-aborts, ABORT idempotent, "
+                  f"stored animation untouched ({n} checks, no flash writes)")
+
+
+def t_anim_preview(ctx: HilContext, res: TestResult) -> None:
+    _need_anim(ctx)
+    assert ctx.dev is not None
+    try:
+        ctx.dev.anim_preview(A.PREVIEW_BUILTIN)
+        i = ctx.dev.anim_info()
+        ctx.check(i["playing"] and i["builtin_active"] and i["preview"], f"builtin preview state {i['status']:#x}")
+        ctx.dev.anim_preview(A.PREVIEW_PLAY)
+        i = ctx.dev.anim_info()
+        ctx.check(i["playing"], "PLAY preview not playing")
+        ctx.check(i["builtin_active"] == (not i["stored_valid"]), "PLAY picks stored/builtin wrongly")
+        ctx.dev.anim_preview(A.PREVIEW_BLANK)
+        ctx.check(ctx.dev.anim_info()["blanked"], "BLANK preview not blanked")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_PREVIEW, bytes([9])), F.CFG_ERR_EINVAL, "ANIM_PREVIEW mode 9")
+        if ctx.opts.interactive:
+            time.sleep(1.0)
+    finally:
+        ctx.dev.anim_preview(A.PREVIEW_STOP)
+    i = ctx.dev.anim_info()
+    ctx.check(not i["playing"] and not i["blanked"], "STOP did not return to the normal UI")
+    res.detail = "builtin → stored/builtin play → blank → stop state machine via ANIM_INFO; bad mode → EINVAL"
+
+
+def t_anim_settings(ctx: HilContext, res: TestResult) -> None:
+    _need_anim(ctx)
+    assert ctx.dev is not None
+    if not ctx.opts.allow_flash_write:
+        raise Skip("ANIM_SETTINGS_SET rewrites the storage sector — rerun with --allow-flash-write")
+    orig = ctx.orig_anim_settings or ctx.dev.anim_settings_get()
+    test = {"enabled": not orig["enabled"], "idle_timeout_s": 17, "blank_timeout_s": 1234}
+    try:
+        got = ctx.dev.anim_settings_set(**test)
+        ctx.check(got == test, f"SETTINGS_SET echoed {got}")
+        ctx.check(ctx.dev.anim_settings_get() == test, "SETTINGS_GET after SET differs")
+        # Profiles / macros must survive the MPFL rewrite.
+        for i in range(5):
+            ctx.check(ctx.meta("profile", i)["crc"] == ctx.orig_profile_crc.get(i), f"profile {i} changed")
+    finally:
+        ctx.dev.anim_settings_set(**orig)
+    ctx.check(ctx.dev.anim_settings_get() == orig, "settings not restored")
+    res.metrics.update(flash_writes=2)
+    res.detail = f"set {test} → get matches, profiles intact, restored {orig} (2 flash writes)"
+
+
+def t_anim_roundtrip(ctx: HilContext, res: TestResult) -> None:
+    _need_anim(ctx)
+    assert ctx.dev is not None
+    if not ctx.opts.allow_flash_write:
+        raise Skip("animation upload programs the flash region — rerun with --allow-flash-write")
+    backup = ctx.orig_anim_blob
+    blob = hil_anim_blob(frames=24)
+    t0 = time.perf_counter()
+    ctx.dev.anim_upload(blob)
+    ms = (time.perf_counter() - t0) * 1000.0
+    try:
+        info = ctx.dev.anim_info()
+        ctx.check(info["stored_valid"] and info["crc"] == F.crc32(blob), f"ANIM_INFO after upload {info}")
+        ctx.check(info["frame_count"] == 24 and info["fps"] == 10 and info["name"] == "hiltest",
+                  "header fields mismatch")
+        rb = ctx.dev.anim_download()
+        ctx.check(rb == blob, "read-back differs from uploaded blob")
+        # Bad CRC: data is flushed then rejected → stored animation invalidated.
+        bad_crc = F.crc32(blob) ^ 0xDEADBEEF
+        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(blob), bad_crc)),
+                      F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN bad crc")
+        for off, chunk in A.iter_chunks(blob):
+            ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk, timeout_ms=5000),
+                          F.CFG_CMD_ANIM_DATA, f"ANIM_DATA@{off}")
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG,
+                       "ANIM_COMMIT bad crc")
+        ctx.check(not ctx.dev.anim_info()["stored_valid"], "stored animation still valid after bad COMMIT")
+        # Structurally invalid blob with a correct CRC (fps 0 in header).
+        broken = bytearray(blob)
+        broken[8] = 0
+        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(broken), F.crc32(bytes(broken)))),
+                      F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN broken")
+        for off, chunk in A.iter_chunks(bytes(broken)):
+            ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk, timeout_ms=5000)
+        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG,
+                       "ANIM_COMMIT invalid header")
+    finally:
+        ctx.abort_uploads()
+        if backup is not None:
+            ctx.dev.anim_upload(backup)
+            restored = "original animation re-uploaded"
+        else:
+            restored = "no animation stored originally → left invalidated (builtin)"
+    after = ctx.dev.anim_info()
+    if backup is not None:
+        ctx.check(after["stored_valid"] and after["crc"] == F.crc32(backup), "restore failed")
+    else:
+        ctx.check(not after["stored_valid"], "expected no stored animation after restore")
+    res.metrics.update(upload_ms=round(ms, 1), blob_len=len(blob))
+    res.detail = (f"{len(blob)} B / 24 frames uploaded in {ms:.0f} ms, info + read-back match; bad CRC and "
+                  f"invalid header → EBADMSG + invalidated; {restored}")
 
 
 TESTS: list[tuple[str, str, Callable[[HilContext, TestResult], None]]] = [
@@ -747,8 +1002,13 @@ TESTS: list[tuple[str, str, Callable[[HilContext, TestResult], None]]] = [
     ("macro_roundtrip", "7b. Macro backup → upload → verify → restore", t_macro_roundtrip),
     ("active", "8. SET_ACTIVE / GET_ACTIVE cycle", t_active),
     ("save_all", "9. SAVE_ALL", t_save_all),
-    ("interactive", "10. Interactive keys / encoder", t_interactive),
-    ("restore_check", "11. Device state restored", t_restore_check),
+    ("anim_info", "10a. ANIM_INFO + stored animation read-back", t_anim_info),
+    ("anim_protocol", "10b. Animation upload protocol + EBUSY (flash-free)", t_anim_protocol),
+    ("anim_preview", "10c. ANIM_PREVIEW state machine", t_anim_preview),
+    ("anim_settings", "10d. Idle settings set/get/restore", t_anim_settings),
+    ("anim_roundtrip", "10e. Animation upload → verify → bad CRC → restore", t_anim_roundtrip),
+    ("interactive", "11. Interactive keys / encoder", t_interactive),
+    ("restore_check", "12. Device state restored", t_restore_check),
 ]
 TEST_IDS = [t[0] for t in TESTS]
 

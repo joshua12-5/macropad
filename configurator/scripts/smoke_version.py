@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: version module imports + compat helpers (Step 24).
+"""Headless smoke: version module imports + compat helpers (Step 24b).
 
 Usage:
   cd configurator
@@ -30,9 +30,9 @@ def main() -> int:
 
     print("smoke_version: imports OK")
 
-    expect(ver.HOST_APP_VERSION == "0.24.0", f"HOST_APP={ver.HOST_APP_VERSION}")
+    expect(ver.HOST_APP_VERSION == "0.25.0", f"HOST_APP={ver.HOST_APP_VERSION}")
     expect(ver.PROTO_VER == 1, f"PROTO_VER={ver.PROTO_VER}")
-    expect(ver.FW_VERSION_MINOR_CURRENT == 24, "FW minor current")
+    expect(ver.FW_VERSION_MINOR_CURRENT == 25, "FW minor current")
     expect(ver.PROTO_VER == frames.CFG_PROTO_VERSION, "PROTO vs frames")
     expect(ver.PROFILE_SCHEMA_VERSION == SCHEMA_VERSION == 1)
     expect(ver.MACRO_SCHEMA_VERSION == MACRO_SCHEMA_VERSION == 1)
@@ -62,6 +62,11 @@ def main() -> int:
     expect(ver.fw_supports_readback(0, 23))
     expect(ver.fw_supports_readback(0, 24))
     expect(not ver.fw_supports_readback(0, 22))
+    expect(ver.MIN_FW_MINOR_ANIM == 25)
+    expect(ver.fw_supports_anim(0, 25))
+    expect(not ver.fw_supports_anim(0, 24))
+    expect(frames.CFG_INFO_FLAG_ANIM == 0x08)
+    expect(frames.CFG_CMD_ANIM_BEGIN == 0x40 and frames.CFG_CMD_ANIM_PREVIEW == 0x48)
 
     # Wrong major never unlocks.
     expect(not ver.fw_supports_upload(1, 99))
@@ -71,9 +76,9 @@ def main() -> int:
     expect("0.16+" in tip or "0.16" in tip, tip)
 
     summary = ver.compat_summary(
-        {"fw_major": 0, "fw_minor": 24, "proto_ver": 1}
+        {"fw_major": 0, "fw_minor": 25, "proto_ver": 1}
     )
-    expect("0.24.0" in summary and "OK" in summary, summary)
+    expect("0.25.0" in summary and "OK" in summary, summary)
     bad_sum = ver.compat_summary(
         {"fw_major": 0, "fw_minor": 24, "proto_ver": 2}
     )

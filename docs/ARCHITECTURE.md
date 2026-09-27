@@ -134,3 +134,38 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
 - `macropad_config/selftest.py` + `--version` / `--self-test` / `--hil` in `app.py`
 - hidapi via cython-hidapi wheels (native lib embedded); Linux prefers its `hidraw` module
 - Firmware 0.24 / host 0.24.0: version bump only
+
+## Step 24b OLED idle animations
+
+- Firmware 0.25 / host 0.25.0: idle state machine (`anim.c`: ACTIVE → PLAYING → BLANK), any
+  key/encoder input wakes and is swallowed (`usb_hid_suppress_key`, encoder press marks the
+  long-press as consumed); built-in starfield when nothing is stored
+- `oled_driver.c` streams the framebuffer non-blockingly (`oled_driver_task()`, ≤ 2 × 16-byte
+  I2C chunks per 1 ms tick ≈ 0.81 ms; a full 1 KiB frame ≈ 26 ms bus time over ~33 ticks) —
+  the normal UI benefits too (no more 26 ms stalls per repaint)
+- Protocol `0x40`–`0x48` (ANIM_BEGIN/DATA/COMMIT/ABORT/INFO/READ, SETTINGS_GET/SET, PREVIEW),
+  GET_INFO flags bit3; idle settings in MPFL **v3**; blob format + authoring in
+  [`ANIMATION.md`](ANIMATION.md)
+- Host: `macropad_config/animation/` (codec, presets, imaging, GIF writer, projects) +
+  `widgets/anim_editor.py` (Tools → Idle animation…); mock + HIL tests `anim_*`
+
+### Flash map (Step 24b)
+
+2 MiB W25Q16 on the RP2040-Zero, XIP base `0x10000000`:
+
+| Flash offset | XIP address | Size | Content |
+|--------------|-------------|------|---------|
+| `0x000000` – image end | `0x10000000` – | ≈ 64 KiB today (UF2 128 KiB incl. boot2) | firmware image (`__flash_binary_end` = `0x1000FF98` with gcc 14.2) |
+| image end – `0x1DEFFF` | | ≈ 1.8 MiB | free (headroom checked in CI) |
+| `0x1DF000` – `0x1FEFFF` | `0x101DF000` | 128 KiB (32 sectors) | **animation region** (`ANIM_REGION_OFFSET`): `MPAN` blob, sector 0 holds the header |
+| `0x1FF000` – `0x1FFFFF` | `0x101FF000` | 4 KiB | **MPFL storage** v3: active slot, 5 profiles, 5 macros, idle settings |
+
+- `anim.c` static-asserts that the region ends exactly at the MPFL sector and is sector aligned;
+  at boot it compares `&__flash_binary_end` with the region start and disables stored animations
+  (built-in only, ANIM_INFO bit6 clear) if a future image ever grew into it.
+- `firmware.yml` fails the build when `__flash_binary_end` > `0x101DF000`.
+- Uploads erase + program only the sectors the blob covers (`ceil(total_len / 4096)`), one
+  sector per `flash_safe_execute()` call; failed COMMIT / aborted partial upload erase sector 0.
+- RAM: +7.3 KiB bss (4 KiB upload sector buffer, 1 KiB decode frame, 1 KiB I2C snapshot, 1 KiB
+  validation scratch, star table).
+

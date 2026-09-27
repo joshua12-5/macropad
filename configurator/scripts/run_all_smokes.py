@@ -26,6 +26,8 @@ SMOKES = [
     "smoke_profile_mgr.py",
     "smoke_macros.py",
     "smoke_hil_mock.py",
+    "smoke_anim_codec.py",
+    "smoke_anim_device.py",
     "smoke_packaging.py",
 ]
 

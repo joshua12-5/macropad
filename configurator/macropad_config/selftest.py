@@ -1,4 +1,4 @@
-"""Headless self-test for source and frozen builds (Step 24).
+"""Headless self-test for source and frozen builds (Step 24, anim check Step 24b).
 
 ``MacropadConfigurator --self-test`` (or ``python -m macropad_config
 --self-test``) imports every module, exercises the protocol / blob code,
@@ -50,6 +50,14 @@ MODULES = (
     "macropad_config.widgets.pad_preview",
     "macropad_config.widgets.profile_dialog",
     "macropad_config.widgets.profile_list",
+    "macropad_config.widgets.anim_editor",
+    "macropad_config.animation",
+    "macropad_config.animation.codec",
+    "macropad_config.animation.font5x7",
+    "macropad_config.animation.presets",
+    "macropad_config.animation.project",
+    "macropad_config.animation.gifwriter",
+    "macropad_config.animation.imaging",
     "PySide6.QtCore",
     "PySide6.QtGui",
     "PySide6.QtWidgets",
@@ -79,6 +87,35 @@ def _chk_frames() -> str:
     fr = F.unpack_frame(raw)
     assert fr.cmd == F.CFG_CMD_PING and fr.seq == 7 and bytes(fr.payload) == b"\x01\x02\x03"
     return f"crc32 + frame roundtrip ({len(raw)} B report)"
+
+
+def _chk_anim() -> str:
+    """Step 24b: animation blob encode/decode (all presets + edge frames)."""
+    from .animation import codec as A
+    from .animation import presets as P
+
+    edge = [bytes(A.FRAME_BYTES), bytes([0xFF]) * A.FRAME_BYTES,
+            bytes(range(256)) * 4, bytes([0x55, 0xAA]) * 512]
+    blob = A.build_blob(edge, 12, loop=False, name="edge")
+    back = A.parse_blob(blob)
+    assert back.frames == edge and back.fps == 12 and not back.loop, "edge roundtrip"
+    assert A.packbits_decode(A.packbits_encode(bytes(1024)), 1024) == bytes(1024)
+    sizes = []
+    for key in P.PRESETS:
+        frames, fps = P.generate(key)
+        b = A.build_blob(frames, fps, True, key)
+        assert A.parse_blob(b).frames == frames, f"preset {key} roundtrip"
+        assert len(b) <= A.REGION_SIZE, f"preset {key} too large"
+        sizes.append(f"{key} {len(frames)}f/{len(b)}B")
+    bad = bytearray(blob)
+    bad[A.HEADER_SIZE + 5] ^= 0x01
+    try:
+        A.parse_blob(bytes(bad))
+    except A.AnimFormatError:
+        pass
+    else:
+        raise AssertionError("corrupted blob accepted")
+    return "encode/decode ok: " + ", ".join(sizes)
 
 
 def _chk_data() -> str:
@@ -149,15 +186,27 @@ def _chk_qt() -> str:
     for _ in range(5):
         app.processEvents()
     title = win.windowTitle()
+    from .widgets.anim_editor import AnimationEditorDialog
+
+    dlg = AnimationEditorDialog(win)
+    dlg.load_preset("bounce", confirm=False)
+    dlg.show()
+    for _ in range(3):
+        app.processEvents()
+    anim_frames = len(dlg.frames)
+    dlg.dirty = False
+    dlg.close()
     win.close()
     app.processEvents()
-    return f"MainWindow ok on '{app.platformName()}' ({title})"
+    return (f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on "
+            f"'{app.platformName()}' ({title})")
 
 
 CHECKS: tuple[tuple[str, Callable[[], str]], ...] = (
     ("version", _chk_version),
     ("imports", _chk_imports),
     ("frames", _chk_frames),
+    ("anim", _chk_anim),
     ("data", _chk_data),
     ("hid", _chk_hid),
     ("hil_mock", _chk_hil_mock),

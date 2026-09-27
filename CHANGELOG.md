@@ -13,6 +13,57 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 - Code signing / notarisation for the Windows and macOS configurator builds.
 - More hardware coverage (HIL runs on real boards per release).
 
+## [0.25.0] — Unreleased
+
+Step 24b — OLED idle animations. Firmware **0.25**, host **0.25.0**, UF2 `macropad_step24b`,
+USB `bcdDevice` **0x0119**. Not tagged / released yet.
+
+### Added
+
+- **Firmware idle animations** (`anim.c`): after `idle_timeout` (default 60 s, 0 = disabled) with
+  no key / encoder input the OLED plays the stored animation at its fps (looping or holding the
+  last frame); a second `blank_timeout` (default 10 min, 0 = never) switches the panel off for
+  burn-in protection. Any key / encoder input wakes the normal UI and is **swallowed** (the waking
+  key stays out of HID reports until released; a waking encoder turn / press is dropped and does
+  not open the profile menu). Built-in procedural starfield when nothing is uploaded.
+- **Animation flash region**: 128 KiB at `0x1DF000`–`0x1FEFFF`, directly below the MPFL sector,
+  static-asserted and boot-checked against the image end; `MPAN` v1 blob (32-byte header with
+  magic, version, frame count, fps, loop flag, CRC32, name + RAW / PackBits-RLE / XOR-delta-RLE
+  frames in SSD1306 page order). Up to 127 frames worst case (uncompressed), 255 max.
+- **Protocol `0x40`–`0x48`**: `ANIM_BEGIN` / `ANIM_DATA` / `ANIM_COMMIT` / `ANIM_ABORT` /
+  `ANIM_INFO` / `ANIM_READ` / `ANIM_SETTINGS_GET` / `ANIM_SETTINGS_SET` / `ANIM_PREVIEW`;
+  GET_INFO flags **bit3** (`CFG_INFO_FLAG_ANIM`). Same 48-byte chunk / CRC32 / `EBUSY` rules as
+  profile and macro uploads; COMMIT validates the whole blob in flash (`EBADMSG` + invalidate on
+  failure); only the needed sectors are erased, via `flash_safe_execute()`.
+- **Configurator: Tools → Idle animation…** — frame strip with thumbnails (add / duplicate /
+  delete / reorder), 128×64 pixel canvas (pen, eraser, line, rectangle, fill, brush size, invert,
+  clear, shift, onion skin, grid, zoom, undo / redo), live preview at the chosen fps, settings
+  (fps, loop, enabled, idle / blank timeout), GIF / PNG-sequence / single-image import (fit or
+  stretch, threshold or Floyd–Steinberg dithering, invert), 4 presets (starfield, bouncing text,
+  scrolling text with your text, pulse / breathing), projects saved as `*.mpanim.json` in the
+  user data folder, GIF and `.mpan` export, device upload with progress, preview on device,
+  push / read settings; clear message for firmware < 0.25.
+- Host package `macropad_config/animation/` (codec, presets, imaging, GIF writer, projects,
+  5×7 font), `device.py` `anim_*` API, mock firmware animation model, HIL tests `anim_info`,
+  `anim_protocol`, `anim_preview`, `anim_settings`, `anim_roundtrip`; `restore_check` also
+  compares the stored animation + idle settings.
+- Smokes `smoke_anim_codec.py` (host codec cross-checked against the firmware C decoder compiled
+  on the host) and `smoke_anim_device.py` (protocol vs mock incl. seeded bugs, editor GUI);
+  `--self-test` includes an animation encode / decode check. 13 smokes.
+- `docs/ANIMATION.md`; flash map in `docs/ARCHITECTURE.md`; manual idle checklist in
+  `docs/HARDWARE_TEST.md`.
+
+### Changed
+
+- **Non-blocking OLED flush**: `oled_driver_task()` streams the framebuffer in 16-byte I2C chunks
+  (≤ 2 per 1 ms tick ≈ 0.81 ms) instead of blocking ≈ 26 ms per 1 KiB frame at 400 kHz; the
+  normal UI benefits too.
+- Flash storage image **MPFL v3** (v2 + idle settings); v1 / v2 still load and are rewritten as
+  v3 on the next save.
+- `firmware.yml` size check now fails when the image reaches the animation region and prints the
+  headroom.
+- Firmware size (gcc 14.2): text +8512 B, bss +7532 B, UF2 131072 B (+16896).
+
 ## [0.24.0] — 2026-09-27
 
 ### Added

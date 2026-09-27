@@ -5,6 +5,17 @@
 
 Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator.
 
+## Features
+
+- 12 keys + encoder, 5 on-device profiles (keys, shortcuts, media, macros), on-device profile menu
+- Macro library with flash-backed bank; host-driven app auto-switch
+- **OLED idle animations** (fw 0.25+): after a configurable idle time the OLED plays your own
+  animation (or a built-in starfield), any key/encoder input wakes it without being sent to the
+  PC, and a second timeout blanks the panel for burn-in protection. Draw frames pixel by pixel,
+  import GIF / PNG sequences with dithering, or start from presets in the configurator's
+  **Tools → Idle animation…** editor — see [`docs/ANIMATION.md`](docs/ANIMATION.md)
+- Desktop configurator (Windows / macOS / Linux), headless smokes + hardware-in-the-loop test suite
+
 ## Layout
 
 ```
@@ -42,6 +53,7 @@ OLED                         ENCODER
 | 22 | Verified firmware build + CI UF2 artifact | Done |
 | 23 | Hardware-in-the-loop test tooling | Done |
 | 24 | Release packaging (tag → GitHub Release) | Done |
+| 24b | OLED idle animations (firmware + editor) | Done (unreleased) |
 
 ## Download
 
@@ -61,7 +73,20 @@ SmartScreen / macOS Gatekeeper workarounds. `MacropadConfigurator --self-test` c
 headlessly; `--version` prints the version. Host and firmware minor versions should match
 (Help → About / Device → Get info).
 
-**Step 24** adds a tag-triggered release pipeline
+**Step 24b** adds **OLED idle animations**. Firmware: an idle state machine (idle timeout,
+default 60 s; blank timeout, default 10 min; 0 disables either), wake input swallowed, a
+non-blocking OLED flush so frame pushes never stall the matrix scan or USB, a dedicated 128 KiB
+animation region below the profile sector (up to 127 uncompressed frames, typically 500+ with the
+built-in RLE/delta compression), nine new protocol commands `0x40`–`0x48` (GET_INFO flag bit3),
+idle settings persisted in MPFL v3, and a built-in starfield. Configurator: **Tools → Idle
+animation…** with a 128×64 pixel editor (pen/eraser/line/rect/fill, invert, shift, onion skin,
+undo), frame list, live preview, GIF / image / PNG-sequence import with threshold or
+Floyd–Steinberg dithering, 4 presets (starfield, bouncing text, scrolling text, pulse), project
+files (`.mpanim.json`), GIF export and device upload / preview / settings. 13 host smokes.
+Versions: firmware **0.25**, host **0.25.0**, UF2 `macropad_step24b`, `bcdDevice` 0x0119.
+Details: [`docs/ANIMATION.md`](docs/ANIMATION.md).
+
+**Step 24** (kept) adds a tag-triggered release pipeline
 ([`.github/workflows/release.yml`](.github/workflows/release.yml)): pushing `vX.Y.Z` checks the
 tag against `version.py` / `FW_VERSION` / CHANGELOG, builds the firmware and PyInstaller bundles
 for Windows, macOS and Linux, runs a headless `--self-test` on each packaged build and publishes a
@@ -112,7 +137,7 @@ Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTU
 Version matrix / compat: [`docs/VERSIONING.md`](docs/VERSIONING.md).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Cut a release: [`docs/RELEASE.md`](docs/RELEASE.md).
 Manual hardware checklist: [`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
-CI runs **host configurator smokes only** (no firmware build).
+CI runs host configurator smokes (`smokes.yml`) and the firmware build + size / flash-map check (`firmware.yml`).
 
 ## Protocol
 
@@ -151,6 +176,7 @@ python -m macropad_config
 Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO (shows `active_slot`).
 **Device → Upload profile / macros** sync flash banks;
 **Device → Save device state** sends `SAVE_ALL` (`0x32`).
+**Tools → Idle animation…** draws / imports OLED idle animations and uploads them (fw 0.25+).
 **Tools → Auto-switch…** edits rules; **Device → Auto-switch enabled** polls the
 foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
 
@@ -172,6 +198,8 @@ python scripts/smoke_macros_blob.py
 python scripts/smoke_autoswitch.py
 python scripts/smoke_hil_mock.py      # HIL suite vs mock device
 python scripts/smoke_packaging.py     # release tooling + --version
+python scripts/smoke_anim_codec.py    # animation codec (host + compiled firmware C decoder), presets, GIF
+python scripts/smoke_anim_device.py   # animation protocol vs mock + editor GUI
 python -m macropad_config --self-test # full headless self-test (Qt offscreen)
 ```
 
@@ -181,7 +209,7 @@ See [`firmware/README.md`](firmware/README.md).
 
 Verified with [Pico SDK](https://github.com/raspberrypi/pico-sdk) tag **2.1.1** and
 `PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Flash target:
-`macropad_step24.uf2` — or download `macropad-fw-X.Y.Z.uf2` from the
+`macropad_step24b.uf2` — or download `macropad-fw-X.Y.Z.uf2` from the
 [Releases page](https://github.com/joshua12-5/macropad/releases) (or the `macropad-firmware-uf2`
 artifact of the latest `Firmware build` Actions run).
 
@@ -198,14 +226,16 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step24.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad_step24b.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 
 **USB:** IF0 keyboard+consumer; IF1 vendor config HID (usage page `0xFF00`), 64-byte framed protocol with profile upload.
 
-**Flash:** last 4 KiB sector holds magic/`MPFL` image with 5 packed profile blobs + CRC.
+**Flash:** last 4 KiB sector holds magic/`MPFL` image with 5 packed profile blobs + CRC
+(v3 adds the idle-animation settings); the 128 KiB just below it (`0x1DF000`–`0x1FEFFF`) holds
+the uploaded idle animation. Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#flash-map-step-24b).
 
 ## Pinout (locked)
 

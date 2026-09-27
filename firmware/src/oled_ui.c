@@ -1,4 +1,5 @@
 #include "oled_ui.h"
+#include "anim.h"
 #include "oled_driver.h"
 #include "profiles.h"
 
@@ -172,9 +173,15 @@ void oled_ui_task(void) {
         mark_dirty();
     }
 
-    if (dirty) {
+    /* Step 24b: the idle animation / blanking owns the framebuffer; keep the
+     * dirty flag so the UI repaints as soon as it is released. */
+    if (dirty && !anim_screen_owned()) {
         render();
     }
+}
+
+void oled_ui_invalidate(void) {
+    mark_dirty();
 }
 
 void oled_ui_set_profile_name(const char *name) {

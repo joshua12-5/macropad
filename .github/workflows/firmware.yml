@@ -56,7 +56,7 @@ jobs:
         working-directory: macropad/firmware
         run: ninja -C build
 
-      - name: Size + storage-offset check
+      - name: Size + flash-map check
         working-directory: macropad/firmware
         run: |
           set -euo pipefail
@@ -65,11 +65,14 @@ jobs:
           arm-none-eabi-size "$elf"
           ls -l "$uf2"
           end=$(arm-none-eabi-nm "$elf" | awk '$3=="__flash_binary_end"{print $1}')
-          # Storage = last 4 KiB sector of 2 MiB flash: XIP_BASE + 0x1FF000.
+          # Flash map (2 MiB): image from 0x000000, idle-animation region
+          # 0x1DF000-0x1FEFFF (128 KiB, Step 24b), MPFL storage sector 0x1FF000.
+          anim=$((0x10000000 + 0x1DF000))
           storage=$((0x10000000 + 0x1FF000))
-          echo "flash_binary_end=0x$end storage=0x$(printf '%X' $storage)"
-          if [ $((16#$end)) -ge $storage ]; then
-            echo "::error::firmware image overlaps storage sector"; exit 1
+          echo "flash_binary_end=0x$end anim=0x$(printf '%X' $anim) storage=0x$(printf '%X' $storage)"
+          echo "headroom below anim region: $(( (anim - 16#$end) / 1024 )) KiB"
+          if [ $((16#$end)) -gt $anim ]; then
+            echo "::error::firmware image overlaps the animation region / storage sector"; exit 1
           fi
 
       - name: Upload UF2 + ELF artifact

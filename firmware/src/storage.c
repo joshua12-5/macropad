@@ -1,5 +1,6 @@
 #include "storage.h"
 
+#include "anim.h"
 #include "config_protocol.h"
 #include "macros.h"
 #include "profiles.h"
@@ -35,7 +36,11 @@
 #define STORAGE_V1_IMAGE_SIZE (STORAGE_V1_BODY_SIZE + STORAGE_CRC_SIZE)
 
 #define STORAGE_V2_BODY_SIZE  (STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE + STORAGE_MACROS_SIZE)
-#define STORAGE_IMAGE_SIZE    (STORAGE_V2_BODY_SIZE + STORAGE_CRC_SIZE)
+
+/* Step 24b: v3 = v2 body + idle-animation settings block, then CRC. */
+#define STORAGE_ANIM_OFFSET   STORAGE_V2_BODY_SIZE
+#define STORAGE_V3_BODY_SIZE  (STORAGE_V2_BODY_SIZE + ANIM_SETTINGS_SIZE)
+#define STORAGE_IMAGE_SIZE    (STORAGE_V3_BODY_SIZE + STORAGE_CRC_SIZE)
 
 _Static_assert(STORAGE_IMAGE_SIZE <= FLASH_SECTOR_SIZE, "storage image exceeds sector");
 _Static_assert(PROFILE_BLOB_V1_SIZE == 148u, "PROFILE_BLOB_V1_SIZE mismatch");
@@ -128,6 +133,19 @@ static bool image_valid_v2(const uint8_t *img) {
     return image_crc_ok(img, STORAGE_V2_BODY_SIZE);
 }
 
+static bool image_valid_v3(const uint8_t *img) {
+    if (rd_u32_le(&img[0]) != STORAGE_MAGIC) {
+        return false;
+    }
+    if (rd_u16_le(&img[4]) != STORAGE_VERSION_3) {
+        return false;
+    }
+    if (img[6] >= PROFILE_SLOT_COUNT) {
+        return false;
+    }
+    return image_crc_ok(img, STORAGE_V3_BODY_SIZE);
+}
+
 static bool load_profiles_from_image(const uint8_t *img) {
     uint8_t active = img[6];
     for (uint8_t i = 0; i < PROFILE_SLOT_COUNT; i++) {
@@ -158,7 +176,7 @@ static bool load_macros_from_image(const uint8_t *img) {
 static bool build_image(uint8_t *out, uint8_t active_slot) {
     memset(out, 0, STORAGE_IMAGE_SIZE);
     wr_u32_le(&out[0], STORAGE_MAGIC);
-    wr_u16_le(&out[4], STORAGE_VERSION_2);
+    wr_u16_le(&out[4], STORAGE_VERSION_3);
     out[6] = active_slot;
     out[7] = 0;
 
@@ -181,8 +199,10 @@ static bool build_image(uint8_t *out, uint8_t active_slot) {
         }
     }
 
-    uint32_t crc = cfg_crc32(out, STORAGE_V2_BODY_SIZE);
-    wr_u32_le(&out[STORAGE_V2_BODY_SIZE], crc);
+    anim_settings_pack(&out[STORAGE_ANIM_OFFSET]);
+
+    uint32_t crc = cfg_crc32(out, STORAGE_V3_BODY_SIZE);
+    wr_u32_le(&out[STORAGE_V3_BODY_SIZE], crc);
     return true;
 }
 
@@ -209,7 +229,7 @@ static bool program_image(uint8_t *sector) {
         return false;
     }
 
-    return image_valid_v2(flash_image());
+    return image_valid_v3(flash_image());
 }
 
 void storage_init(void) {
@@ -219,6 +239,22 @@ void storage_init(void) {
     g_active_persist_pending = false;
 
     const uint8_t *img = flash_image();
+    anim_settings_defaults();   /* v1/v2 images carry no idle settings */
+
+    if (image_valid_v3(img)) {
+        if (!load_profiles_from_image(img) || !load_macros_from_image(img)) {
+            printf("stor load default\n");
+            macros_factory_reset_all();
+            return;
+        }
+        if (!anim_settings_unpack(&img[STORAGE_ANIM_OFFSET])) {
+            anim_settings_defaults();
+        }
+        g_loaded_from_flash = true;
+        g_flash_in_sync = true;
+        printf("stor load v3\n");
+        return;
+    }
 
     if (image_valid_v2(img)) {
         if (!load_profiles_from_image(img) || !load_macros_from_image(img)) {
@@ -226,8 +262,9 @@ void storage_init(void) {
             macros_factory_reset_all();
             return;
         }
+        /* Idle settings at defaults; the next save upgrades to v3. */
         g_loaded_from_flash = true;
-        g_flash_in_sync = true;
+        g_flash_in_sync = false;
         printf("stor load v2\n");
         return;
     }
@@ -296,7 +333,7 @@ void storage_persist_task(void) {
     /* Step 23: nothing to do if flash already matches RAM incl. active_slot
      * (e.g. host cycled SET_ACTIVE and restored the original slot). */
     const uint8_t *img = flash_image();
-    if (g_flash_in_sync && image_valid_v2(img) &&
+    if (g_flash_in_sync && image_valid_v3(img) &&
         img[6] == profiles_active_index()) {
         printf("stor debounce skip (unchanged)\n");
         return;

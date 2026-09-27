@@ -30,6 +30,12 @@ extern "C" {
  * v1 images (profiles only) are loaded and macros stay at factory defaults;
  * the next save rewrites as v2.
  *
+ * Step 24b — v3 (current): the v2 body followed by an 8-byte idle-animation
+ * settings block (anim.h: enabled u8, flags u8, idle_timeout_s u16,
+ * blank_timeout_s u16, reserved u16), then the crc32. v1/v2 images still load
+ * (idle settings at defaults); every save writes v3. The animation frames
+ * themselves live in their own 128 KiB region below this sector (anim.h).
+ *
  * Step 19: SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
  * CFG_CMD_SAVE_ALL forces an immediate rewrite.
  * Step 23: the debounced persist is skipped when flash already holds a v2
@@ -39,7 +45,8 @@ extern "C" {
 #define STORAGE_MAGIC           0x4C46504Du  /* 'MPFL' LE */
 #define STORAGE_VERSION_1       1u
 #define STORAGE_VERSION_2       2u
-#define STORAGE_VERSION         STORAGE_VERSION_2
+#define STORAGE_VERSION_3       3u
+#define STORAGE_VERSION         STORAGE_VERSION_3
 #define STORAGE_FLAG_PRESENT    0x01u        /* GET_INFO flags bit0 */
 #define STORAGE_FLAG_MACRO_BANK 0x02u        /* GET_INFO flags bit1 */
 

@@ -21,6 +21,16 @@ import time
 from typing import Callable, Iterable, Optional, Tuple
 
 from .frames import (
+    CFG_ANIM_CHUNK_MAX,
+    CFG_CMD_ANIM_ABORT,
+    CFG_CMD_ANIM_BEGIN,
+    CFG_CMD_ANIM_COMMIT,
+    CFG_CMD_ANIM_DATA,
+    CFG_CMD_ANIM_INFO,
+    CFG_CMD_ANIM_PREVIEW,
+    CFG_CMD_ANIM_READ,
+    CFG_CMD_ANIM_SETTINGS_GET,
+    CFG_CMD_ANIM_SETTINGS_SET,
     CFG_CMD_GET_INFO,
     CFG_CMD_MACRO_ABORT,
     CFG_CMD_MACRO_BEGIN,
@@ -560,6 +570,104 @@ class ConfigDevice:
             raise DeviceError("bad MACRO_GET response")
         mid, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
         return {"id": mid, "len": length, "crc": crc}
+
+    # ---- Step 24b: OLED idle animation (fw 0.25+, GET_INFO flag bit3) ----
+
+    def _anim_cmd(self, cmd: int, payload: bytes, label: str, timeout_ms: Optional[int] = None) -> Frame:
+        old = self._timeout_ms
+        if timeout_ms is not None:
+            self._timeout_ms = timeout_ms
+        try:
+            resp = self.transact(cmd, self._next_seq(), payload)
+        finally:
+            self._timeout_ms = old
+        self._raise_if_nak(resp, label)
+        if resp.cmd != cmd:
+            raise DeviceError(f"{label} unexpected cmd 0x{resp.cmd:02X}")
+        return resp
+
+    def anim_info(self) -> dict:
+        """ANIM_INFO (0x44) → status dict (see animation.codec.parse_anim_info)."""
+        from ..animation.codec import parse_anim_info
+
+        return parse_anim_info(self._anim_cmd(CFG_CMD_ANIM_INFO, b"", "ANIM_INFO").payload)
+
+    def anim_settings_get(self) -> dict:
+        from ..animation.codec import unpack_settings
+
+        return unpack_settings(self._anim_cmd(CFG_CMD_ANIM_SETTINGS_GET, b"", "ANIM_SETTINGS_GET").payload)
+
+    def anim_settings_set(self, *, enabled: bool, idle_timeout_s: int, blank_timeout_s: int) -> dict:
+        """ANIM_SETTINGS_SET (0x47): persisted immediately (MPFL v3 rewrite)."""
+        from ..animation.codec import pack_settings, unpack_settings
+
+        pl = pack_settings(enabled, idle_timeout_s, blank_timeout_s)
+        resp = self._anim_cmd(CFG_CMD_ANIM_SETTINGS_SET, pl, "ANIM_SETTINGS_SET", timeout_ms=3000)
+        return unpack_settings(resp.payload)
+
+    def anim_preview(self, mode: int) -> None:
+        """ANIM_PREVIEW (0x48): 0 stop, 1 play stored, 2 builtin, 3 blank."""
+        self._anim_cmd(CFG_CMD_ANIM_PREVIEW, bytes([int(mode) & 0xFF]), "ANIM_PREVIEW")
+
+    def anim_abort(self) -> None:
+        self._anim_cmd(CFG_CMD_ANIM_ABORT, b"", "ANIM_ABORT", timeout_ms=3000)
+
+    def anim_upload(
+        self,
+        blob: bytes,
+        progress: Optional[Callable[[int, int], Optional[bool]]] = None,
+        *,
+        timeout_ms: int = 5000,
+    ) -> None:
+        """ANIM_BEGIN / DATA×N / COMMIT. ``progress(done, total)`` may return
+        False to cancel (→ ANIM_ABORT, DeviceError). Sector erase/program runs
+        inside DATA/COMMIT on the device, hence the long timeout."""
+        from ..protocol.frames import crc32 as _crc32
+
+        blob = bytes(blob)
+        started = committed = False
+        try:
+            self._anim_cmd(CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(blob), _crc32(blob)),
+                           "ANIM_BEGIN", timeout_ms=timeout_ms)
+            started = True
+            off = 0
+            while off < len(blob):
+                chunk = blob[off:off + CFG_ANIM_CHUNK_MAX]
+                self._anim_cmd(CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk,
+                               f"ANIM_DATA@{off}", timeout_ms=timeout_ms)
+                off += len(chunk)
+                if progress is not None and progress(off, len(blob)) is False:
+                    raise DeviceError("animation upload cancelled")
+            self._anim_cmd(CFG_CMD_ANIM_COMMIT, b"", "ANIM_COMMIT", timeout_ms=timeout_ms)
+            committed = True
+        except Exception:
+            if started and not committed:
+                try:
+                    self.anim_abort()
+                except Exception:
+                    pass
+            raise
+
+    def anim_read(self, offset: int, length: int) -> bytes:
+        """ANIM_READ (0x45) chunks from the flash region."""
+        out = bytearray()
+        while len(out) < length:
+            off = int(offset) + len(out)
+            resp = self._anim_cmd(CFG_CMD_ANIM_READ, struct.pack("<I", off), f"ANIM_READ@{off}")
+            if len(resp.payload) < 5:
+                raise DeviceError("short ANIM_READ response")
+            (roff,) = struct.unpack_from("<I", resp.payload, 0)
+            if roff != off:
+                raise DeviceError(f"ANIM_READ echoed offset {roff}, want {off}")
+            out += resp.payload[4:]
+        return bytes(out[:length])
+
+    def anim_download(self) -> Optional[bytes]:
+        """Read back the stored blob (None when no valid animation is stored)."""
+        info = self.anim_info()
+        if not info["stored_valid"]:
+            return None
+        return self.anim_read(0, info["total_len"])
 
 
 def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS, *, hid_module=None) -> dict:

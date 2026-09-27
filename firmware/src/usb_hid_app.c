@@ -22,6 +22,9 @@
 
 static uint8_t last_report[8];
 static bool last_valid;
+/* Step 24b: keys that woke the display from the idle animation are swallowed
+ * (not reported) until physically released. Bit (key_number - 1). */
+static uint16_t suppress_mask;
 
 static uint16_t consumer_held;
 static bool consumer_need_release;
@@ -115,7 +118,30 @@ static void tap_service(void) {
     }
 }
 
+static void suppress_refresh(void) {
+    if (suppress_mask == 0) {
+        return;
+    }
+    for (uint8_t kn = 1; kn <= PROFILE_KEY_COUNT; kn++) {
+        if ((suppress_mask & (1u << (kn - 1))) && !matrix_is_pressed(kn)) {
+            suppress_mask = (uint16_t)(suppress_mask & ~(1u << (kn - 1)));
+        }
+    }
+}
+
+void usb_hid_suppress_key(uint8_t key_number) {
+    if (key_number >= 1 && key_number <= PROFILE_KEY_COUNT) {
+        suppress_mask = (uint16_t)(suppress_mask | (1u << (key_number - 1)));
+    }
+}
+
+bool usb_hid_key_suppressed(uint8_t key_number) {
+    return key_number >= 1 && key_number <= PROFILE_KEY_COUNT &&
+           (suppress_mask & (1u << (key_number - 1))) != 0;
+}
+
 void usb_hid_task(void) {
+    suppress_refresh();
     tud_task();
     consumer_service();
     tap_service();
@@ -133,7 +159,7 @@ static void build_report_from_profile(uint8_t report[8]) {
     uint8_t slot = 0;
 
     for (uint8_t kn = 1; kn <= PROFILE_KEY_COUNT; kn++) {
-        if (!matrix_is_pressed(kn)) {
+        if (!matrix_is_pressed(kn) || usb_hid_key_suppressed(kn)) {
             continue;
         }
         const action_t *a = &p->keys[kn - 1];

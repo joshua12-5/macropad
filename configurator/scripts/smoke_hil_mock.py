@@ -82,17 +82,19 @@ def main() -> int:
     m = bytearray(test_macro_blob()); m[16] = 25
     expect(fw_macro_canon(bytes(m)) is None, "step_count 25 rejected")
 
-    print("smoke_hil_mock: default (flash-free) run, fw 0.23")
+    print("smoke_hil_mock: default (flash-free) run, current fw (0.25)")
     code, st, data, fw, out = run(["--mock"])
     expect(code == 0, f"default exit {code}\n{out}")
     expect(data["summary"]["FAIL"] == 0, f"failures: {data['summary']}")
     for tid in ("enumerate", "ping", "info", "echo", "malformed", "profile", "macro", "active",
-                "restore_check"):
+                "anim_info", "anim_protocol", "anim_preview", "restore_check"):
         expect(st.get(tid) == "PASS", f"{tid} = {st.get(tid)}")
-    for tid in ("profile_roundtrip", "macro_roundtrip", "save_all", "interactive"):
+    for tid in ("profile_roundtrip", "macro_roundtrip", "save_all", "anim_settings",
+                "anim_roundtrip", "interactive"):
         expect(st.get(tid) == "SKIP", f"{tid} should SKIP without flags, got {st.get(tid)}")
     fw.advance(5.0)  # let the SET_ACTIVE debounce fire
     expect(fw.flash_writes == 0, f"flash-free run wrote flash {fw.flash_writes}x")
+    expect(fw.anim_sector_writes == 0, f"flash-free run wrote anim sectors {fw.anim_sector_writes}x")
     expect("stor debounce skip (unchanged)" in fw.log, "debounce skip not exercised")
     ping = next(r for r in data["results"] if r["id"] == "ping")
     expect({"min_ms", "avg_ms", "max_ms"} <= set(ping["metrics"]), "latency metrics")
@@ -103,7 +105,12 @@ def main() -> int:
         expect(code == 0 and data["summary"]["FAIL"] == 0, f"{api}: flash run failed\n{out}")
         expect(st.get("profile_roundtrip") == "PASS" and st.get("macro_roundtrip") == "PASS"
                and st.get("save_all") == "PASS", f"{api}: roundtrips {st}")
-        expect(fw.flash_writes == 5, f"{api}: expected 5 flash writes, got {fw.flash_writes}")
+        expect(st.get("anim_settings") == "PASS" and st.get("anim_roundtrip") == "PASS",
+               f"{api}: anim flash tests {st}")
+        # 2 profile + 2 macro + SAVE_ALL + 2 idle-settings rewrites of the MPFL sector.
+        expect(fw.flash_writes == 7, f"{api}: expected 7 flash writes, got {fw.flash_writes}")
+        expect(fw.anim_sector_writes > 0 and fw.anim_stored is None,
+               f"{api}: anim region writes={fw.anim_sector_writes} stored={fw.anim_stored}")
         expect(fw.flash_image_valid_v2(), "flash image invalid after run")
         expect(fw.upload_kind == 0, "upload left open")
 
@@ -111,6 +118,8 @@ def main() -> int:
     code, st, data, fw, out = run(["--mock"], fw=MockFirmware(fw_minor=22))
     expect(code == 0, f"fw22 exit {code}\n{out}")
     expect(st.get("active") == "SKIP", "fw22 active should SKIP without flash flag")
+    expect(all(st.get(t) == "SKIP" for t in ("anim_info", "anim_protocol", "anim_preview")),
+           f"fw22 anim tests should SKIP: {st}")
     expect("WARN fw 0.22" in out, "fw22 version warning missing")
     code, st, _d, _fw, _o = run(["--mock", "--strict-version"], fw=MockFirmware(fw_minor=22))
     expect(code == 1 and st.get("info") == "FAIL", "--strict-version should FAIL fw22")

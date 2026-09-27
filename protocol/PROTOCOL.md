@@ -6,7 +6,10 @@ Step 17 — flash-backed **macro bank** sync + light protocol polish.
 Step 18 — host **auto app-switch** via `SET_ACTIVE`.
 Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
 Step 23 — HIL test tooling + `PROFILE_READ` / `MACRO_READ` readback.
-Step 24 — release packaging only; protocol unchanged (`FW_VERSION` 0.24, host 0.24.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
+Step 24 — release packaging only; protocol unchanged (`FW_VERSION` 0.24, host 0.24.0).
+Step 24b — **OLED idle animation** commands `0x40`–`0x48`, GET_INFO flags bit3, storage v3
+(`FW_VERSION` 0.25, host 0.25.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md) and
+[`../docs/ANIMATION.md`](../docs/ANIMATION.md).
 **Steps 14–20 are complete.**
 
 ## USB topology
@@ -71,6 +74,15 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | `0x30` | SET_ACTIVE | `slot u8` | empty OK (RAM + OLED; **debounced** flash persist) |
 | `0x31` | GET_ACTIVE | empty | `slot u8` (optional; GET_INFO also reports it) |
 | `0x32` | SAVE_ALL | empty | empty OK (immediate full storage rewrite) |
+| `0x40` | ANIM_BEGIN | `total_len u32 LE`, `blob_crc32 u32 LE` | empty OK (fw 0.25+) |
+| `0x41` | ANIM_DATA | `offset u32 LE` (sequential) + ≤ **48** bytes | empty OK |
+| `0x42` | ANIM_COMMIT | empty | empty OK (after flash CRC + structure check) |
+| `0x43` | ANIM_ABORT | empty | empty OK (idempotent) |
+| `0x44` | ANIM_INFO | empty | 40-byte status (below) |
+| `0x45` | ANIM_READ | `offset u32 LE` | `offset u32 LE` + ≤ **48** bytes of the flash region |
+| `0x46` | ANIM_SETTINGS_GET | empty | 8-byte idle settings block |
+| `0x47` | ANIM_SETTINGS_SET | 8-byte idle settings block | same block (after MPFL rewrite) |
+| `0x48` | ANIM_PREVIEW | `mode u8`: 0 stop, 1 play stored (built-in if none), 2 built-in, 3 blank | `mode u8` |
 | `0x7F` | NAK | — | device reply only; `payload[0]` = err |
 
 ### GET_INFO payload (14 bytes)
@@ -82,7 +94,7 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | 2 | u8 | `proto_ver` (`1`) |
 | 3 | u8 | `active_slot` |
 | 4 | u8 | `slot_count` |
-| 5 | u8 | `flags` — **bit0** flash storage, **bit1** macro bank present, **bit2** readback (`PROFILE_READ`/`MACRO_READ`, fw 0.23+) |
+| 5 | u8 | `flags` — **bit0** flash storage, **bit1** macro bank present, **bit2** readback (`PROFILE_READ`/`MACRO_READ`, fw 0.23+), **bit3** OLED idle animation (`0x40`–`0x48`, fw 0.25+) |
 | 6..13 | 8 bytes | product tag ASCII, e.g. `MACROPAD` (no NUL required) |
 
 ### Profile upload (Step 16)
@@ -174,22 +186,95 @@ the device cannot observe host applications.
 Host Device menu **Save device state** uses this for an explicit save without
 waiting for the debounce timer.
 
-### Flash image (storage v2)
+### OLED idle animation (Step 24b, fw 0.25+)
+
+Gate on GET_INFO flags **bit3** (`CFG_INFO_FLAG_ANIM`) or `version.fw_supports_anim()`;
+older firmware answers these commands with `EINVAL` (unknown cmd). The blob format
+(`MPAN` header + RAW / RLE / DELTA frame records) is specified in
+[`../docs/ANIMATION.md`](../docs/ANIMATION.md); the host builds it with
+`macropad_config.animation.codec.build_blob()`.
+
+**Upload** — same BEGIN / DATA / COMMIT / ABORT shape as profiles and macros, but the
+blob (32 … 131072 B) streams straight into the dedicated 128 KiB flash region at
+`0x1DF000` instead of a RAM staging buffer:
+
+1. `ANIM_BEGIN(total_len, crc32)` — `total_len` must be 36 … 131072 (`EINVAL`
+   otherwise). `EBUSY` while a profile/macro/animation upload is open. Stops any
+   playback (the normal UI returns).
+2. `ANIM_DATA(offset, bytes≤48)` — **sequential only**: `offset` must equal the bytes
+   received so far (`EINVAL` for gaps, replays, overruns or no BEGIN). Data is staged in
+   a 4 KiB sector buffer; each time a sector fills it is erased + programmed through
+   `flash_safe_execute()` (≈ 45–100 ms inside that DATA request — hosts use a 5 s
+   timeout). Only the sectors the blob needs are erased. A flash failure → `EBUSY` +
+   abort.
+3. `ANIM_COMMIT` — incomplete → `EINVAL` (auto-abort). The last partial sector is
+   flushed (0xFF padded), then the firmware CRCs `flash[0, total_len)` against the BEGIN
+   CRC and runs the full structural validation (header CRC, data CRC, every record
+   decodes to exactly 1024 B, frame 0 not DELTA). Failure → `EBADMSG` **and** sector 0
+   is erased (no half-valid animation survives; the built-in starfield plays instead).
+   Success → the new animation is active immediately. Worst case (full region) ≈ 0.2 s.
+4. `ANIM_ABORT` — closes the upload. If a sector was already written, sector 0 is
+   erased (built-in fallback); if not, the previous animation is untouched.
+
+While an animation upload is open: `PROFILE_BEGIN`, `MACRO_BEGIN`, `SAVE_ALL`,
+`ANIM_SETTINGS_SET`, `ANIM_READ` and `ANIM_PREVIEW` → `EBUSY`; `ANIM_BEGIN` while a
+profile/macro upload is open → `EBUSY`.
+
+**ANIM_INFO payload (40 bytes)**
+
+| Off | Type | Field |
+|-----|------|-------|
+| 0 | u8 | status: bit0 stored animation valid, bit1 upload open, bit2 playing, bit3 display blanked, bit4 built-in playing, bit5 host preview active, bit6 region usable (image does not overlap) |
+| 1 | u8 | blob format version (1) |
+| 2 | u16 | stored frame_count (0 if none) |
+| 4 | u8 | stored fps |
+| 5 | u8 | stored flags (bit0 loop) |
+| 6 | u32 | stored total_len (header + records) |
+| 10 | u32 | CRC32 of the stored blob (`total_len` bytes) |
+| 14 | u32 | region size (131072) |
+| 18 | u16 | max frames if every frame were RAW (127) |
+| 20 | u32 | last OLED frame push: I2C bus time µs |
+| 24 | u32 | last OLED frame push: wall time µs (queued → done) |
+| 28 | u32 | upload bytes received (while bit1) |
+| 32 | 8 | stored name (ASCII, NUL padded) |
+
+**Idle settings block (8 bytes)** — `enabled u8 (0/1)`, `flags u8 (0)`,
+`idle_timeout_s u16` (0 = never start the animation), `blank_timeout_s u16` (0 = never
+switch the display off), `reserved u16`. `ANIM_SETTINGS_SET` rejects `enabled > 1`
+(`EINVAL`), applies the settings, restarts the idle clock and rewrites the MPFL sector
+(v3) immediately; the reply echoes the stored block. Defaults: enabled, 60 s, 600 s.
+
+**ANIM_READ** returns raw flash bytes of the region (host reads `total_len` from
+ANIM_INFO first); `offset ≥ 131072` → `EINVAL`.
+
+**ANIM_PREVIEW** plays regardless of the `enabled` flag and ignores the blank timeout
+until any key/encoder input or `mode 0`.
+
+Device behaviour: after `idle_timeout_s` without key / encoder input the stored
+animation (built-in starfield if none) plays at its fps; any input wakes the normal UI
+and the waking press/turn is swallowed (no HID report, no action). After
+`blank_timeout_s` the SSD1306 is switched off (`0xAE`) — this also applies when the
+animation is disabled.
+
+### Flash image (storage v3)
 
 Last 4 KiB sector, magic `MPFL`:
 
 | Field | Notes |
 |-------|-------|
 | magic u32 | `MPFL` |
-| version u16 | **2** |
+| version u16 | **3** (Step 24b; 2 before) |
 | active_slot u8 | |
 | flags u8 | |
 | profile_blob[5][148] | |
 | macro_blob[5][162] | new in v2 |
+| anim_settings[8] | new in v3 (idle settings block above) |
 | crc32 | of everything before crc |
 
 v1 images (profiles only) still load; macros stay at factory defaults until the
-next save upgrades the sector to v2.
+next save upgrades the sector. v2 images load with default idle settings; every
+save writes v3. The animation frames live in their own region (see
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) flash map).
 
 ### Error codes (`NAK` payload[0])
 
@@ -198,7 +283,7 @@ next save upgrades the sector to v2.
 | 1 | `EINVAL` | bad version/length/unknown cmd / bad slot / incomplete upload |
 | 2 | `EBADMSG` | bad magic or CRC (frame or blob) |
 | 3 | `ENOSYS` | reserved — **not emitted** by v1 firmware (unknown cmds get `EINVAL`) |
-| 4 | `EBUSY` | upload already in progress (profile **or** macro) / flash program failed / SAVE_ALL while busy |
+| 4 | `EBUSY` | upload already in progress (profile, macro **or** animation) / flash program failed / SAVE_ALL / settings / preview while busy |
 
 Unknown `cmd` → NAK `EINVAL`. Bad magic/CRC → NAK `EBADMSG` when possible.
 
@@ -218,19 +303,24 @@ differs from the request.
 - `firmware/src/storage.c` — flash sector v2 + profile/macro upload staging
 - `firmware/src/profile_blob.c` / `macro_blob.c` — pack/unpack wire ↔ RAM
 - `firmware/src/macros.c` — factory defaults + RAM working set + playback
+- `firmware/src/anim.c` / `anim_codec.c` — idle state machine, animation region upload,
+  playback, built-in starfield / blob validation + PackBits decode (Step 24b)
 - HID instance **1** OUT → `config_protocol_on_host_report`
 
 UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 `cfg macro …`, `cfg set_active N`, `cfg get_active N`, `cfg save_all ok`,
 `stor load v2|v1|default`, `stor save ok|fail`, `stor debounce save`,
-`profile save ok`, `macro save ok`.
+`profile save ok`, `macro save ok`, `anim upload begin|abort`, `anim commit ok|rejected`,
+`anim play builtin|stored`, `anim wake`, `anim blank`, `stor load v3`.
 
 ## Host library
 
 - `configurator/macropad_config/protocol/frames.py` — pack/unpack + CRC
 - `configurator/macropad_config/protocol/profile_blob.py` — JSON ↔ profile blob
 - `configurator/macropad_config/protocol/macro_blob.py` — library ↔ macro blob
-- `configurator/macropad_config/protocol/device.py` — hidapi + shared chunked upload
+- `configurator/macropad_config/protocol/device.py` — hidapi + shared chunked upload,
+  `anim_upload` / `anim_download` / `anim_info` / `anim_settings_*` / `anim_preview`
+- `configurator/macropad_config/animation/` — blob codec, presets, GIF import/export, projects
 - `configurator/scripts/smoke_protocol.py` / `smoke_storage.py` /
   `smoke_macros_blob.py` / `smoke_autoswitch.py` — no hardware
 - `autoswitch/rules.json` + `configurator/macropad_config/autoswitch/` — host matcher

@@ -12,6 +12,9 @@ void usb_hid_task(void);
 
 /* Held keys from active profile matrix bindings. */
 void usb_hid_update_from_matrix(void);
+/* Step 24b: swallow a held key (woke the idle animation) until released. */
+void usb_hid_suppress_key(uint8_t key_number);
+bool usb_hid_key_suppressed(uint8_t key_number);
 
 void usb_hid_consumer_volume_up(void);
 void usb_hid_consumer_volume_down(void);

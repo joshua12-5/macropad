@@ -8,13 +8,13 @@
 extern "C" {
 #endif
 
-/* Step 15–24 — USB vendor-HID config channel (v1 framing). */
+/* Step 15–24b — USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        24u
+#define FW_VERSION_MINOR        25u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u
@@ -54,6 +54,18 @@ extern "C" {
 /* Step 19 — immediate full storage rewrite (Device menu Save) */
 #define CFG_CMD_SAVE_ALL        0x32u  /* empty payload */
 
+/* Step 24b — OLED idle animation (flash region below the MPFL sector) */
+#define CFG_CMD_ANIM_BEGIN      0x40u  /* total_len u32, blob_crc u32 */
+#define CFG_CMD_ANIM_DATA       0x41u  /* offset u32 (sequential), bytes <= 48 */
+#define CFG_CMD_ANIM_COMMIT     0x42u  /* verify CRC + structure, activate */
+#define CFG_CMD_ANIM_ABORT      0x43u
+#define CFG_CMD_ANIM_INFO       0x44u  /* → 40-byte status (docs/PROTOCOL.md) */
+#define CFG_CMD_ANIM_READ       0x45u  /* offset u32 → offset u32, bytes <= 48 */
+#define CFG_CMD_ANIM_SETTINGS_GET 0x46u /* → 8-byte settings block */
+#define CFG_CMD_ANIM_SETTINGS_SET 0x47u /* 8-byte settings block → same (saved) */
+#define CFG_CMD_ANIM_PREVIEW    0x48u  /* mode u8: 0 stop, 1 play, 2 builtin, 3 blank */
+#define CFG_ANIM_CHUNK_MAX      48u
+
 #define CFG_CMD_NAK             0x7Fu
 
 /* Compact err codes in NAK payload[0] (not full errno). */
@@ -66,6 +78,7 @@ extern "C" {
 #define CFG_INFO_FLAG_STORAGE   0x01u  /* bit0: flash profile storage present */
 #define CFG_INFO_FLAG_MACRO_BANK 0x02u /* bit1: flash macro bank present */
 #define CFG_INFO_FLAG_READBACK  0x04u  /* bit2: PROFILE_READ / MACRO_READ (Step 23) */
+#define CFG_INFO_FLAG_ANIM      0x08u  /* bit3: OLED idle animation cmds 0x40-0x48 (Step 24b) */
 
 #define CFG_PRODUCT_TAG         "MACROPAD"  /* exactly 8 chars on the wire */
 #define CFG_PRODUCT_TAG_LEN     8u

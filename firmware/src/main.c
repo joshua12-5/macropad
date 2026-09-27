@@ -1,4 +1,5 @@
 #include "actions.h"
+#include "anim.h"
 #include "macros.h"
 #include "board_pins.h"
 #include "encoder.h"
@@ -25,7 +26,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 24: release packaging ===\n");
+    printf("\n=== Macropad Step 24b: OLED idle animations ===\n");
 
     profiles_init();
     macros_init();   /* factory defaults into RAM before flash may override */
@@ -35,6 +36,7 @@ int main(void) {
     encoder_init();
     usb_hid_init();
     oled_ui_init();
+    anim_init();     /* after storage (settings) + OLED */
 
     const profile_t *p = profiles_active();
     oled_ui_set_profile_name(p->oled.title);
@@ -66,6 +68,8 @@ int main(void) {
         actions_task();
         macros_task();
         oled_ui_task();
+        anim_task();
+        oled_driver_task();   /* non-blocking framebuffer streaming (Step 24b) */
         storage_persist_task();
 
         const bool in_select = oled_ui_profile_select_active();
@@ -75,6 +79,24 @@ int main(void) {
             absolute_time_diff_us(select_deadline, get_absolute_time()) >= 0) {
             oled_ui_profile_select_exit();
             printf("Profile select: cancel (timeout)\n");
+        }
+
+        /* Step 24b idle animation: held keys count as activity. A key that
+         * wakes the display is swallowed until released (no HID, no action). */
+        {
+            bool woke = false;
+            for (uint8_t kn = 1; kn <= MATRIX_KEY_COUNT; kn++) {
+                if (!matrix_is_pressed(kn) || usb_hid_key_suppressed(kn)) {
+                    continue;
+                }
+                if (woke || anim_wake()) {
+                    woke = true;
+                    usb_hid_suppress_key(kn);
+                }
+            }
+            if (encoder_switch_pressed()) {
+                anim_note_input();
+            }
         }
 
         /* While typing/macro OR profile menu open, skip matrix HID reports so
@@ -109,6 +131,10 @@ int main(void) {
 
         matrix_event_t mev;
         while (matrix_pop_event(&mev)) {
+            anim_note_input();
+            if (usb_hid_key_suppressed(mev.key_number)) {
+                continue;   /* woke the idle animation: swallowed */
+            }
             if (oled_ui_profile_select_active()) {
                 /* Mute key/profile actions while the menu is open. */
                 continue;
@@ -127,6 +153,16 @@ int main(void) {
 
         encoder_event_t eev;
         while (encoder_pop_event(&eev)) {
+            if (eev.type == ENC_EVENT_RELEASE) {
+                anim_note_input();
+            } else if (anim_wake()) {
+                /* Waking input is swallowed; a swallowed press must not turn
+                 * into a long-press (profile select) either. */
+                if (eev.type == ENC_EVENT_PRESS) {
+                    enc_long_fired = true;
+                }
+                continue;
+            }
             if (oled_ui_profile_select_active()) {
                 uint8_t count = profiles_count();
                 uint8_t cur = oled_ui_profile_select_cursor();

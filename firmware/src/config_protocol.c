@@ -1,4 +1,5 @@
 #include "config_protocol.h"
+#include "anim.h"
 
 #include "oled_ui.h"
 #include "profiles.h"
@@ -138,7 +139,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         pl[3] = profiles_active_index();
         pl[4] = profiles_count();
         pl[5] = (uint8_t)(CFG_INFO_FLAG_STORAGE | CFG_INFO_FLAG_MACRO_BANK |
-                          CFG_INFO_FLAG_READBACK);
+                          CFG_INFO_FLAG_READBACK | CFG_INFO_FLAG_ANIM);
         memcpy(&pl[6], CFG_PRODUCT_TAG, CFG_PRODUCT_TAG_LEN);
         cfg_frame_build(resp, CFG_CMD_GET_INFO, seq, pl, (uint16_t)sizeof(pl));
         printf("cfg info seq=%u\n", seq);
@@ -155,7 +156,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
         }
-        if (storage_upload_busy() || storage_macro_upload_busy()) {
+        if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
         }
@@ -263,7 +264,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
         }
-        if (storage_upload_busy() || storage_macro_upload_busy()) {
+        if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
         }
@@ -372,7 +373,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
 
     case CFG_CMD_SAVE_ALL: {
         /* Immediate full image rewrite (profiles + macros + active_slot). */
-        if (storage_upload_busy() || storage_macro_upload_busy()) {
+        if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
         }
@@ -383,6 +384,133 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         }
         cfg_frame_build(resp, CFG_CMD_SAVE_ALL, seq, NULL, 0);
         printf("cfg save_all ok\n");
+        return true;
+    }
+
+    /* ---- Step 24b: OLED idle animation ---- */
+    case CFG_CMD_ANIM_BEGIN: {
+        if (length < 8) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        uint32_t total_len = rd_u32_le(&payload[0]);
+        uint32_t blob_crc = rd_u32_le(&payload[4]);
+        uint8_t err = anim_upload_begin(total_len, blob_crc);
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_ANIM_BEGIN, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_DATA: {
+        if (length < 5 || length > 4u + CFG_ANIM_CHUNK_MAX) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t err = anim_upload_data(rd_u32_le(&payload[0]), &payload[4],
+                                       (uint16_t)(length - 4u));
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_ANIM_DATA, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_COMMIT: {
+        uint8_t err = anim_upload_commit();
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_ANIM_COMMIT, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_ABORT: {
+        anim_upload_abort();
+        cfg_frame_build(resp, CFG_CMD_ANIM_ABORT, seq, NULL, 0);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_INFO: {
+        uint8_t pl[ANIM_INFO_SIZE];
+        anim_info(pl);
+        cfg_frame_build(resp, CFG_CMD_ANIM_INFO, seq, pl, ANIM_INFO_SIZE);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_READ: {
+        if (length < 4) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint32_t offset = rd_u32_le(&payload[0]);
+        uint8_t pl[4 + CFG_ANIM_CHUNK_MAX];
+        uint16_t n = 0;
+        if (anim_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        if (!anim_read(offset, &pl[4], CFG_ANIM_CHUNK_MAX, &n)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        wr_u32_le(&pl[0], offset);
+        cfg_frame_build(resp, CFG_CMD_ANIM_READ, seq, pl, (uint16_t)(4u + n));
+        return true;
+    }
+
+    case CFG_CMD_ANIM_SETTINGS_GET: {
+        uint8_t pl[ANIM_SETTINGS_SIZE];
+        anim_settings_pack(pl);
+        cfg_frame_build(resp, CFG_CMD_ANIM_SETTINGS_GET, seq, pl, ANIM_SETTINGS_SIZE);
+        return true;
+    }
+
+    case CFG_CMD_ANIM_SETTINGS_SET: {
+        if (length < ANIM_SETTINGS_SIZE) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        if (!anim_settings_unpack(payload)) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        anim_note_input();
+        storage_cancel_active_persist();   /* the rewrite below includes active_slot */
+        if (!storage_save_all()) {
+            nak(resp, seq, CFG_ERR_EBUSY);
+            return true;
+        }
+        uint8_t pl[ANIM_SETTINGS_SIZE];
+        anim_settings_pack(pl);
+        cfg_frame_build(resp, CFG_CMD_ANIM_SETTINGS_SET, seq, pl, ANIM_SETTINGS_SIZE);
+        printf("cfg anim settings saved\n");
+        return true;
+    }
+
+    case CFG_CMD_ANIM_PREVIEW: {
+        if (length < 1) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t err = anim_preview(payload[0]);
+        if (err != CFG_ERR_OK) {
+            nak(resp, seq, err);
+            return true;
+        }
+        cfg_frame_build(resp, CFG_CMD_ANIM_PREVIEW, seq, payload, 1);
         return true;
     }
 

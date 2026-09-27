@@ -12,7 +12,32 @@
 #define OLED_ADDR_PRIMARY 0x3C
 #define OLED_ADDR_ALT     0x3D
 
-static uint8_t fb[OLED_WIDTH * OLED_HEIGHT / 8];
+/*
+ * Step 24b — non-blocking flush. oled_driver_update() only marks the frame
+ * dirty; oled_driver_task() (every main-loop tick) snapshots fb into tx and
+ * streams it in 16-byte data transactions, at most OLED_FLUSH_CHUNKS_PER_TASK
+ * per call. At 400 kHz one transaction (addr + 0x40 + 16 data = 18 bytes x
+ * 9 clocks) is ~0.41 ms, so a tick blocks <= ~0.83 ms instead of the old
+ * ~26 ms full-frame stall; a whole 1 KiB frame takes ~33 ticks (~26.5 ms of
+ * bus time), i.e. up to ~30 fps. Measured per-frame bus/wall time is exposed
+ * via oled_driver_last_frame_us() (ANIM_INFO).
+ */
+#define OLED_FB_BYTES               (OLED_WIDTH * OLED_HEIGHT / 8)
+#define OLED_CHUNK                  16u
+#ifndef OLED_FLUSH_CHUNKS_PER_TASK
+#define OLED_FLUSH_CHUNKS_PER_TASK  2u
+#endif
+
+static uint8_t fb[OLED_FB_BYTES];
+static uint8_t tx[OLED_FB_BYTES];      /* snapshot being streamed */
+static uint16_t tx_off;
+static bool tx_active;
+static bool tx_pending;
+static uint64_t tx_start_us;
+static uint32_t tx_bus_us;
+static uint32_t last_bus_us;
+static uint32_t last_wall_us;
+static uint32_t frames_pushed;
 static uint8_t i2c_addr;
 static bool ready;
 
@@ -86,8 +111,10 @@ bool oled_driver_init(void) {
     }
 
     ready = true;
+    tx_active = false;
+    tx_pending = false;
     oled_driver_clear();
-    oled_driver_update();
+    oled_driver_update_blocking();
     return true;
 }
 
@@ -171,27 +198,83 @@ void oled_driver_update(void) {
     if (!ready) {
         return;
     }
+    tx_pending = true; /* picked up by oled_driver_task() */
+}
 
-    /* Set column/page window then stream framebuffer with 0x40 data prefix. */
-    if (!cmd1(0x21) || !cmd1(0) || !cmd1(127)) {
+bool oled_driver_busy(void) {
+    return ready && (tx_active || tx_pending);
+}
+
+static bool flush_begin(void) {
+    memcpy(tx, fb, sizeof tx);
+    tx_pending = false;
+    tx_off = 0;
+    tx_start_us = time_us_64();
+    /* Column 0..127, page 0..7 window in one command transaction. */
+    static const uint8_t window[] = {0x00, 0x21, 0, 127, 0x22, 0, 7};
+    uint32_t t0 = time_us_32();
+    bool ok = i2c_write_raw(window, sizeof window);
+    tx_bus_us = time_us_32() - t0;
+    tx_active = ok;
+    return ok;
+}
+
+void oled_driver_task(void) {
+    if (!ready) {
         return;
     }
-    if (!cmd1(0x22) || !cmd1(0) || !cmd1(7)) {
-        return;
-    }
-
-    uint8_t chunk[1 + 16];
-    chunk[0] = 0x40;
-    size_t off = 0;
-    while (off < sizeof fb) {
-        size_t n = sizeof fb - off;
-        if (n > 16) {
-            n = 16;
-        }
-        memcpy(&chunk[1], &fb[off], n);
-        if (!i2c_write_raw(chunk, 1 + n)) {
+    if (!tx_active) {
+        if (!tx_pending || !flush_begin()) {
             return;
         }
-        off += n;
     }
+    uint8_t chunk[1 + OLED_CHUNK];
+    chunk[0] = 0x40;
+    for (unsigned n = 0; n < OLED_FLUSH_CHUNKS_PER_TASK && tx_off < sizeof tx; n++) {
+        memcpy(&chunk[1], &tx[tx_off], OLED_CHUNK);
+        uint32_t t0 = time_us_32();
+        bool ok = i2c_write_raw(chunk, sizeof chunk);
+        tx_bus_us += time_us_32() - t0;
+        if (!ok) {
+            tx_active = false; /* drop this frame; next update retries */
+            return;
+        }
+        tx_off = (uint16_t)(tx_off + OLED_CHUNK);
+    }
+    if (tx_off >= sizeof tx) {
+        tx_active = false;
+        last_bus_us = tx_bus_us;
+        last_wall_us = (uint32_t)(time_us_64() - tx_start_us);
+        frames_pushed++;
+    }
+}
+
+void oled_driver_update_blocking(void) {
+    oled_driver_update();
+    while (oled_driver_busy()) {
+        oled_driver_task();
+    }
+}
+
+void oled_driver_load_frame(const uint8_t *frame) {
+    memcpy(fb, frame, sizeof fb);
+}
+
+void oled_driver_display_on(bool on) {
+    if (ready) {
+        cmd1(on ? 0xAF : 0xAE);
+    }
+}
+
+void oled_driver_last_frame_us(uint32_t *bus_us, uint32_t *wall_us) {
+    if (bus_us) {
+        *bus_us = last_bus_us;
+    }
+    if (wall_us) {
+        *wall_us = last_wall_us;
+    }
+}
+
+uint32_t oled_driver_frames_pushed(void) {
+    return frames_pushed;
 }

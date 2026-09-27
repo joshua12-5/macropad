@@ -14,7 +14,12 @@ suite to run headless:
 * 4 KiB storage-v2 flash image with a write counter, debounced SET_ACTIVE
   persist (4 s) incl. the Step 23 "skip if unchanged" rule;
 * ``fw_minor < 23`` disables PROFILE_READ / MACRO_READ, the READBACK info bit
-  and the debounce skip (behaves like a Step 22 device).
+  and the debounce skip (behaves like a Step 22 device);
+* Step 24b (``fw_minor >= 25``): OLED idle-animation commands 0x40-0x48 over a
+  128 KiB flash region (sequential DATA, per-sector erase+program counter,
+  COMMIT CRC + structural validation via ``animation.codec``, ABORT/failed
+  COMMIT invalidate sector 0), idle settings persisted in an MPFL v3 image,
+  EBUSY across profile/macro/animation uploads, ANIM_PREVIEW state.
 
 Plug it into the real host stack via ``ConfigDevice(hid_module=MockHidModule())``
 so framing, report-id handling and chunking are the production code paths.
@@ -29,7 +34,9 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
+from ..animation import codec as A
 from ..paths import resource_root
+from ..version import FW_VERSION_MINOR_CURRENT
 from ..protocol import frames as F
 from ..protocol.device import USB_PID, USB_VID
 from ..protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
@@ -41,6 +48,7 @@ MACRO_MAX_STEPS = 24
 FLASH_SECTOR_SIZE = 4096
 STORAGE_MAGIC = 0x4C46504D  # 'MPFL'
 STORAGE_VERSION_2 = 2
+STORAGE_VERSION_3 = 3  # Step 24b: + 8-byte idle-animation settings block
 STORAGE_ACTIVE_DEBOUNCE_S = 4.0
 PRODUCT_TAG = b"MACROPAD"
 
@@ -148,7 +156,7 @@ class MockFirmware:
         self,
         *,
         fw_major: int = 0,
-        fw_minor: int = 23,
+        fw_minor: int = FW_VERSION_MINOR_CURRENT,
         blank_flash: bool = False,
         clock: Optional[Callable[[], float]] = None,
     ) -> None:
@@ -173,6 +181,21 @@ class MockFirmware:
         self.persist_pending = False
         self.persist_deadline = 0.0
         self.log: list[str] = []
+        # Step 24b animation model
+        self.anim_settings = {"enabled": True, "idle_timeout_s": A.DEFAULT_IDLE_S,
+                              "blank_timeout_s": A.DEFAULT_BLANK_S}
+        self.anim_region = bytearray(b"\xFF" * A.REGION_SIZE)
+        self.anim_sector_writes = 0
+        self.anim_up_active = False
+        self.anim_up_total = 0
+        self.anim_up_crc = 0
+        self.anim_up_got = 0
+        self.anim_up_sectors = 0
+        self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+        self.anim_stored: Optional[dict] = None
+        self.anim_state = "active"       # active / playing / blank
+        self.anim_preview_mode = 0
+        self.anim_builtin_playing = False
         if not blank_flash:
             # Device that has been saved once: flash == RAM defaults.
             self.flash = self._build_image()
@@ -192,24 +215,236 @@ class MockFirmware:
     def has_readback(self) -> bool:
         return (self.fw_major, self.fw_minor) >= (0, 23)
 
+    @property
+    def has_anim(self) -> bool:
+        return (self.fw_major, self.fw_minor) >= (0, 25)
+
+    @property
+    def storage_version(self) -> int:
+        return STORAGE_VERSION_3 if self.has_anim else STORAGE_VERSION_2
+
+    def _body_len(self, version: int) -> int:
+        n = 8 + PROFILE_SLOT_COUNT * PROFILE_BLOB_V1_SIZE + MACRO_COUNT * MACRO_BLOB_V1_SIZE
+        return n + (A.SETTINGS_SIZE if version >= STORAGE_VERSION_3 else 0)
+
     # -- storage ------------------------------------------------------------
     def _build_image(self) -> bytes:
         body = bytearray()
-        body += struct.pack("<IHBB", STORAGE_MAGIC, STORAGE_VERSION_2, self.active, 0)
+        body += struct.pack("<IHBB", STORAGE_MAGIC, self.storage_version, self.active, 0)
         for p in self.profiles:
             body += p
         for m in self.macros:
             body += m
+        if self.storage_version >= STORAGE_VERSION_3:
+            st = self.anim_settings
+            body += A.pack_settings(st["enabled"], st["idle_timeout_s"], st["blank_timeout_s"])
         body += struct.pack("<I", F.crc32(bytes(body)))
         return bytes(body) + bytes([0xFF]) * (FLASH_SECTOR_SIZE - len(body))
 
-    def flash_image_valid_v2(self) -> bool:
-        body_len = 8 + PROFILE_SLOT_COUNT * PROFILE_BLOB_V1_SIZE + MACRO_COUNT * MACRO_BLOB_V1_SIZE
+    def flash_image_valid(self) -> bool:
+        """Flash holds a valid image of the version this firmware writes (v2/v3)."""
+        ver_want = self.storage_version
+        body_len = self._body_len(ver_want)
         img = self.flash
         magic, ver, active, _flags = struct.unpack_from("<IHBB", img, 0)
-        if magic != STORAGE_MAGIC or ver != STORAGE_VERSION_2 or active >= PROFILE_SLOT_COUNT:
+        if magic != STORAGE_MAGIC or ver != ver_want or active >= PROFILE_SLOT_COUNT:
             return False
         return F.crc32(img[:body_len]) == struct.unpack_from("<I", img, body_len)[0]
+
+    # Step 23 name kept for existing smokes/tests.
+    flash_image_valid_v2 = flash_image_valid
+
+    def flash_anim_settings(self) -> Optional[dict]:
+        """Idle settings stored in the MPFL v3 image (None for v2 / invalid)."""
+        if not self.has_anim or not self.flash_image_valid():
+            return None
+        off = self._body_len(STORAGE_VERSION_2)
+        return A.unpack_settings(self.flash[off:off + A.SETTINGS_SIZE])
+
+    # -- animation (anim.c) ---------------------------------------------------
+    def _anim_upload_busy_other(self) -> bool:
+        return self.upload_kind != UPLOAD_NONE
+
+    def _anim_flash_sector(self, index: int, data: Optional[bytes]) -> bool:
+        if self.fail_flash:
+            return False
+        off = index * FLASH_SECTOR_SIZE
+        self.anim_region[off:off + FLASH_SECTOR_SIZE] = (
+            data if data is not None else b"\xFF" * FLASH_SECTOR_SIZE)
+        self.anim_sector_writes += 1
+        return True
+
+    def _anim_load_stored(self) -> None:
+        self.anim_stored = None
+        try:
+            hdr = A.parse_header(bytes(self.anim_region[:A.HEADER_SIZE]))
+            total = A.HEADER_SIZE + hdr["data_len"]
+            if total > A.REGION_SIZE:
+                return
+            blob = bytes(self.anim_region[:total])
+            A.parse_blob(blob)
+        except A.AnimFormatError:
+            return
+        self.anim_stored = dict(hdr, total_len=total, crc=F.crc32(blob))
+
+    def _anim_invalidate(self) -> None:
+        self.anim_stored = None
+        self._anim_flash_sector(0, None)
+
+    def _anim_flush_stage(self) -> bool:
+        if not self._anim_flash_sector(self.anim_up_sectors, bytes(self.anim_up_stage)):
+            return False
+        if self.anim_up_sectors == 0:
+            self.anim_stored = None
+        self.anim_up_sectors += 1
+        self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+        return True
+
+    def anim_abort(self) -> None:
+        if not self.anim_up_active:
+            return
+        self.anim_up_active = False
+        if self.anim_up_sectors > 0:
+            self._anim_invalidate()
+        self.anim_up_got = 0
+
+    def _anim_release_screen(self) -> None:
+        self.anim_state = "active"
+        self.anim_preview_mode = 0
+        self.anim_builtin_playing = False
+
+    def _anim_info(self) -> bytes:
+        st = 0x40  # region usable
+        if self.anim_stored:
+            st |= 0x01
+        if self.anim_up_active:
+            st |= 0x02
+        if self.anim_state == "playing":
+            st |= 0x04
+            if self.anim_builtin_playing:
+                st |= 0x10
+        if self.anim_state == "blank":
+            st |= 0x08
+        if self.anim_preview_mode:
+            st |= 0x20
+        out = bytearray(A.INFO_SIZE)
+        out[0] = st
+        out[1] = A.VERSION
+        if self.anim_stored:
+            s = self.anim_stored
+            struct.pack_into("<HBB", out, 2, s["frame_count"], s["fps"], s["flags"])
+            struct.pack_into("<II", out, 6, s["total_len"], s["crc"])
+            out[32:40] = s["name"].encode("ascii", "replace")[:8].ljust(8, b"\x00")
+        struct.pack_into("<IH", out, 14, A.REGION_SIZE, A.MAX_FRAMES_RAW)
+        struct.pack_into("<II", out, 20, 26100, 33000)  # plausible 400 kHz timings
+        struct.pack_into("<I", out, 28, self.anim_up_got if self.anim_up_active else 0)
+        return bytes(out)
+
+    def _handle_anim(self, cmd: int, seq: int, length: int, raw_pl: bytes) -> bytes:
+        if cmd == F.CFG_CMD_ANIM_BEGIN:
+            if length < 8:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self._anim_upload_busy_other() or self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            total, crc = struct.unpack_from("<II", raw_pl, 0)
+            if total < A.HEADER_SIZE + A.REC_HDR_SIZE or total > A.REGION_SIZE:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            self._anim_release_screen()
+            self.anim_up_active = True
+            self.anim_up_total, self.anim_up_crc = total, crc
+            self.anim_up_got = self.anim_up_sectors = 0
+            self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+            return self._resp(cmd, seq)
+        if cmd == F.CFG_CMD_ANIM_DATA:
+            if length < 5 or length > 4 + F.CFG_ANIM_CHUNK_MAX or not self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            (off,) = struct.unpack_from("<I", raw_pl, 0)
+            data = bytes(raw_pl[4:length])
+            if off != self.anim_up_got or off + len(data) > self.anim_up_total:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            for b in data:
+                self.anim_up_stage[self.anim_up_got % FLASH_SECTOR_SIZE] = b
+                self.anim_up_got += 1
+                if self.anim_up_got % FLASH_SECTOR_SIZE == 0 and not self._anim_flush_stage():
+                    self.anim_abort()
+                    return self._nak(seq, F.CFG_ERR_EBUSY)
+            return self._resp(cmd, seq)
+        if cmd == F.CFG_CMD_ANIM_COMMIT:
+            if not self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self.anim_up_got != self.anim_up_total:
+                self.anim_abort()
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self.anim_up_got % FLASH_SECTOR_SIZE and not self._anim_flush_stage():
+                self.anim_abort()
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            self.anim_up_active = False
+            blob = bytes(self.anim_region[:self.anim_up_total])
+            ok = F.crc32(blob) == self.anim_up_crc
+            if ok:
+                try:
+                    parsed = A.parse_blob(blob)
+                    ok = parsed.total_len == self.anim_up_total
+                except A.AnimFormatError:
+                    ok = False
+            if not ok:
+                self._anim_invalidate()
+                return self._nak(seq, F.CFG_ERR_EBADMSG)
+            self._anim_load_stored()
+            return self._resp(cmd, seq)
+        if cmd == F.CFG_CMD_ANIM_ABORT:
+            self.anim_abort()
+            return self._resp(cmd, seq)
+        if cmd == F.CFG_CMD_ANIM_INFO:
+            return self._resp(cmd, seq, self._anim_info())
+        if cmd == F.CFG_CMD_ANIM_READ:
+            if length < 4:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            (off,) = struct.unpack_from("<I", raw_pl, 0)
+            if off >= A.REGION_SIZE:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            chunk = bytes(self.anim_region[off:off + F.CFG_ANIM_CHUNK_MAX])
+            return self._resp(cmd, seq, struct.pack("<I", off) + chunk)
+        if cmd == F.CFG_CMD_ANIM_SETTINGS_GET:
+            st = self.anim_settings
+            return self._resp(cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"],
+                                                        st["blank_timeout_s"]))
+        if cmd == F.CFG_CMD_ANIM_SETTINGS_SET:
+            if length < A.SETTINGS_SIZE:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self._anim_upload_busy_other() or self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            if raw_pl[0] > 1:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            self.anim_settings = A.unpack_settings(bytes(raw_pl[:A.SETTINGS_SIZE]))
+            self.persist_pending = False
+            if not self.save_all():
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            st = self.anim_settings
+            return self._resp(cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"],
+                                                        st["blank_timeout_s"]))
+        if cmd == F.CFG_CMD_ANIM_PREVIEW:
+            if length < 1:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            if self.anim_up_active:
+                return self._nak(seq, F.CFG_ERR_EBUSY)
+            mode = raw_pl[0]
+            if mode == A.PREVIEW_STOP:
+                self._anim_release_screen()
+            elif mode in (A.PREVIEW_PLAY, A.PREVIEW_BUILTIN):
+                self.anim_state = "playing"
+                self.anim_preview_mode = mode
+                self.anim_builtin_playing = mode == A.PREVIEW_BUILTIN or not self.anim_stored
+            elif mode == A.PREVIEW_BLANK:
+                self.anim_state = "blank"
+                self.anim_preview_mode = 0
+                self.anim_builtin_playing = False
+            else:
+                return self._nak(seq, F.CFG_ERR_EINVAL)
+            return self._resp(cmd, seq, bytes([mode]))
+        return self._nak(seq, F.CFG_ERR_EINVAL)
 
     def save_all(self) -> bool:
         self.persist_pending = False
@@ -355,6 +590,8 @@ class MockFirmware:
             flags = F.CFG_INFO_FLAG_STORAGE | F.CFG_INFO_FLAG_MACRO_BANK
             if self.has_readback:
                 flags |= F.CFG_INFO_FLAG_READBACK
+            if self.has_anim:
+                flags |= F.CFG_INFO_FLAG_ANIM
             info = bytes([self.fw_major, self.fw_minor, F.CFG_PROTO_VERSION,
                           self.active, PROFILE_SLOT_COUNT, flags]) + PRODUCT_TAG
             return self._resp(cmd, seq, info)
@@ -364,7 +601,7 @@ class MockFirmware:
         if cmd in (F.CFG_CMD_PROFILE_BEGIN, F.CFG_CMD_MACRO_BEGIN):
             if length < 7:
                 return self._nak(seq, F.CFG_ERR_EINVAL)
-            if self.upload_kind != UPLOAD_NONE:
+            if self.upload_kind != UPLOAD_NONE or self.anim_up_active:
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             slot, total, crc = struct.unpack_from("<BHI", raw_pl, 0)
             kind = UPLOAD_PROFILE if cmd == F.CFG_CMD_PROFILE_BEGIN else UPLOAD_MACRO
@@ -423,12 +660,15 @@ class MockFirmware:
             return self._resp(cmd, seq, bytes([self.active]))
 
         if cmd == F.CFG_CMD_SAVE_ALL:
-            if self.upload_kind != UPLOAD_NONE:
+            if self.upload_kind != UPLOAD_NONE or self.anim_up_active:
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             self.persist_pending = False
             if not self.save_all():
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             return self._resp(cmd, seq)
+
+        if F.CFG_CMD_ANIM_BEGIN <= cmd <= F.CFG_CMD_ANIM_PREVIEW and self.has_anim:
+            return self._handle_anim(cmd, seq, length, raw_pl)
 
         return self._nak(seq, F.CFG_ERR_EINVAL)
 

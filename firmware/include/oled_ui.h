@@ -16,6 +16,7 @@ typedef enum {
 
 void oled_ui_init(void);
 void oled_ui_task(void);   /* call every 1 ms */
+void oled_ui_invalidate(void);   /* force a full repaint (after idle animation) */
 
 void oled_ui_set_profile_name(const char *name);
 void oled_ui_show_toast(const char *line1, const char *line2, uint32_t ms);

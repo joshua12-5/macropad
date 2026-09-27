@@ -2,6 +2,8 @@
 # Step 23: run_all_smokes includes smoke_hil_mock.py; the full HIL suite also
 # runs against the mock device and its JSON report is kept as an artifact.
 # Step 24: smoke_packaging.py (11 smokes) + full `--self-test` incl. Qt offscreen.
+# Step 24b: smoke_anim_codec.py (compiles firmware anim_codec.c with the host cc) +
+#   smoke_anim_device.py → 13 smokes.
 name: Host smokes
 
 on:

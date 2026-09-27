@@ -27,7 +27,7 @@ push tag vX.Y.Z ──► meta ──────────► firmware (reuse
    | `HOST_APP_VERSION`, `FW_VERSION_MINOR_CURRENT` | `0.N.0`, *N* | `configurator/macropad_config/version.py` |
    | `__version__` | `0.N.0` | `configurator/macropad_config/__init__.py` |
    | CMake / UF2 target | `macropad_stepN` | `firmware/CMakeLists.txt` |
-   | USB `bcdDevice` | BCD `1.N` (Step 24 → `0x0118`) | `firmware/src/usb_descriptors.c` |
+   | USB `bcdDevice` | BCD `1.N` (Step 24 → `0x0118`, Step 24b / fw 0.25 → `0x0119`) | `firmware/src/usb_descriptors.c` |
    | Smokes / docs | expectations, matrix, READMEs | `scripts/smoke_version.py`, docs |
 
    Keep `CFG_PROTO_VERSION` and JSON `schema_version` at **1** unless intentionally breaking.

@@ -2,7 +2,7 @@
 
 PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–20: framing, uploads, autoswitch, SAVE_ALL, versioning).
 
-**Steps 10–24** cover the configurator through versioning polish, CI, a verified firmware build (Step 22), hardware-in-the-loop test tooling (Step 23) and release packaging (Step 24: prebuilt Windows / macOS / Linux bundles on the [Releases page](https://github.com/joshua12-5/macropad/releases)).
+**Steps 10–24b** cover the configurator through versioning polish, CI, a verified firmware build (Step 22), hardware-in-the-loop test tooling (Step 23) and release packaging (Step 24: prebuilt Windows / macOS / Linux bundles on the [Releases page](https://github.com/joshua12-5/macropad/releases)) and the OLED idle-animation editor (Step 24b, host 0.25.0).
 Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). Versions: [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 
 ## Hardware-in-the-loop tests (Step 23)
@@ -19,8 +19,8 @@ python scripts/hil_test.py --mock --allow-flash-write                   # no har
 
 Ordered tests: enumerate, ping (latency), info (version handshake), echo (+ CRC
 injection), malformed frames, profile / macro upload protocol, profile / macro
-round-trip with backup + restore, SET_ACTIVE cycle, SAVE_ALL, interactive
-checklist, restore check. Round-trips and SAVE_ALL write flash and are SKIPPED
+round-trip with backup + restore, SET_ACTIVE cycle, SAVE_ALL, animation info /
+protocol / preview / settings / round-trip (fw 0.25+), interactive checklist, restore check. Round-trips and SAVE_ALL write flash and are SKIPPED
 unless `--allow-flash-write`. See [`../docs/HARDWARE_TEST.md`](../docs/HARDWARE_TEST.md).
 
 ## Run
@@ -80,7 +80,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
 
 Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If `proto_ver` ≠ host `PROTO_VER`, a **warning** dialog appears and upload / autoswitch / SAVE_ALL stay disabled. Firmware too old for a feature disables that action with a tooltip (see `macropad_config/version.py`).
-Help → About lists host **0.24.0**, proto, expected fw, schema versions.
+Help → About lists host **0.25.0**, proto, expected fw, schema versions.
 Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
@@ -102,9 +102,13 @@ python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
 python scripts/smoke_macros_blob.py
 python scripts/smoke_autoswitch.py
+python scripts/smoke_hil_mock.py
+python scripts/smoke_packaging.py
+python scripts/smoke_anim_codec.py    # MPAN codec vs compiled firmware anim_codec.c, presets, GIF, imaging
+python scripts/smoke_anim_device.py   # ANIM_* protocol vs mock (+ seeded bugs), editor GUI
 ```
 
-(`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
+13 smokes in total (`run_all_smokes.py`). (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
 
 ### Auto-switch (Step 18)
 
@@ -129,7 +133,7 @@ Override rules path with `MACROPAD_AUTOSWITCH_PATH`.
 ## Command line (Step 24)
 
 ```bash
-python -m macropad_config --version              # "Macropad Configurator 0.24.0 (source; …)"
+python -m macropad_config --version              # "Macropad Configurator 0.25.0 (source; …)"
 QT_QPA_PLATFORM=offscreen python -m macropad_config --self-test [--report st.txt]   # exit 0/1
 python -m macropad_config --hil --mock           # HIL tool (same as scripts/hil_test.py)
 ```

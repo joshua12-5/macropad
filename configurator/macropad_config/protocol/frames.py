@@ -33,11 +33,23 @@ CFG_CMD_MACRO_READ = 0x25  # Step 23: id,offset → id,offset,bytes
 CFG_CMD_SET_ACTIVE = 0x30
 CFG_CMD_GET_ACTIVE = 0x31
 CFG_CMD_SAVE_ALL = 0x32
+# Step 24b — OLED idle animation
+CFG_CMD_ANIM_BEGIN = 0x40         # total_len u32, blob_crc u32
+CFG_CMD_ANIM_DATA = 0x41          # offset u32 (sequential), bytes <= 48
+CFG_CMD_ANIM_COMMIT = 0x42
+CFG_CMD_ANIM_ABORT = 0x43
+CFG_CMD_ANIM_INFO = 0x44          # → 40-byte status
+CFG_CMD_ANIM_READ = 0x45          # offset u32 → offset u32, bytes <= 48
+CFG_CMD_ANIM_SETTINGS_GET = 0x46  # → 8-byte settings block
+CFG_CMD_ANIM_SETTINGS_SET = 0x47  # 8-byte block → same (persisted)
+CFG_CMD_ANIM_PREVIEW = 0x48       # mode u8
+CFG_ANIM_CHUNK_MAX = 48
 CFG_CMD_NAK = 0x7F
 
 CFG_INFO_FLAG_STORAGE = 0x01
 CFG_INFO_FLAG_MACRO_BANK = 0x02
 CFG_INFO_FLAG_READBACK = 0x04  # Step 23: PROFILE_READ / MACRO_READ
+CFG_INFO_FLAG_ANIM = 0x08      # Step 24b: OLED idle animation cmds 0x40-0x48
 
 # Step 23: max blob bytes per READ response (payload = id + offset u16 + data).
 CFG_READ_CHUNK_MAX = 48

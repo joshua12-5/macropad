@@ -1,6 +1,6 @@
 # Hardware test checklist
 
-Use after flashing `macropad_step24.uf2` / release `macropad-fw-X.Y.Z.uf2` (or current step UF2) on a real
+Use after flashing `macropad_step24b.uf2` / release `macropad-fw-X.Y.Z.uf2` (or current step UF2) on a real
 RP2040-Zero + matrix + EC11 + SSD1306 build. **Run the automated HIL suite
 first** (section 0), then tick the manual items below — the protocol items it
 covers are marked *(HIL)*.
@@ -43,12 +43,18 @@ KERNEL=="hidraw*", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="c001", MODE="0660
 | 7b | `macro_roundtrip` | macro backup → upload → verify → restore | 2 (needs `--allow-flash-write`) |
 | 8 | `active` | SET_ACTIVE / GET_ACTIVE over all 5 slots, GET_INFO agrees, bad slot → `EINVAL`, original restored | 0 on fw 0.23+ (debounced persist skipped when unchanged) |
 | 9 | `save_all` | SAVE_ALL OK, RAM unchanged | 1 (needs `--allow-flash-write`) |
-| 10 | `interactive` | `--interactive`: shows each key / encoder action from device readback, tester answers y/n/s/q | 0 |
-| 11 | `restore_check` | active slot + all 5 profile / 5 macro CRCs equal the start snapshot | 0 |
+| 10a | `anim_info` | ANIM_INFO fields (region 128 KiB, 127 raw frames, format v1), stored animation read back (ANIM_READ) + CRC + parse, idle settings snapshot | 0 |
+| 10b | `anim_protocol` | bad BEGIN/DATA/COMMIT → `EINVAL`, sequential DATA only, `EBUSY` both ways vs profile/macro/SAVE_ALL/settings/read/preview, incomplete COMMIT auto-aborts, ABORT idempotent, stored animation unchanged | 0 (upload aborted before the first 4 KiB sector) |
+| 10c | `anim_preview` | ANIM_PREVIEW built-in → play → blank → stop, state via ANIM_INFO, bad mode → `EINVAL` (watch the OLED) | 0 |
+| 10d | `anim_settings` | ANIM_SETTINGS_SET → GET matches, profiles intact, original restored | 2 MPFL rewrites (needs `--allow-flash-write`) |
+| 10e | `anim_roundtrip` | upload 24-frame test animation → ANIM_INFO + byte-compare read-back → bad-CRC and bad-header COMMIT → `EBADMSG` + invalidated → original re-uploaded (or left empty if there was none) | ~4 animation-region sector writes + restore (needs `--allow-flash-write`) |
+| 11 | `interactive` | `--interactive`: shows each key / encoder action from device readback, tester answers y/n/s/q | 0 |
+| 12 | `restore_check` | active slot + all 5 profile / 5 macro CRCs (+ stored animation CRC and idle settings, fw 0.25+) equal the start snapshot | 0 |
 
 Exit code 0 = no FAIL, 1 = FAIL, 2 = no device. Attach the `--json` report to
 the sign-off. Every COMMIT and SAVE_ALL erases + programs the storage sector,
-so keep `--allow-flash-write` runs occasional (one full run = 5 sector writes).
+so keep `--allow-flash-write` runs occasional (one full run = 7 storage-sector writes plus a
+few animation-region sectors on fw 0.25+).
 Key presses on IF0 are not auto-captured (Windows/macOS own keyboard HID
 interfaces), hence the guided checklist.
 
@@ -56,7 +62,7 @@ interfaces), hence the guided checklist.
 
 - [ ] UF2 copies cleanly; device reboots as HID (keyboard + config IF1)
 - [ ] UART (if wired): boot / `stor load …` lines look healthy
-- [ ] *(HIL `info`)* Connect / Get device info: fw **0.23** (or expected), **proto v1**, product `MACROPAD`
+- [ ] *(HIL `info`)* Connect / Get device info: fw **0.25** (or expected), flags `0x0F`, **proto v1**, product `MACROPAD`
 - [ ] Proto mismatch warning appears if testing against a deliberately wrong host `PROTO_VER` (optional)
 
 ## Keys (matrix)
@@ -76,6 +82,39 @@ interfaces), hence the guided checklist.
 - [ ] Idle title matches active profile OLED title
 - [ ] Key toast appears briefly on press
 - [ ] Profile-select menu draws; highlight moves with encoder
+
+## OLED idle animation (Step 24b, fw 0.25+)
+
+Use **Tools → Idle animation…** in the configurator. Tip: set *Start after* to 10 s and
+*Screen off after* to 30 s, **Push idle settings**, then restore 60 s / 600 s at the end.
+
+- [ ] Fresh device (no animation uploaded): after the idle timeout the **built-in starfield**
+      plays smoothly (~20 fps, no tearing / garbage rows)
+- [ ] **Wake by key**: press any key while it plays → normal UI returns immediately and **no
+      character is typed** / no action fires (check a text editor + media keys); the next press
+      of the same key works normally
+- [ ] **Wake by encoder**: turning the knob wakes without changing volume; pressing it wakes
+      without firing the press action and without opening the profile menu even if held > 800 ms
+- [ ] While the animation plays, keys pressed *after* waking type normally (matrix scan not
+      stalled: fast typing on a KEY-bound profile does not drop characters during frame pushes)
+- [ ] Upload the *Bouncing text* preset → *Preview on device* plays it at the set fps;
+      *Stop preview* returns to the UI; status line shows ~26 ms bus / ~33 ms wall per frame
+- [ ] Import a small GIF (e.g. 20 frames), upload with the progress bar, idle → it plays and loops;
+      a non-looping animation holds its last frame
+- [ ] Uncheck *Play animation when idle* → push → after the idle timeout the UI stays; the display
+      still switches off after the blank timeout
+- [ ] **Blank**: after the blank timeout the panel is completely dark (backlight-free OLED off);
+      any key/encoder input wakes it (input swallowed) and the UI is redrawn
+- [ ] Blank timeout 0 (never) → animation keeps playing past 10 min
+- [ ] Idle timeout 0 → animation never starts; blanking still follows its own timeout
+- [ ] Power-cycle: idle settings and the uploaded animation persist (Read from device shows them)
+- [ ] Cancel an upload halfway → built-in starfield is used (no corrupt animation); a new upload works
+- [ ] Profile upload / Save device state during an animation upload → `EBUSY` message, no corruption
+- [ ] USB/host activity only (no key input, e.g. autoswitch `SET_ACTIVE`) does not wake the display;
+      the new profile title is shown on the next wake
+- [ ] Older configurator (0.24) against fw 0.25 still uploads profiles/macros normally
+- [ ] Configurator 0.25 against fw 0.24: device actions in the editor show "firmware 0.24 has no
+      OLED idle-animation support … flash 0.25+" and nothing is sent
 
 ## Profile menu (on-device)
 
@@ -112,5 +151,6 @@ interfaces), hence the guided checklist.
 | Date (Asia/Manila) | |
 | Firmware UF2 / commit | |
 | Host app version | |
+| Idle animation checks (fw 0.25+) | |
 | `hil_test.py` summary / JSON | |
 | Pass / fail notes | |
