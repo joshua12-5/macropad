@@ -54,14 +54,28 @@ def main() -> int:
         rt.fw_version() == (ver.FW_VERSION_MAJOR_EXPECTED, ver.FW_VERSION_MINOR_CURRENT),
         f"FW_VERSION {rt.fw_version()} != version.py expectation",
     )
+    changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+    # Between releases the version is already bumped while the notes still sit
+    # under "## [Unreleased]"; the release commit adds the "## [X.Y.Z]" section
+    # (release.yml runs the full check on the tag).
+    pre_release = f"## [{ver.HOST_APP_VERSION}]" not in changelog
     problems = rt.check(tag)
-    expect(problems == [], f"check({tag}) problems: {problems}")
+    if pre_release:
+        unreleased = changelog.split("## [Unreleased]", 1)[-1].split("\n## [", 1)[0]
+        expect("- " in unreleased, "pre-release: CHANGELOG Unreleased section is empty")
+        expect(
+            len(problems) == 1 and "CHANGELOG" in problems[0],
+            f"pre-release check({tag}) should only miss the CHANGELOG section: {problems}",
+        )
+        print(f"  pre-release {tag}: notes under Unreleased (release section added at tag time)")
+    else:
+        expect(problems == [], f"check({tag}) problems: {problems}")
+        notes = rt.changelog_section(ver.HOST_APP_VERSION)
+        expect("###" in notes and "## [" not in notes, "notes should hold one section only")
+        expect("[Unreleased]:" not in notes, "link footer leaked into notes")
+        expect(rt.main(["check", tag]) == 0, "CLI check exit != 0")
     expect(rt.check("v9.9.9") != [], "check(v9.9.9) should fail")
     expect(rt.check("0.24.0") != [] and rt.check("v0.24") != [], "malformed tags accepted")
-    notes = rt.changelog_section(ver.HOST_APP_VERSION)
-    expect("###" in notes and "## [" not in notes, "notes should hold one section only")
-    expect("[Unreleased]:" not in notes, "link footer leaked into notes")
-    expect(rt.main(["check", tag]) == 0, "CLI check exit != 0")
 
     sample = (
         "# Changelog\n\n## [Unreleased]\n\n- wip\n\n## [1.2.3] — 2026-01-01\n\n### Added\n\n"
@@ -86,6 +100,16 @@ def main() -> int:
         ):
             (t / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / rel, t / rel)
+        if pre_release:
+            cl = t / "CHANGELOG.md"
+            cl.write_text(
+                cl.read_text(encoding="utf-8").replace(
+                    "## [Unreleased]\n",
+                    f"## [Unreleased]\n\n## [{ver.HOST_APP_VERSION}] — 2026-01-01\n\n### Changed\n\n- release\n",
+                    1,
+                ),
+                encoding="utf-8",
+            )
         expect(rt.check(tag, repo=t) == [], "copied tree should pass")
         h = t / "firmware/include/config_protocol.h"
         h.write_text(

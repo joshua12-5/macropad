@@ -53,9 +53,6 @@ enum {
     UPLOAD_MACRO = 2,
 };
 
-/* true while the flash v2 image matches RAM profiles+macros
- * (after a v2 load or a successful save); false after a failed save. */
-static bool g_flash_in_sync;
 static uint8_t g_upload_kind;
 static uint8_t g_upload_slot;
 static uint16_t g_upload_len;
@@ -69,9 +66,10 @@ _Static_assert(PROFILE_BLOB_V1_SIZE <= UPLOAD_BUF_MAX, "profile > upload buf");
 static uint8_t g_upload_buf[UPLOAD_BUF_MAX];
 static uint8_t g_upload_recv_mask[(UPLOAD_BUF_MAX + 7) / 8];
 
-/* debounced active_slot persist (SET_ACTIVE → quiet → one rewrite). */
-static bool g_active_persist_pending;
-static absolute_time_t g_active_persist_deadline;
+/* Debounced persist of RAM state (active slot from SET_ACTIVE / the OLED menu /
+ * PROFILE keys, idle settings from the menu): quiet window → one rewrite. */
+static bool g_persist_pending;
+static absolute_time_t g_persist_deadline;
 
 static void wr_u16_le(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
@@ -232,9 +230,8 @@ static bool program_image(uint8_t *sector) {
 }
 
 void storage_init(void) {
-    g_flash_in_sync = false;
     g_upload_kind = UPLOAD_NONE;
-    g_active_persist_pending = false;
+    g_persist_pending = false;
 
     const uint8_t *img = flash_image();
     anim_settings_defaults();   /* v1/v2 images carry no idle settings */
@@ -248,7 +245,6 @@ void storage_init(void) {
         if (!anim_settings_unpack(&img[STORAGE_ANIM_OFFSET])) {
             anim_settings_defaults();
         }
-        g_flash_in_sync = true;
         printf("stor load v3\n");
         return;
     }
@@ -260,7 +256,6 @@ void storage_init(void) {
             return;
         }
         /* Idle settings at defaults; the next save upgrades to v3. */
-        g_flash_in_sync = false;
         printf("stor load v2\n");
         return;
     }
@@ -279,8 +274,8 @@ void storage_init(void) {
 }
 
 bool storage_save_all(void) {
-    /* Any explicit rewrite supersedes a pending debounced active persist. */
-    g_active_persist_pending = false;
+    /* Any explicit rewrite supersedes a pending debounced persist. */
+    g_persist_pending = false;
 
     uint8_t *image = g_sector_buf;
     if (!build_image(image, profiles_active_index())) {
@@ -288,43 +283,42 @@ bool storage_save_all(void) {
         return false;
     }
     if (!program_image(image)) {
-        g_flash_in_sync = false;
         printf("stor save fail\n");
         return false;
     }
-    g_flash_in_sync = true;
     printf("stor save ok\n");
     return true;
 }
 
-void storage_schedule_active_persist(void) {
-    g_active_persist_pending = true;
-    g_active_persist_deadline = make_timeout_time_ms(STORAGE_ACTIVE_DEBOUNCE_MS);
+void storage_schedule_persist(void) {
+    g_persist_pending = true;
+    g_persist_deadline = make_timeout_time_ms(STORAGE_ACTIVE_DEBOUNCE_MS);
 }
 
-void storage_cancel_active_persist(void) {
-    g_active_persist_pending = false;
+void storage_cancel_persist(void) {
+    g_persist_pending = false;
 }
 
 void storage_persist_task(void) {
-    if (!g_active_persist_pending) {
+    if (!g_persist_pending) {
         return;
     }
-    if (absolute_time_diff_us(g_active_persist_deadline, get_absolute_time()) < 0) {
+    if (absolute_time_diff_us(g_persist_deadline, get_absolute_time()) < 0) {
         return; /* quiet window not elapsed */
     }
-    /* Due: one rewrite of profiles+macros+active already in RAM. */
-    g_active_persist_pending = false;
-    if (storage_upload_busy() || storage_macro_upload_busy()) {
-        /* Defer until upload finishes — re-arm quiet window. */
-        storage_schedule_active_persist();
+    /* Due: one rewrite of profiles + macros + active slot + idle settings in RAM. */
+    g_persist_pending = false;
+    if (storage_upload_busy() || storage_macro_upload_busy() || anim_upload_busy()) {
+        /* Defer until the upload finishes: re-arm the quiet window. */
+        storage_schedule_persist();
         return;
     }
-    /* nothing to do if flash already matches RAM incl. active_slot
-     * (e.g. host cycled SET_ACTIVE and restored the original slot). */
-    const uint8_t *img = flash_image();
-    if (g_flash_in_sync && image_valid_v3(img) &&
-        img[6] == profiles_active_index()) {
+    /* Skip the erase/program when flash already holds exactly this image
+     * (e.g. the slot was switched and switched back, or a setting was
+     * toggled twice). */
+    uint8_t *image = g_sector_buf;
+    if (build_image(image, profiles_active_index()) &&
+        memcmp(flash_image(), image, STORAGE_IMAGE_SIZE) == 0) {
         printf("stor debounce skip (unchanged)\n");
         return;
     }

@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "menu.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,7 +13,7 @@ typedef enum {
     OLED_PAGE_BOOT = 0,
     OLED_PAGE_IDLE,
     OLED_PAGE_TOAST,
-    OLED_PAGE_PROFILE_SELECT
+    OLED_PAGE_MENU
 } oled_page_t;
 
 void oled_ui_init(void);
@@ -24,12 +26,13 @@ void oled_ui_notify_volume(int delta);   /* +1 / -1; updates local display level
 void oled_ui_notify_mute(void);
 void oled_ui_notify_key(uint8_t key_number);
 
-/* On-device profile select menu. Render reads live from profiles.h. */
-bool oled_ui_profile_select_active(void);
-void oled_ui_profile_select_enter(uint8_t initial_index);
-void oled_ui_profile_select_set_cursor(uint8_t index);
-uint8_t oled_ui_profile_select_cursor(void);
-void oled_ui_profile_select_exit(void);
+/* On-device menu (device_menu.c owns the menu_t; this only draws it). A toast
+ * shown while the menu is open is drawn over it and returns to it. */
+void oled_ui_show_menu(const menu_t *menu);
+void oled_ui_hide_menu(void);
+void oled_ui_menu_changed(void);   /* repaint after navigation / value change */
+bool oled_ui_menu_shown(void);
+oled_page_t oled_ui_page(void);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,6 @@
 #include "config_protocol.h"
 #include "anim.h"
+#include "device_menu.h"
 
 #include "oled_ui.h"
 #include "profiles.h"
@@ -202,6 +203,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         if (p != NULL) {
             oled_ui_set_profile_name(p->oled.title);
         }
+        oled_ui_menu_changed();   /* profile list shows the new title */
         cfg_frame_build(resp, CFG_CMD_PROFILE_COMMIT, seq, NULL, 0);
         printf("cfg profile commit ok\n");
         return true;
@@ -346,19 +348,11 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             return true;
         }
         uint8_t slot = payload[0];
-        if (!profiles_set_active(slot)) {
+        /* Closes the OLED menu, toasts, schedules the debounced persist. */
+        if (!device_select_profile(slot)) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
         }
-        const profile_t *p = profiles_active();
-        if (oled_ui_profile_select_active()) {
-            oled_ui_profile_select_exit();
-        }
-        if (p != NULL) {
-            oled_ui_set_profile_name(p->oled.title);
-            oled_ui_show_toast("PROFILE", p->oled.title, 900);
-        }
-        storage_schedule_active_persist();
         cfg_frame_build(resp, CFG_CMD_SET_ACTIVE, seq, NULL, 0);
         printf("cfg set_active %u\n", slot);
         return true;
@@ -377,7 +371,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
         }
-        storage_cancel_active_persist();
+        storage_cancel_persist();
         if (!storage_save_all()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;
@@ -488,7 +482,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
             return true;
         }
         anim_note_input();
-        storage_cancel_active_persist();   /* the rewrite below includes active_slot */
+        storage_cancel_persist();   /* the rewrite below includes active_slot */
         if (!storage_save_all()) {
             nak(resp, seq, CFG_ERR_EBUSY);
             return true;

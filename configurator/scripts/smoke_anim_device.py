@@ -60,7 +60,7 @@ def check_protocol() -> None:
     fw = MockFirmware()
     dev = open_dev(fw)
     info = dev.get_info()
-    expect(info["fw_minor"] == 25 and info["flags"] & F.CFG_INFO_FLAG_ANIM, f"GET_INFO {info}")
+    expect(info["fw_minor"] >= 25 and info["flags"] & F.CFG_INFO_FLAG_ANIM, f"GET_INFO {info}")
     ai = dev.anim_info()
     expect(not ai["stored_valid"] and ai["region_size"] == A.REGION_SIZE, f"fresh info {ai}")
     frames, fps = P.starfield(frames=40)

@@ -12,7 +12,7 @@ with ``MACROPAD_ANIMATIONS_DIR``. Format (see docs/ANIMATION.md)::
       "frame_encoding": "ssd1306-pages-base64",
       "frames": ["<base64 of 1024 bytes>", ...],
       "idle": {"enabled": true, "idle_timeout_s": 60, "blank_timeout_s": 600},
-      "generator": "macropad-configurator 0.25.0"
+      "generator": "macropad-configurator 0.26.0"
     }
 
 Frames use the same page order as the firmware (see ``codec``), so a

@@ -3,6 +3,7 @@
 #include "macros.h"
 #include "board_pins.h"
 #include "config_protocol.h"
+#include "device_menu.h"
 #include "encoder.h"
 #include "matrix.h"
 #include "oled_driver.h"
@@ -19,9 +20,14 @@
 
 #define UART_ID uart0
 
-/* Hold encoder ~800 ms → enter/cancel profile select; short press confirms. */
-#define ENC_LONG_MS        800
-#define SELECT_TIMEOUT_MS  9000
+/*
+ * Knob button: a press shorter than ENC_HOLD_MS is a "short press" and acts
+ * on release (the profile's Press action on the home screen, open / confirm in
+ * the menu). Holding for ENC_HOLD_MS opens the OLED menu, or goes back one
+ * level while it is open; the release that ends a hold does nothing. The
+ * encoder long_press action slot is therefore reserved (never fired).
+ */
+#define ENC_HOLD_MS  800
 
 int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
@@ -55,10 +61,9 @@ int main(void) {
     }
 
     absolute_time_t next_tick = get_absolute_time();
-    bool enc_held = false;
-    absolute_time_t enc_press_at = get_absolute_time();  /* set on press; init silences gcc 13 -Wmaybe-uninitialized */
-    bool enc_long_fired = false;
-    absolute_time_t select_deadline = get_absolute_time();
+    bool enc_down = false;        /* a press cycle we own is in progress */
+    bool enc_hold_fired = false;  /* this press already acted as a hold */
+    absolute_time_t enc_press_at = get_absolute_time();  /* init silences gcc 13 -Wmaybe-uninitialized */
 
     while (true) {
         next_tick = delayed_by_ms(next_tick, 1);
@@ -72,15 +77,9 @@ int main(void) {
         anim_task();
         oled_driver_task();   /* non-blocking framebuffer streaming */
         storage_persist_task();
+        device_menu_task();   /* 9 s idle → back to the home screen */
 
-        const bool in_select = oled_ui_profile_select_active();
-
-        /* Idle timeout cancels profile select without changing the active slot. */
-        if (in_select &&
-            absolute_time_diff_us(select_deadline, get_absolute_time()) >= 0) {
-            oled_ui_profile_select_exit();
-            printf("Profile select: cancel (timeout)\n");
-        }
+        const bool in_menu = device_menu_active();
 
         /* Idle animation: held keys count as activity. A key that
          * wakes the display is swallowed until released (no HID, no action). */
@@ -95,39 +94,29 @@ int main(void) {
                     usb_hid_suppress_key(kn);
                 }
             }
-            if (encoder_switch_pressed()) {
+            if (encoder_switch_pressed() || in_menu) {
+                /* An open menu counts as activity too, so a short idle
+                 * timeout never starts the animation over it; the menu
+                 * closes itself after 9 s anyway. */
                 anim_note_input();
             }
         }
 
-        /* While typing/macro OR profile menu open, skip matrix HID reports so
+        /* While typing/macro OR the menu is open, skip matrix HID reports so
          * KEY/SHORTCUT holds don't fight the engine / menu. */
-        if (!in_select && !actions_busy() && !macros_busy()) {
+        if (!in_menu && !actions_busy() && !macros_busy()) {
             usb_hid_update_from_matrix();
         }
 
-        /* Long-press encoder → enter select (idle) or cancel (already selecting). */
-        if (encoder_switch_pressed()) {
-            if (!enc_held) {
-                enc_held = true;
-                enc_press_at = get_absolute_time();
-                enc_long_fired = false;
-            } else if (!enc_long_fired &&
-                       absolute_time_diff_us(enc_press_at, get_absolute_time()) >=
-                           (int64_t)ENC_LONG_MS * 1000) {
-                enc_long_fired = true;
-                if (oled_ui_profile_select_active()) {
-                    oled_ui_profile_select_exit();
-                    printf("Profile select: cancel (long-press)\n");
-                } else {
-                    uint8_t idx = profiles_active_index();
-                    oled_ui_profile_select_enter(idx);
-                    select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
-                    printf("Profile select: enter (cursor %u)\n", idx);
-                }
+        /* Hold: open the menu from home, or back one level inside it. */
+        if (enc_down && !enc_hold_fired &&
+            absolute_time_diff_us(enc_press_at, get_absolute_time()) >= (int64_t)ENC_HOLD_MS * 1000) {
+            enc_hold_fired = true;
+            if (device_menu_active()) {
+                device_menu_input(MENU_IN_BACK);
+            } else {
+                device_menu_open();
             }
-        } else {
-            enc_held = false;
         }
 
         matrix_event_t mev;
@@ -136,8 +125,8 @@ int main(void) {
             if (usb_hid_key_suppressed(mev.key_number)) {
                 continue;   /* woke the idle animation: swallowed */
             }
-            if (oled_ui_profile_select_active()) {
-                /* Mute key/profile actions while the menu is open. */
+            if (device_menu_active()) {
+                /* Keys are ignored while the menu is open. */
                 continue;
             }
             if (mev.type == MATRIX_EVENT_PRESS) {
@@ -156,62 +145,47 @@ int main(void) {
         while (encoder_pop_event(&eev)) {
             if (eev.type == ENC_EVENT_RELEASE) {
                 anim_note_input();
-            } else if (anim_wake()) {
-                /* Waking input is swallowed; a swallowed press must not turn
-                 * into a long-press (profile select) either. */
+                if (!enc_down) {
+                    continue;   /* end of a swallowed (waking) press */
+                }
+                enc_down = false;
+                if (enc_hold_fired) {
+                    continue;   /* the hold already acted */
+                }
+                if (device_menu_active()) {
+                    device_menu_input(MENU_IN_SELECT);
+                } else {
+                    actions_fire(&profiles_active()->encoder.press);
+                }
+                continue;
+            }
+            if (anim_wake()) {
+                /* Waking input is swallowed; a swallowed press is neither a
+                 * short press nor a hold. */
                 if (eev.type == ENC_EVENT_PRESS) {
-                    enc_long_fired = true;
+                    enc_down = false;
                 }
                 continue;
             }
-            if (oled_ui_profile_select_active()) {
-                uint8_t count = profiles_count();
-                uint8_t cur = oled_ui_profile_select_cursor();
-                switch (eev.type) {
-                case ENC_EVENT_CW:
-                    if (count > 0) {
-                        cur = (uint8_t)((cur + 1) % count);
-                        oled_ui_profile_select_set_cursor(cur);
-                        select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
-                        printf("Profile select: move -> %u\n", cur);
-                    }
-                    break;
-                case ENC_EVENT_CCW:
-                    if (count > 0) {
-                        cur = (uint8_t)((cur + count - 1) % count);
-                        oled_ui_profile_select_set_cursor(cur);
-                        select_deadline = make_timeout_time_ms(SELECT_TIMEOUT_MS);
-                        printf("Profile select: move -> %u\n", cur);
-                    }
-                    break;
-                case ENC_EVENT_PRESS:
-                    if (!enc_long_fired && count > 0) {
-                        profiles_set_active(cur);
-                        p = profiles_active();
-                        oled_ui_profile_select_exit();
-                        oled_ui_set_profile_name(p->oled.title);
-                        oled_ui_show_toast("PROFILE", p->oled.title, 900);
-                        printf("Profile select: confirm -> [%u] %s\n",
-                               cur, p->name);
-                    }
-                    break;
-                default:
-                    break;
-                }
-                continue;
-            }
-
             const profile_t *ap = profiles_active();
             switch (eev.type) {
+            case ENC_EVENT_PRESS:
+                enc_down = true;
+                enc_hold_fired = false;
+                enc_press_at = get_absolute_time();
+                break;
             case ENC_EVENT_CW:
-                actions_fire(&ap->encoder.cw);
+                if (device_menu_active()) {
+                    device_menu_input(MENU_IN_NEXT);
+                } else {
+                    actions_fire(&ap->encoder.cw);
+                }
                 break;
             case ENC_EVENT_CCW:
-                actions_fire(&ap->encoder.ccw);
-                break;
-            case ENC_EVENT_PRESS:
-                if (!enc_long_fired) {
-                    actions_fire(&ap->encoder.press);
+                if (device_menu_active()) {
+                    device_menu_input(MENU_IN_PREV);
+                } else {
+                    actions_fire(&ap->encoder.ccw);
                 }
                 break;
             default:

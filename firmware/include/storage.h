@@ -36,10 +36,11 @@ extern "C" {
  * (idle settings at defaults); every save writes v3. The animation frames
  * themselves live in their own 128 KiB region below this sector (anim.h).
  *
- * SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
- * CFG_CMD_SAVE_ALL forces an immediate rewrite.
- * the debounced persist is skipped when flash already holds a v2
- * image equal to RAM (last load/save succeeded) with the same active_slot.
+ * A profile switch (SET_ACTIVE, the OLED menu, a PROFILE key) or an idle
+ * setting changed on the device schedules a debounced persist (~4 s quiet);
+ * CFG_CMD_SAVE_ALL / "Save device state" force an immediate rewrite.
+ * The debounced persist is skipped when the flash image already equals the
+ * image RAM would produce, so switching back and forth does not wear flash.
  */
 
 #define STORAGE_MAGIC           0x4C46504Du  /* 'MPFL' LE */
@@ -50,7 +51,7 @@ extern "C" {
 #define STORAGE_FLAG_PRESENT    0x01u        /* GET_INFO flags bit0 */
 #define STORAGE_FLAG_MACRO_BANK 0x02u        /* GET_INFO flags bit1 */
 
-/* Quiet window before rewriting flash after SET_ACTIVE (ms). */
+/* Quiet window before a debounced rewrite (ms). */
 #define STORAGE_ACTIVE_DEBOUNCE_MS  4000u
 
 /* Profile upload staging (PROFILE_BEGIN / DATA / COMMIT / ABORT). */
@@ -82,11 +83,11 @@ bool storage_macro_read(uint8_t id, uint16_t offset, uint8_t *out,
 void storage_init(void);
 bool storage_save_all(void);
 
-/* debounced active_slot flash persist after SET_ACTIVE.
- * schedule: arm/reschedule quiet window; task: call from main loop;
- * cancel: clear pending (after SAVE_ALL / COMMIT rewrite). */
-void storage_schedule_active_persist(void);
-void storage_cancel_active_persist(void);
+/* Debounced flash persist of the RAM state (active slot, idle settings).
+ * schedule: arm / re-arm the quiet window; task: call from the main loop;
+ * cancel: clear pending (an explicit SAVE_ALL / COMMIT rewrite covers it). */
+void storage_schedule_persist(void);
+void storage_cancel_persist(void);
 void storage_persist_task(void);
 
 #ifdef __cplusplus

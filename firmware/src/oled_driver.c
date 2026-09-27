@@ -1,5 +1,4 @@
 #include "oled_driver.h"
-#include "oled_font.h"
 #include "board_pins.h"
 
 #include "hardware/i2c.h"
@@ -22,13 +21,11 @@
  * bus time), i.e. up to ~30 fps. Measured per-frame bus/wall time is exposed
  * via oled_driver_last_frame_us() (ANIM_INFO).
  */
-#define OLED_FB_BYTES               (OLED_WIDTH * OLED_HEIGHT / 8)
 #define OLED_CHUNK                  16u
 #ifndef OLED_FLUSH_CHUNKS_PER_TASK
 #define OLED_FLUSH_CHUNKS_PER_TASK  2u
 #endif
 
-static uint8_t fb[OLED_FB_BYTES];
 static uint8_t tx[OLED_FB_BYTES];      /* snapshot being streamed */
 static uint16_t tx_off;
 static bool tx_active;
@@ -67,7 +64,7 @@ static bool probe_addr(uint8_t addr) {
 
 bool oled_driver_init(void) {
     ready = false;
-    memset(fb, 0, sizeof fb);
+    oled_driver_clear();
     i2c_addr = OLED_ADDR_PRIMARY;
 
     i2c_init(OLED_I2C, OLED_I2C_BAUD);
@@ -125,74 +122,6 @@ uint8_t oled_driver_address(void) {
     return i2c_addr;
 }
 
-void oled_driver_clear(void) {
-    memset(fb, 0, sizeof fb);
-}
-
-void oled_driver_set_pixel(int x, int y, bool on) {
-    if ((unsigned)x >= OLED_WIDTH || (unsigned)y >= OLED_HEIGHT) {
-        return;
-    }
-    uint16_t i = (uint16_t)(x + (y / 8) * OLED_WIDTH);
-    uint8_t mask = (uint8_t)(1u << (y & 7));
-    if (on) {
-        fb[i] |= mask;
-    } else {
-        fb[i] &= (uint8_t)~mask;
-    }
-}
-
-void oled_driver_fill_rect(int x, int y, int w, int h, bool on) {
-    for (int yy = y; yy < y + h; yy++) {
-        for (int xx = x; xx < x + w; xx++) {
-            oled_driver_set_pixel(xx, yy, on);
-        }
-    }
-}
-
-void oled_driver_draw_char(int x, int y, char c, bool on) {
-    const uint8_t *g = oled_font_glyph(c);
-    for (int col = 0; col < 5; col++) {
-        uint8_t bits = g[col];
-        for (int row = 0; row < 7; row++) {
-            if (bits & (1u << row)) {
-                oled_driver_set_pixel(x + col, y + row, on);
-            }
-        }
-    }
-}
-
-void oled_driver_draw_string(int x, int y, const char *s, bool on) {
-    if (!s) {
-        return;
-    }
-    int cx = x;
-    while (*s) {
-        if (*s == '\n') {
-            cx = x;
-            y += 8;
-            s++;
-            continue;
-        }
-        oled_driver_draw_char(cx, y, *s, on);
-        cx += 6; /* 5 px glyph + 1 px gap */
-        s++;
-    }
-}
-
-void oled_driver_draw_string_centered(int y, const char *s, bool on) {
-    if (!s) {
-        return;
-    }
-    size_t n = strlen(s);
-    int w = (int)n * 6;
-    int x = (OLED_WIDTH - w) / 2;
-    if (x < 0) {
-        x = 0;
-    }
-    oled_driver_draw_string(x, y, s, on);
-}
-
 void oled_driver_update(void) {
     if (!ready) {
         return;
@@ -205,7 +134,7 @@ bool oled_driver_busy(void) {
 }
 
 static bool flush_begin(void) {
-    memcpy(tx, fb, sizeof tx);
+    memcpy(tx, oled_driver_framebuffer(), sizeof tx);
     tx_pending = false;
     tx_off = 0;
     tx_start_us = time_us_64();
@@ -252,10 +181,6 @@ void oled_driver_update_blocking(void) {
     while (oled_driver_busy()) {
         oled_driver_task();
     }
-}
-
-void oled_driver_load_frame(const uint8_t *frame) {
-    memcpy(fb, frame, sizeof fb);
 }
 
 void oled_driver_display_on(bool on) {

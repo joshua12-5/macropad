@@ -1,20 +1,16 @@
 #include "oled_ui.h"
 #include "anim.h"
+#include "menu.h"
 #include "oled_driver.h"
-#include "profiles.h"
 
 #include "pico/stdlib.h"
 
 #include <stdio.h>
 #include <string.h>
 
-/* Visible rows on 128x64 with 5x7 font (~12 px pitch). */
-#define SELECT_VISIBLE   4
-#define SELECT_TITLE_Y   2
-#define SELECT_LIST_Y0   16
-#define SELECT_LINE_H    12
-
 static oled_page_t page;
+static oled_page_t toast_base;   /* what the toast box is drawn over */
+static const menu_t *menu_ref;   /* shown on OLED_PAGE_MENU */
 static absolute_time_t boot_until;
 static absolute_time_t toast_until;
 static char profile_name[24];
@@ -24,30 +20,12 @@ static int volume_level; /* display-only estimate 0..100 */
 static bool dirty;
 static bool muted;
 
-static uint8_t select_cursor;
-static uint8_t select_window; /* first visible profile index */
-
 static void mark_dirty(void) {
     dirty = true;
 }
 
-static void select_ensure_visible(void) {
-    uint8_t count = profiles_count();
-    if (count == 0) {
-        select_window = 0;
-        return;
-    }
-    if (select_cursor >= count) {
-        select_cursor = (uint8_t)(count - 1);
-    }
-    if (select_cursor < select_window) {
-        select_window = select_cursor;
-    } else if (select_cursor >= (uint8_t)(select_window + SELECT_VISIBLE)) {
-        select_window = (uint8_t)(select_cursor - SELECT_VISIBLE + 1);
-    }
-    if (select_window + SELECT_VISIBLE > count && count >= SELECT_VISIBLE) {
-        select_window = (uint8_t)(count - SELECT_VISIBLE);
-    }
+static bool menu_visible(void) {
+    return menu_ref != NULL && menu_is_open(menu_ref);
 }
 
 static void render_boot(void) {
@@ -70,50 +48,41 @@ static void render_idle(void) {
     oled_driver_draw_string_centered(48, vol, true);
 }
 
+/*
+ * Toast: a framed box. Over the menu the title bar stays visible (you are
+ * still in the menu); otherwise the box sits on a cleared screen.
+ */
 static void render_toast(void) {
+    int top = 0;
     oled_driver_clear();
-    oled_driver_draw_string_centered(16, toast_l1, true);
-    if (toast_l2[0]) {
-        oled_driver_draw_string_centered(36, toast_l2, true);
+    if (toast_base == OLED_PAGE_MENU && menu_visible()) {
+        menu_render(menu_ref);
+        top = 11;
+        oled_driver_fill_rect(0, top, OLED_WIDTH, OLED_HEIGHT - top, false);
     }
-}
-
-static void render_profile_select(void) {
-    uint8_t count = profiles_count();
-    char line[22];
-
-    oled_driver_clear();
-    oled_driver_draw_string_centered(SELECT_TITLE_Y, "PROFILES", true);
-
-    select_ensure_visible();
-
-    for (uint8_t row = 0; row < SELECT_VISIBLE; row++) {
-        uint8_t idx = (uint8_t)(select_window + row);
-        if (idx >= count) {
-            break;
-        }
-        const profile_t *p = profiles_get(idx);
-        const char *title = "????";
-        if (p) {
-            if (p->oled.title[0]) {
-                title = p->oled.title;
-            } else if (p->name[0]) {
-                title = p->name;
-            }
-        }
-
-        int y = SELECT_LIST_Y0 + (int)row * SELECT_LINE_H;
-        bool selected = (idx == select_cursor);
-
-        if (selected) {
-            snprintf(line, sizeof line, ">%u %s", idx, title);
-            /* Inverse highlight bar across the row. */
-            oled_driver_fill_rect(0, y - 1, OLED_WIDTH, SELECT_LINE_H - 1, true);
-            oled_driver_draw_string(2, y, line, false);
-        } else {
-            snprintf(line, sizeof line, " %u %s", idx, title);
-            oled_driver_draw_string(2, y, line, true);
-        }
+    int w1 = oled_driver_text_width(toast_l1);
+    int w2 = oled_driver_text_width(toast_l2);
+    int w = (w1 > w2 ? w1 : w2) + 24;
+    if (w < 80) {
+        w = 80;
+    }
+    if (w > OLED_WIDTH) {
+        w = OLED_WIDTH;
+    }
+    const bool two = toast_l2[0] != '\0';
+    const int h = two ? 31 : 21;
+    const int x = (OLED_WIDTH - w) / 2;
+    const int y = top + (OLED_HEIGHT - top - h) / 2;
+    oled_driver_draw_rect(x, y, w, h, true);
+    oled_driver_set_pixel(x, y, false);
+    oled_driver_set_pixel(x + w - 1, y, false);
+    oled_driver_set_pixel(x, y + h - 1, false);
+    oled_driver_set_pixel(x + w - 1, y + h - 1, false);
+    if (two) {
+        oled_driver_draw_string_centered(y + 6, toast_l1, true);
+        oled_driver_draw_string_centered(y + 18, toast_l2, true);
+    } else {
+        oled_driver_draw_string_centered(y + 7, toast_l1, true);
     }
 }
 
@@ -125,8 +94,12 @@ static void render(void) {
     case OLED_PAGE_TOAST:
         render_toast();
         break;
-    case OLED_PAGE_PROFILE_SELECT:
-        render_profile_select();
+    case OLED_PAGE_MENU:
+        if (menu_visible()) {
+            menu_render(menu_ref);
+        } else {
+            render_idle();
+        }
         break;
     case OLED_PAGE_IDLE:
     default:
@@ -145,8 +118,8 @@ void oled_ui_init(void) {
     toast_l1[0] = toast_l2[0] = '\0';
     volume_level = 50;
     muted = false;
-    select_cursor = 0;
-    select_window = 0;
+    toast_base = OLED_PAGE_IDLE;
+    menu_ref = NULL;
     dirty = true;
 
     if (!oled_driver_init()) {
@@ -169,7 +142,7 @@ void oled_ui_task(void) {
     }
 
     if (page == OLED_PAGE_TOAST && absolute_time_diff_us(toast_until, now) >= 0) {
-        page = OLED_PAGE_IDLE;
+        page = (toast_base == OLED_PAGE_MENU && menu_visible()) ? OLED_PAGE_MENU : OLED_PAGE_IDLE;
         mark_dirty();
     }
 
@@ -200,6 +173,9 @@ void oled_ui_show_toast(const char *line1, const char *line2, uint32_t ms) {
     toast_l1[sizeof toast_l1 - 1] = '\0';
     strncpy(toast_l2, line2 ? line2 : "", sizeof toast_l2 - 1);
     toast_l2[sizeof toast_l2 - 1] = '\0';
+    if (page != OLED_PAGE_TOAST) {
+        toast_base = (page == OLED_PAGE_MENU) ? OLED_PAGE_MENU : OLED_PAGE_IDLE;
+    }
     page = OLED_PAGE_TOAST;
     toast_until = make_timeout_time_ms(ms ? ms : 800);
     mark_dirty();
@@ -230,45 +206,36 @@ void oled_ui_notify_key(uint8_t key_number) {
     oled_ui_show_toast(line, profile_name, 500);
 }
 
-bool oled_ui_profile_select_active(void) {
-    return page == OLED_PAGE_PROFILE_SELECT;
-}
-
-void oled_ui_profile_select_enter(uint8_t initial_index) {
-    uint8_t count = profiles_count();
-    if (count == 0) {
-        return;
+void oled_ui_show_menu(const menu_t *menu) {
+    menu_ref = menu;
+    if (page == OLED_PAGE_TOAST) {
+        toast_base = OLED_PAGE_MENU;
+    } else {
+        page = OLED_PAGE_MENU;
     }
-    if (initial_index >= count) {
-        initial_index = 0;
-    }
-    select_cursor = initial_index;
-    select_window = 0;
-    select_ensure_visible();
-    page = OLED_PAGE_PROFILE_SELECT;
     mark_dirty();
 }
 
-void oled_ui_profile_select_set_cursor(uint8_t index) {
-    uint8_t count = profiles_count();
-    if (count == 0 || page != OLED_PAGE_PROFILE_SELECT) {
-        return;
-    }
-    if (index >= count) {
-        index = (uint8_t)(count - 1);
-    }
-    select_cursor = index;
-    select_ensure_visible();
-    mark_dirty();
-}
-
-uint8_t oled_ui_profile_select_cursor(void) {
-    return select_cursor;
-}
-
-void oled_ui_profile_select_exit(void) {
-    if (page == OLED_PAGE_PROFILE_SELECT) {
+void oled_ui_hide_menu(void) {
+    menu_ref = NULL;
+    if (page == OLED_PAGE_TOAST) {
+        toast_base = OLED_PAGE_IDLE;   /* keep the toast; it returns to the idle screen */
+    } else if (page == OLED_PAGE_MENU) {
         page = OLED_PAGE_IDLE;
+    }
+    mark_dirty();
+}
+
+void oled_ui_menu_changed(void) {
+    if (oled_ui_menu_shown()) {
         mark_dirty();
     }
+}
+
+bool oled_ui_menu_shown(void) {
+    return page == OLED_PAGE_MENU || (page == OLED_PAGE_TOAST && toast_base == OLED_PAGE_MENU);
+}
+
+oled_page_t oled_ui_page(void) {
+    return page;
 }

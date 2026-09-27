@@ -30,9 +30,9 @@ def main() -> int:
 
     print("smoke_version: imports OK")
 
-    expect(ver.HOST_APP_VERSION == "0.25.0", f"HOST_APP={ver.HOST_APP_VERSION}")
+    expect(ver.HOST_APP_VERSION == "0.26.0", f"HOST_APP={ver.HOST_APP_VERSION}")
     expect(ver.PROTO_VER == 1, f"PROTO_VER={ver.PROTO_VER}")
-    expect(ver.FW_VERSION_MINOR_CURRENT == 25, "FW minor current")
+    expect(ver.FW_VERSION_MINOR_CURRENT == 26, "FW minor current")
     expect(ver.PROTO_VER == frames.CFG_PROTO_VERSION, "PROTO vs frames")
     expect(ver.PROFILE_SCHEMA_VERSION == SCHEMA_VERSION == 1)
     expect(ver.MACRO_SCHEMA_VERSION == MACRO_SCHEMA_VERSION == 1)
@@ -75,8 +75,8 @@ def main() -> int:
     tip = ver.feature_disabled_tooltip("Upload", ver.MIN_FW_MINOR_UPLOAD)
     expect("0.16+" in tip or "0.16" in tip, tip)
 
-    summary = ver.compat_summary({"fw_major": 0, "fw_minor": 25, "proto_ver": 1})
-    expect("0.25.0" in summary and "OK" in summary, summary)
+    summary = ver.compat_summary({"fw_major": 0, "fw_minor": 26, "proto_ver": 1})
+    expect("0.26.0" in summary and "OK" in summary, summary)
     bad_sum = ver.compat_summary({"fw_major": 0, "fw_minor": 24, "proto_ver": 2})
     expect("MISMATCH" in bad_sum, bad_sum)
 

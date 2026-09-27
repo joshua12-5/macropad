@@ -1,5 +1,6 @@
 #include "actions.h"
 
+#include "device_menu.h"
 #include "macros.h"
 #include "oled_ui.h"
 #include "profiles.h"
@@ -309,11 +310,8 @@ static void fire_immediate(const action_t *action) {
     }
 
     case ACTION_PROFILE:
-        if (profiles_set_active(action->aux)) {
-            const profile_t *p = profiles_active();
-            oled_ui_set_profile_name(p->oled.title);
-            oled_ui_show_toast("PROFILE", p->oled.title, 800);
-        }
+        /* RAM + OLED at once; saved to flash after ~4 s stable (debounced). */
+        (void)device_select_profile(action->aux);
         break;
 
     case ACTION_MACRO:

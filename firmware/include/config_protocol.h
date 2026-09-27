@@ -14,7 +14,7 @@ extern "C" {
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        25u
+#define FW_VERSION_MINOR        26u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u

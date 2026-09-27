@@ -29,8 +29,11 @@ add_executable(macropad
     src/macro_blob.c
     src/storage.c
     src/oled_driver.c
+    src/oled_gfx.c
     src/oled_font.c
     src/oled_ui.c
+    src/menu.c
+    src/device_menu.c
     src/profiles.c
     src/actions.c
     src/text_table.c
