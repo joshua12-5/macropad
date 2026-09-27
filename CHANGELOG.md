@@ -13,10 +13,11 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 - Code signing / notarisation for the Windows and macOS configurator builds.
 - More hardware coverage (HIL runs on real boards per release).
 
-## [0.25.0] — Unreleased
+## [0.25.0] — 2026-09-27
 
-Step 24b — OLED idle animations. Firmware **0.25**, host **0.25.0**, UF2 `macropad_step24b`,
-USB `bcdDevice` **0x0119**. Not tagged / released yet.
+OLED idle animations (Step 24b) plus repo cleanup and configurator fixes (Step 27; Steps 25–26,
+PCB and enclosure, are deferred). Firmware **0.25**, host **0.25.0**, USB `bcdDevice` **0x0119**,
+release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/build/macropad.uf2`).
 
 ### Added
 
@@ -36,7 +37,7 @@ USB `bcdDevice` **0x0119**. Not tagged / released yet.
   profile and macro uploads; COMMIT validates the whole blob in flash (`EBADMSG` + invalidate on
   failure); only the needed sectors are erased, via `flash_safe_execute()`.
 - **Configurator: Tools → Idle animation…** — frame strip with thumbnails (add / duplicate /
-  delete / reorder), 128×64 pixel canvas (pen, eraser, line, rectangle, fill, brush size, invert,
+  delete / reorder), 128×64 pixel canvas (pen, eraser, brush size, invert,
   clear, shift, onion skin, grid, zoom, undo / redo), live preview at the chosen fps, settings
   (fps, loop, enabled, idle / blank timeout), GIF / PNG-sequence / single-image import (fit or
   stretch, threshold or Floyd–Steinberg dithering, invert), 4 presets (starfield, bouncing text,
@@ -49,9 +50,13 @@ USB `bcdDevice` **0x0119**. Not tagged / released yet.
   compares the stored animation + idle settings.
 - Smokes `smoke_anim_codec.py` (host codec cross-checked against the firmware C decoder compiled
   on the host) and `smoke_anim_device.py` (protocol vs mock incl. seeded bugs, editor GUI);
-  `--self-test` includes an animation encode / decode check. 13 smokes.
+  `--self-test` includes an animation encode / decode check.
 - `docs/ANIMATION.md`; flash map in `docs/ARCHITECTURE.md`; manual idle checklist in
   `docs/HARDWARE_TEST.md`.
+- `LICENSE` (MIT, Copyright (c) 2026 Joshua Zamora), `CONTRIBUTING.md`, `.editorconfig`,
+  `.clang-format` (firmware C style; not applied wholesale), `ruff.toml` (lint + format config).
+- `smoke_editor_forms.py` (14th smoke): per-type form rows in the action editor and the macro
+  step editor, macro-library dirty tracking and the step-0 regression below.
 
 ### Changed
 
@@ -62,7 +67,35 @@ USB `bcdDevice` **0x0119**. Not tagged / released yet.
   v3 on the next save.
 - `firmware.yml` size check now fails when the image reaches the animation region and prints the
   headroom.
-- Firmware size (gcc 14.2): text +8512 B, bss +7532 B, UF2 131072 B (+16896).
+- Firmware size (gcc 14.2): text 65364 B (+8448 vs 0.24.0), bss 18688 B (+7528), UF2 131072 B (+16896).
+- **Firmware build target renamed** `macropad_stepNN` → `macropad` (local `build/macropad.uf2`);
+  CI / release workflows follow. Release asset names are unchanged (`macropad-fw-<ver>.uf2`).
+- User-facing strings no longer mention internal milestones: UART boot banner is now
+  `=== Macropad firmware 0.25 ===`, the About box shows the version + copyright, status hints and
+  the old-firmware message dropped "(Step N)" / `macropad_step24b.uf2`.
+- Docs consolidated under `docs/`: `protocol/PROTOCOL.md`, `PROFILE_BLOB.md`, `MACRO_BLOB.md`
+  moved to `docs/` (`protocol/README.md` points there); READMEs and `ARCHITECTURE.md` describe the
+  current state instead of per-step history (history stays in this changelog).
+- Python code linted and formatted with ruff (pyupgrade typing, import order, unused imports /
+  variables, strict `zip`); dead code removed (unused firmware functions `profiles_next/prev`,
+  `storage_save_slot`, `storage_loaded_from_flash`, `macros_name`, `text_table_count`,
+  `anim_settings_get/set`, `anim_state`, `oled_driver_frames_pushed`; unused host helpers).
+- CI: actions bumped to Node 24 majors (`checkout@v7`, `cache@v6`, `setup-python@v7`,
+  `upload-artifact@v7`, `download-artifact@v8`); Linux runners pinned to `ubuntu-24.04`
+  (packaging stays on `ubuntu-22.04` for glibc 2.35); smokes workflow runs `ruff check` +
+  `ruff format --check`.
+- `.gitignore` completed (CMake/IDE outputs, PyInstaller dirs, HIL / self-test reports, UF2s).
+
+### Fixed
+
+- **Macro library: selecting macros corrupted data** — switching to another macro wrote the
+  (never loaded) step editor into step 0 of the macro being left, turning it into `END`; the
+  library was then marked dirty so closing asked "Discard changes?". The step editor is now loaded
+  for the selected row and edits are written back only when they change the step.
+- Action editor and macro step editor hide the **label together with the field** for rows that do
+  not apply to the selected type (e.g. MACRO no longer shows Key / Mods / Text id / Media / Volume /
+  Profile labels; a TAP step no longer shows Delay / Text id / Consumer).
+- `smoke_macros_blob.py` `test_append_end_if_missing` now actually tests the missing-END case.
 
 ## [0.24.0] — 2026-09-27
 
@@ -252,7 +285,8 @@ USB `bcdDevice` **0x0119**. Not tagged / released yet.
 
 - On-device profile select UI: long-press encoder → OLED menu; rotate / short-press to confirm.
 
-[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/joshua12-5/macropad/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.24.0
 [0.23.0]: https://github.com/joshua12-5/macropad/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/joshua12-5/macropad/compare/v0.21.0...v0.22.0

@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * OLED idle animation — on-flash format v1 (Step 24b).
+ * OLED idle animation — on-flash format v1.
  * Pure C (no Pico SDK) so the codec can be compiled on the host for tests.
  *
  * Blob = 32-byte header + frame records, stored verbatim at the start of the

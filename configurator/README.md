@@ -1,11 +1,12 @@
 # Macropad Configurator
 
-PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–20: framing, uploads, autoswitch, SAVE_ALL, versioning).
-
-**Steps 10–24b** cover the configurator through versioning polish, CI, a verified firmware build (Step 22), hardware-in-the-loop test tooling (Step 23) and release packaging (Step 24: prebuilt Windows / macOS / Linux bundles on the [Releases page](https://github.com/joshua12-5/macropad/releases)) and the OLED idle-animation editor (Step 24b, host 0.25.0).
+PySide6 desktop app (version **0.25.0**) for editing host-side profile JSON, the macro library (schema v1),
+auto-switch rules and OLED idle animations, and for talking to the device over the **USB config protocol**
+(uploads, auto-switch, save, readback, animations). Prebuilt Windows / macOS / Linux bundles are on the
+[Releases page](https://github.com/joshua12-5/macropad/releases).
 Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). Versions: [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 
-## Hardware-in-the-loop tests (Step 23)
+## Hardware-in-the-loop tests
 
 ```bash
 cd configurator
@@ -54,7 +55,7 @@ Optional `hid` (cython-hidapi) is listed in `requirements.txt` for Device menu a
 5. **File → Save** (`Ctrl+S`) writes the current profile JSON; **Save All** writes every dirty profile.
 6. Reload / quit prompts if unsaved changes remain.
 
-### Profile manager (Step 12)
+### Profile manager
 
 | Action | UI | Notes |
 |--------|-----|--------|
@@ -64,11 +65,11 @@ Optional `hid` (cython-hidapi) is listed in `requirements.txt` for Device menu a
 
 Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 
-### Macro library editor (Step 13)
+### Macro library editor
 
 **Profile → Macro library…** opens a dialog to edit `macros/library.json`.
 
-### Device (Step 15–20)
+### Device
 
 | Action | UI | Notes |
 |--------|-----|--------|
@@ -83,10 +84,8 @@ Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If
 Help → About lists host **0.25.0**, proto, expected fw, schema versions.
 Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
-Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
-Blob layout: [`../protocol/PROFILE_BLOB.md`](../protocol/PROFILE_BLOB.md).
-
-Macro flash upload is implemented (Step 17).
+Protocol details: [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md).
+Blob layout: [`../docs/PROFILE_BLOB.md`](../docs/PROFILE_BLOB.md).
 
 ### Headless tests
 
@@ -98,6 +97,7 @@ python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
+python scripts/smoke_editor_forms.py # action editor / macro step rows per type, macro library dirty tracking
 python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
 python scripts/smoke_macros_blob.py
@@ -108,9 +108,9 @@ python scripts/smoke_anim_codec.py    # MPAN codec vs compiled firmware anim_cod
 python scripts/smoke_anim_device.py   # ANIM_* protocol vs mock (+ seeded bugs), editor GUI
 ```
 
-13 smokes in total (`run_all_smokes.py`). (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
+14 smokes in total (`run_all_smokes.py`). (`QT_QPA_PLATFORM=offscreen` is optional; these scripts do not require a display. Protocol/storage/autoswitch smokes need no hardware.)
 
-### Auto-switch (Step 18)
+### Auto-switch
 
 Host watches the foreground process (Windows ctypes / Linux xdotool+/proc /
 macOS osascript), matches [`../autoswitch/rules.json`](../autoswitch/rules.json),
@@ -126,11 +126,30 @@ Override rules path with `MACROPAD_AUTOSWITCH_PATH`.
 | Center | OLED title mock, 3×4 keys (type captions), encoder slots |
 | Right | Name / OLED fields, **ActionEditor**, read-only action JSON mirror |
 
+### Idle animation editor
+
+**Tools → Idle animation…** opens the OLED idle-animation editor. Authoring works offline;
+device actions need firmware **0.25+** (GET_INFO flag bit3) — with older firmware the editor
+explains which version to flash and sends nothing.
+
+| Area | What it does |
+|------|--------------|
+| Frames | thumbnail strip; add / duplicate (`Ctrl+D`) / delete / move / drag-reorder; `[` `]` step |
+| Canvas | 128×64 at 2–12× zoom, page grid; pen / eraser (right button = opposite colour), brush 1–8 px; invert, clear, shift ◀▶▲▼ (wrap), onion skin of the previous frame; undo / redo |
+| Preview | live playback at the chosen fps (`Space`), OLED-styled |
+| Presets | *Starfield (warp)*, *Bouncing text* (default `MACROPAD`), *Scrolling text* (your text), *Pulse / breathing* — generated in `macropad_config/animation/presets.py` |
+| Import | animated GIF, PNG/JPEG/BMP sequence (multi-select, natural sort) or a single image → fit (keep aspect, centred) or stretch, threshold or Floyd–Steinberg dithering, invert, replace / append / insert |
+| Files | **Save / Open** projects as `*.mpanim.json` in the user data folder (`…/animations/`, override `MACROPAD_ANIMATIONS_DIR`), **Export GIF** (OLED look), **Export .mpan** (the exact device blob) |
+| Settings | fps 1–30, loop, play when idle, idle timeout (0 = never), blank timeout (0 = never) |
+| Device | **Upload** (progress bar, cancellable, verified by read-back), **Preview on device**, **Built-in demo**, **Stop preview**, **Push idle settings**, **Read from device** |
+
+Formats: [`../docs/ANIMATION.md`](../docs/ANIMATION.md) (blob, project JSON, capacity, timing).
+
 ## ActionEditor types
 
 `DISABLED`, `KEY`, `SHORTCUT` (mods + key), `MACRO` (library id), `TEXT` / `URL` / `APP` (`text_id` 0–7), `MEDIA` (code / usage), `VOLUME`, `PROFILE` (slot / id).
 
-## Command line (Step 24)
+## Command line
 
 ```bash
 python -m macropad_config --version              # "Macropad Configurator 0.25.0 (source; …)"
@@ -140,7 +159,7 @@ python -m macropad_config --hil --mock           # HIL tool (same as scripts/hil
 
 Release bundles accept the same flags (`MacropadConfigurator --self-test`).
 
-## Packaging (Step 24)
+## Packaging
 
 Release builds come from `.github/workflows/release.yml` (tag `vX.Y.Z`): PyInstaller **one-dir**
 bundles via [`../packaging/macropad_configurator.spec`](../packaging/macropad_configurator.spec)

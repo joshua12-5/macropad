@@ -13,7 +13,7 @@
 #define OLED_ADDR_ALT     0x3D
 
 /*
- * Step 24b — non-blocking flush. oled_driver_update() only marks the frame
+ * non-blocking flush. oled_driver_update() only marks the frame
  * dirty; oled_driver_task() (every main-loop tick) snapshots fb into tx and
  * streams it in 16-byte data transactions, at most OLED_FLUSH_CHUNKS_PER_TASK
  * per call. At 400 kHz one transaction (addr + 0x40 + 16 data = 18 bytes x
@@ -37,7 +37,6 @@ static uint64_t tx_start_us;
 static uint32_t tx_bus_us;
 static uint32_t last_bus_us;
 static uint32_t last_wall_us;
-static uint32_t frames_pushed;
 static uint8_t i2c_addr;
 static bool ready;
 
@@ -245,7 +244,6 @@ void oled_driver_task(void) {
         tx_active = false;
         last_bus_us = tx_bus_us;
         last_wall_us = (uint32_t)(time_us_64() - tx_start_us);
-        frames_pushed++;
     }
 }
 
@@ -275,6 +273,3 @@ void oled_driver_last_frame_us(uint32_t *bus_us, uint32_t *wall_us) {
     }
 }
 
-uint32_t oled_driver_frames_pushed(void) {
-    return frames_pushed;
-}

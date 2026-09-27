@@ -203,12 +203,3 @@ bool profiles_set_active(uint8_t index) {
     return true;
 }
 
-bool profiles_next(void) {
-    active = (uint8_t)((active + 1) % PROFILE_SLOT_COUNT);
-    return true;
-}
-
-bool profiles_prev(void) {
-    active = (uint8_t)((active + PROFILE_SLOT_COUNT - 1) % PROFILE_SLOT_COUNT);
-    return true;
-}

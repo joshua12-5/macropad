@@ -1,7 +1,7 @@
-# Firmware build (Step 22): RP2040-Zero UF2 via Pico SDK + TinyUSB.
+# Firmware build: RP2040-Zero UF2 via Pico SDK + TinyUSB (target `macropad` → macropad.uf2).
 # Pinned SDK tag / board must match firmware/README.md and docs/VERSIONING.md.
-# Step 24: also a reusable workflow (workflow_call) — release.yml calls it and
-# renames the uploaded .uf2/.elf to macropad-fw-<version>.*.
+# Also a reusable workflow (workflow_call) — release.yml calls it and renames the
+# uploaded .uf2/.elf to macropad-fw-<version>.*.
 name: Firmware build
 
 on:
@@ -19,10 +19,10 @@ env:
 
 jobs:
   firmware:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: macropad
 
@@ -36,7 +36,7 @@ jobs:
 
       - name: Cache Pico SDK
         id: sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: pico-sdk
           key: pico-sdk-${{ env.PICO_SDK_TAG }}-submodules-v1
@@ -60,13 +60,13 @@ jobs:
         working-directory: macropad/firmware
         run: |
           set -euo pipefail
-          elf=$(ls build/macropad_step*.elf)
-          uf2=$(ls build/macropad_step*.uf2)
+          elf=build/macropad.elf
+          uf2=build/macropad.uf2
           arm-none-eabi-size "$elf"
           ls -l "$uf2"
           end=$(arm-none-eabi-nm "$elf" | awk '$3=="__flash_binary_end"{print $1}')
           # Flash map (2 MiB): image from 0x000000, idle-animation region
-          # 0x1DF000-0x1FEFFF (128 KiB, Step 24b), MPFL storage sector 0x1FF000.
+          # 0x1DF000-0x1FEFFF (128 KiB), MPFL storage sector 0x1FF000.
           anim=$((0x10000000 + 0x1DF000))
           storage=$((0x10000000 + 0x1FF000))
           echo "flash_binary_end=0x$end anim=0x$(printf '%X' $anim) storage=0x$(printf '%X' $storage)"
@@ -76,10 +76,10 @@ jobs:
           fi
 
       - name: Upload UF2 + ELF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macropad-firmware-uf2
           path: |
-            macropad/firmware/build/macropad_step*.uf2
-            macropad/firmware/build/macropad_step*.elf
+            macropad/firmware/build/macropad.uf2
+            macropad/firmware/build/macropad.elf
           if-no-files-found: error

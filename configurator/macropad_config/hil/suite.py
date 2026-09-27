@@ -26,11 +26,12 @@ import random
 import struct
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from .. import version as ver
+from ..animation import codec as A
 from ..paths import resource_root
 from ..protocol import frames as F
 from ..protocol.device import (
@@ -42,7 +43,6 @@ from ..protocol.device import (
     err_name,
     list_config_devices,
 )
-from ..animation import codec as A
 from ..protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
 from ..protocol.profile_blob import (
     PROFILE_BLOB_V1_SIZE,
@@ -79,7 +79,7 @@ class HilOptions:
     pings: int = 20
     seed: int = 23
     allow_flash_write: bool = False
-    profile_slot: Optional[int] = None   # default: (active + 1) % 5
+    profile_slot: Optional[int] = None  # default: (active + 1) % 5
     macro_id: int = 4
     strict_version: bool = False
     interactive: bool = False
@@ -94,38 +94,43 @@ class HilOptions:
 # Test data
 # --------------------------------------------------------------------------
 
+
 def test_profile_blob() -> bytes:
-    return pack_profile_dict({
-        "schema_version": 1,
-        "id": "hil-test",
-        "name": "HIL TEST",
-        "oled": {"title": "HIL TEST", "animation": "scroll"},
-        "keys": {
-            "1": {"type": "KEY", "key": "H"},
-            "2": {"type": "SHORTCUT", "mods": ["CTRL", "SHIFT"], "key": "I"},
-            "3": {"type": "MEDIA", "code": "PLAY_PAUSE"},
-            "4": {"type": "VOLUME", "dir": "mute"},
-            "5": {"type": "MACRO", "macro_id": 3},
-            "6": {"type": "PROFILE", "slot": 1},
-        },
-        "encoder": {
-            "cw": {"type": "VOLUME", "dir": "up"},
-            "ccw": {"type": "VOLUME", "dir": "down"},
-            "press": {"type": "KEY", "key": "ENTER"},
-        },
-    })
+    return pack_profile_dict(
+        {
+            "schema_version": 1,
+            "id": "hil-test",
+            "name": "HIL TEST",
+            "oled": {"title": "HIL TEST", "animation": "scroll"},
+            "keys": {
+                "1": {"type": "KEY", "key": "H"},
+                "2": {"type": "SHORTCUT", "mods": ["CTRL", "SHIFT"], "key": "I"},
+                "3": {"type": "MEDIA", "code": "PLAY_PAUSE"},
+                "4": {"type": "VOLUME", "dir": "mute"},
+                "5": {"type": "MACRO", "macro_id": 3},
+                "6": {"type": "PROFILE", "slot": 1},
+            },
+            "encoder": {
+                "cw": {"type": "VOLUME", "dir": "up"},
+                "ccw": {"type": "VOLUME", "dir": "down"},
+                "press": {"type": "KEY", "key": "ENTER"},
+            },
+        }
+    )
 
 
 def test_macro_blob() -> bytes:
-    return pack_macro({
-        "name": "hil-test",
-        "steps": [
-            {"op": "TAP", "mods": ["SHIFT"], "key": "H"},
-            {"op": "DELAY_MS", "arg": 20},
-            {"op": "TAP", "mods": [], "key": "I"},
-            {"op": "END"},
-        ],
-    })
+    return pack_macro(
+        {
+            "name": "hil-test",
+            "steps": [
+                {"op": "TAP", "mods": ["SHIFT"], "key": "H"},
+                {"op": "DELAY_MS", "arg": 20},
+                {"op": "TAP", "mods": [], "key": "I"},
+                {"op": "END"},
+            ],
+        }
+    )
 
 
 def _repo_profile_candidates() -> list[bytes]:
@@ -161,10 +166,17 @@ def _repo_macro_candidates() -> list[bytes]:
 # Context
 # --------------------------------------------------------------------------
 
+
 class HilContext:
-    def __init__(self, opts: HilOptions, *, hid_module=None, mock: bool = False,
-                 prompt: Optional[Callable[[str], str]] = None,
-                 log: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(
+        self,
+        opts: HilOptions,
+        *,
+        hid_module=None,
+        mock: bool = False,
+        prompt: Optional[Callable[[str], str]] = None,
+        log: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self.opts = opts
         self.hid_module = hid_module
         self.mock = mock
@@ -253,6 +265,7 @@ def _mutate(frame: bytes, *, at: int, value: int, fix_crc: bool) -> bytes:
 # Tests
 # --------------------------------------------------------------------------
 
+
 def t_enumerate(ctx: HilContext, res: TestResult) -> None:
     devices = list_config_devices(USB_VID, USB_PID, hid_module=ctx.hid_module)
     ctx.devices = devices
@@ -293,8 +306,10 @@ def t_ping(ctx: HilContext, res: TestResult) -> None:
         avg_ms=round(sum(lat) / n, 3),
         max_ms=round(max(lat), 3),
     )
-    res.detail = (f"{n} pings  min/avg/max = {res.metrics['min_ms']:.2f}/"
-                  f"{res.metrics['avg_ms']:.2f}/{res.metrics['max_ms']:.2f} ms")
+    res.detail = (
+        f"{n} pings  min/avg/max = {res.metrics['min_ms']:.2f}/"
+        f"{res.metrics['avg_ms']:.2f}/{res.metrics['max_ms']:.2f} ms"
+    )
 
 
 def t_info(ctx: HilContext, res: TestResult) -> None:
@@ -310,8 +325,10 @@ def t_info(ctx: HilContext, res: TestResult) -> None:
     if major != ver.FW_VERSION_MAJOR_EXPECTED:
         raise Fail(f"fw major {major} != expected {ver.FW_VERSION_MAJOR_EXPECTED}")
     if minor != ver.FW_VERSION_MINOR_CURRENT:
-        msg = (f"fw {major}.{minor} != host-expected {major}.{ver.FW_VERSION_MINOR_CURRENT} "
-               f"(host {ver.HOST_APP_VERSION})")
+        msg = (
+            f"fw {major}.{minor} != host-expected {major}.{ver.FW_VERSION_MINOR_CURRENT} "
+            f"(host {ver.HOST_APP_VERSION})"
+        )
         if ctx.opts.strict_version:
             raise Fail(msg + " [--strict-version]")
         res.notes.append("WARN " + msg)
@@ -323,8 +340,10 @@ def t_info(ctx: HilContext, res: TestResult) -> None:
     ctx.check(bool(flags & F.CFG_INFO_FLAG_MACRO_BANK), "flags: macro bank bit1 missing")
     ctx.readback = bool(flags & F.CFG_INFO_FLAG_READBACK)
     if ctx.readback != ver.fw_supports_readback(major, minor):
-        res.notes.append(f"WARN readback flag={ctx.readback} but fw {major}.{minor} "
-                         f"{'≥' if ver.fw_supports_readback(major, minor) else '<'} 0.{ver.MIN_FW_MINOR_READBACK}")
+        res.notes.append(
+            f"WARN readback flag={ctx.readback} but fw {major}.{minor} "
+            f"{'≥' if ver.fw_supports_readback(major, minor) else '<'} 0.{ver.MIN_FW_MINOR_READBACK}"
+        )
     gates = {
         "upload": ver.fw_supports_upload(major, minor),
         "macro_upload": ver.fw_supports_macro_upload(major, minor),
@@ -342,9 +361,11 @@ def t_info(ctx: HilContext, res: TestResult) -> None:
     for i in range(5):
         ctx.orig_profile_crc[i] = ctx.meta("profile", i)["crc"]
         ctx.orig_macro_crc[i] = ctx.meta("macro", i)["crc"]
-    res.detail = (f"fw {major}.{minor} proto v{info['proto_ver']} tag {info['product_tag']} "
-                  f"active {info['active_slot']}/{info['slot_count']} flags 0x{flags:02X} "
-                  f"({'readback' if ctx.readback else 'no readback'}) — {ver.compat_summary(info)}")
+    res.detail = (
+        f"fw {major}.{minor} proto v{info['proto_ver']} tag {info['product_tag']} "
+        f"active {info['active_slot']}/{info['slot_count']} flags 0x{flags:02X} "
+        f"({'readback' if ctx.readback else 'no readback'}) — {ver.compat_summary(info)}"
+    )
 
 
 def t_echo(ctx: HilContext, res: TestResult) -> None:
@@ -389,12 +410,16 @@ def t_malformed(ctx: HilContext, res: TestResult) -> None:
         ctx.check(resp.seq == 0x33, f"bad-magic NAK seq {resp.seq} != 0x33")
         checks += 1
     # Bad protocol version → EINVAL.
-    ctx.expect_nak(dev.exchange_raw(F.pack_frame(F.CFG_CMD_PING, 0x34, version=2)),
-                   F.CFG_ERR_EINVAL, "bad version 2")
+    ctx.expect_nak(
+        dev.exchange_raw(F.pack_frame(F.CFG_CMD_PING, 0x34, version=2)), F.CFG_ERR_EINVAL, "bad version 2"
+    )
     checks += 1
     # length > 52 → EINVAL.
-    ctx.expect_nak(dev.exchange_raw(_mutate(ping, at=6, value=F.CFG_PAYLOAD_MAX + 1, fix_crc=True)),
-                   F.CFG_ERR_EINVAL, "length 53")
+    ctx.expect_nak(
+        dev.exchange_raw(_mutate(ping, at=6, value=F.CFG_PAYLOAD_MAX + 1, fix_crc=True)),
+        F.CFG_ERR_EINVAL,
+        "length 53",
+    )
     checks += 1
     # seq: firmware has no sequence validation — it echoes whatever the host sends.
     for seq in (0x00, 0x7F, 0x80, 0xFF):
@@ -424,9 +449,10 @@ def t_malformed(ctx: HilContext, res: TestResult) -> None:
     else:
         res.notes.append("short-report check skipped (non-Linux hidapi pads/rejects short writes)")
     res.metrics["checks"] = checks
-    res.detail = (f"{checks} checks: unknown cmd→EINVAL, bad magic→EBADMSG, bad version→EINVAL, "
-                  f"len>52→EINVAL, seq echo, FLAG_RESPONSE ignored"
-                  + (", short report→EBADMSG" if short else ""))
+    res.detail = (
+        f"{checks} checks: unknown cmd→EINVAL, bad magic→EBADMSG, bad version→EINVAL, "
+        f"len>52→EINVAL, seq echo, FLAG_RESPONSE ignored" + (", short report→EBADMSG" if short else "")
+    )
 
 
 def _upload_protocol_checks(ctx: HilContext, kind: str, idx: int) -> int:
@@ -452,7 +478,7 @@ def _upload_protocol_checks(ctx: HilContext, kind: str, idx: int) -> int:
 
     def send_all(b):
         for off in range(0, size, 50):
-            ctx.expect_ok(data(off, b[off:off + 50]), DATA, f"{L}_DATA@{off}")
+            ctx.expect_ok(data(off, b[off : off + 50]), DATA, f"{L}_DATA@{off}")
 
     before = ctx.meta(kind, idx)
     ctx.check(before["len"] == size, f"{L}_GET len {before['len']} != {size}")
@@ -460,21 +486,28 @@ def _upload_protocol_checks(ctx: HilContext, kind: str, idx: int) -> int:
         m = ctx.meta(kind, i)
         ctx.check(m["len"] == size, f"{L}_GET[{i}] len {m['len']}")
         n += 1
-    ctx.expect_nak(ctx.req(GET, bytes([5])), F.CFG_ERR_EINVAL, f"{L}_GET id 5"); n += 1
-    ctx.expect_nak(ctx.req(GET, b""), F.CFG_ERR_EINVAL, f"{L}_GET empty payload"); n += 1
+    ctx.expect_nak(ctx.req(GET, bytes([5])), F.CFG_ERR_EINVAL, f"{L}_GET id 5")
+    n += 1
+    ctx.expect_nak(ctx.req(GET, b""), F.CFG_ERR_EINVAL, f"{L}_GET empty payload")
+    n += 1
     if ctx.readback:
         assert ctx.dev is not None
         cur = ctx.dev.profile_read(idx) if P else ctx.dev.macro_read(idx)
-        ctx.check(_crc(cur) == before["crc"],
-                  f"{L}_READ crc 0x{_crc(cur):08X} != {L}_GET crc 0x{before['crc']:08X}")
-        ctx.expect_nak(ctx.req(READ, struct.pack("<BH", idx, size)), F.CFG_ERR_EINVAL, f"{L}_READ offset {size}")
+        ctx.check(
+            _crc(cur) == before["crc"], f"{L}_READ crc 0x{_crc(cur):08X} != {L}_GET crc 0x{before['crc']:08X}"
+        )
+        ctx.expect_nak(
+            ctx.req(READ, struct.pack("<BH", idx, size)), F.CFG_ERR_EINVAL, f"{L}_READ offset {size}"
+        )
         ctx.expect_nak(ctx.req(READ, struct.pack("<BH", 5, 0)), F.CFG_ERR_EINVAL, f"{L}_READ id 5")
         ctx.expect_nak(ctx.req(READ, bytes([idx])), F.CFG_ERR_EINVAL, f"{L}_READ short payload")
         n += 4
     # BEGIN validation.
     ctx.expect_nak(begin(i=5), F.CFG_ERR_EINVAL, f"{L}_BEGIN id 5")
     ctx.expect_nak(begin(total=size - 1), F.CFG_ERR_EINVAL, f"{L}_BEGIN len {size - 1}")
-    ctx.expect_nak(ctx.req(BEGIN, struct.pack("<BHI", idx, size, crc)[:6]), F.CFG_ERR_EINVAL, f"{L}_BEGIN 6-byte payload")
+    ctx.expect_nak(
+        ctx.req(BEGIN, struct.pack("<BHI", idx, size, crc)[:6]), F.CFG_ERR_EINVAL, f"{L}_BEGIN 6-byte payload"
+    )
     # No upload open.
     ctx.expect_nak(data(0, blob[:10]), F.CFG_ERR_EINVAL, f"{L}_DATA without BEGIN")
     ctx.expect_nak(ctx.req(COMMIT), F.CFG_ERR_EINVAL, f"{L}_COMMIT without BEGIN")
@@ -503,9 +536,9 @@ def _upload_protocol_checks(ctx: HilContext, kind: str, idx: int) -> int:
     # CRC-valid but un-unpackable blob → EINVAL (still before flash).
     bad = bytearray(blob)
     if P:
-        bad[0:2] = struct.pack("<H", 2)      # schema_version 2
+        bad[0:2] = struct.pack("<H", 2)  # schema_version 2
     else:
-        bad[16] = 0                          # step_count 0
+        bad[16] = 0  # step_count 0
     bad = bytes(bad)
     ctx.expect_ok(begin(c=_crc(bad)), BEGIN, f"{L}_BEGIN bad blob")
     send_all(bad)
@@ -539,8 +572,10 @@ def _roundtrip(ctx: HilContext, res: TestResult, kind: str, idx: int) -> None:
     orig = ctx.meta(kind, idx)
     backup, how = _find_restore_blob(ctx, kind, idx, orig["crc"])
     if backup is None:
-        raise Skip(f"cannot back up {kind} {idx} (fw lacks readback, no repo blob matches "
-                   f"crc 0x{orig['crc']:08X}) — refusing to overwrite")
+        raise Skip(
+            f"cannot back up {kind} {idx} (fw lacks readback, no repo blob matches "
+            f"crc 0x{orig['crc']:08X}) — refusing to overwrite"
+        )
     ctx.check(_crc(backup) == orig["crc"], f"backup crc mismatch ({how})")
     blob = test_profile_blob() if P else test_macro_blob()
     ctx.check(_crc(blob) != orig["crc"], f"test blob identical to slot {idx}; pick another slot")
@@ -548,9 +583,11 @@ def _roundtrip(ctx: HilContext, res: TestResult, kind: str, idx: int) -> None:
     try:
         upload(idx, blob)
         got = ctx.meta(kind, idx)
-        ctx.check(got["crc"] == _crc(blob),
-                  f"{L}_GET crc 0x{got['crc']:08X} != uploaded 0x{_crc(blob):08X} "
-                  "(host/firmware canonicalisation divergence?)")
+        ctx.check(
+            got["crc"] == _crc(blob),
+            f"{L}_GET crc 0x{got['crc']:08X} != uploaded 0x{_crc(blob):08X} "
+            "(host/firmware canonicalisation divergence?)",
+        )
         if ctx.readback:
             rb = ctx.dev.profile_read(idx) if P else ctx.dev.macro_read(idx)
             if rb != blob:
@@ -563,12 +600,14 @@ def _roundtrip(ctx: HilContext, res: TestResult, kind: str, idx: int) -> None:
         # Always try to restore, even after a failure above.
         upload(idx, backup)
     restored = ctx.meta(kind, idx)
-    ctx.check(restored["crc"] == orig["crc"],
-              f"restore failed: crc 0x{restored['crc']:08X} != original 0x{orig['crc']:08X}")
-    res.metrics.update(slot=idx, backup=how, flash_writes=2,
-                       test_crc=f"0x{_crc(blob):08X}", orig_crc=f"0x{orig['crc']:08X}")
-    res.detail = (f"{L} {idx}: backup ({how}) → upload test blob → verify → restore original "
-                  f"(2 flash writes)")
+    ctx.check(
+        restored["crc"] == orig["crc"],
+        f"restore failed: crc 0x{restored['crc']:08X} != original 0x{orig['crc']:08X}",
+    )
+    res.metrics.update(
+        slot=idx, backup=how, flash_writes=2, test_crc=f"0x{_crc(blob):08X}", orig_crc=f"0x{orig['crc']:08X}"
+    )
+    res.detail = f"{L} {idx}: backup ({how}) → upload test blob → verify → restore original (2 flash writes)"
 
 
 def _profile_slot(ctx: HilContext) -> int:
@@ -582,9 +621,11 @@ def t_profile_protocol(ctx: HilContext, res: TestResult) -> None:
     slot = _profile_slot(ctx)
     n = _upload_protocol_checks(ctx, "profile", slot)
     res.metrics.update(slot=slot, checks=n)
-    res.detail = (f"slot {slot}: GET meta ×5, {'READ, ' if ctx.readback else ''}BEGIN/DATA validation, "
-                  f"ABORT mid-upload, incomplete/bad-CRC/bad-schema COMMIT rejected; slot unchanged "
-                  f"({n} checks, no flash writes)")
+    res.detail = (
+        f"slot {slot}: GET meta ×5, {'READ, ' if ctx.readback else ''}BEGIN/DATA validation, "
+        f"ABORT mid-upload, incomplete/bad-CRC/bad-schema COMMIT rejected; slot unchanged "
+        f"({n} checks, no flash writes)"
+    )
 
 
 def t_profile_roundtrip(ctx: HilContext, res: TestResult) -> None:
@@ -603,31 +644,47 @@ def t_macro_protocol(ctx: HilContext, res: TestResult) -> None:
     try:
         # Profile upload open → macro BEGIN / SAVE_ALL busy.
         ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_BEGIN, pbegin), F.CFG_CMD_PROFILE_BEGIN, "PROFILE_BEGIN")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_MACRO_BEGIN, mbegin), F.CFG_ERR_EBUSY, "MACRO_BEGIN while profile open")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_MACRO_BEGIN, mbegin), F.CFG_ERR_EBUSY, "MACRO_BEGIN while profile open"
+        )
         ctx.expect_nak(ctx.req(F.CFG_CMD_SAVE_ALL), F.CFG_ERR_EBUSY, "SAVE_ALL while profile open")
         ctx.expect_nak(ctx.req(F.CFG_CMD_MACRO_COMMIT), F.CFG_ERR_EINVAL, "MACRO_COMMIT while profile open")
-        ctx.expect_ok(ctx.req(F.CFG_CMD_MACRO_ABORT), F.CFG_CMD_MACRO_ABORT, "MACRO_ABORT (no-op) while profile open")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_MACRO_BEGIN, mbegin), F.CFG_ERR_EBUSY, "profile upload survives MACRO_ABORT")
+        ctx.expect_ok(
+            ctx.req(F.CFG_CMD_MACRO_ABORT), F.CFG_CMD_MACRO_ABORT, "MACRO_ABORT (no-op) while profile open"
+        )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_MACRO_BEGIN, mbegin), F.CFG_ERR_EBUSY, "profile upload survives MACRO_ABORT"
+        )
         if ctx.readback or ctx.opts.allow_flash_write:
             # SET_ACTIVE stays OK during uploads (RAM only). Same slot → no net change.
-            ctx.expect_ok(ctx.req(F.CFG_CMD_SET_ACTIVE, bytes([ctx.orig_active or 0])),
-                          F.CFG_CMD_SET_ACTIVE, "SET_ACTIVE during upload")
+            ctx.expect_ok(
+                ctx.req(F.CFG_CMD_SET_ACTIVE, bytes([ctx.orig_active or 0])),
+                F.CFG_CMD_SET_ACTIVE,
+                "SET_ACTIVE during upload",
+            )
             n += 1
         ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_ABORT), F.CFG_CMD_PROFILE_ABORT, "PROFILE_ABORT")
         # Macro upload open → profile BEGIN / SAVE_ALL busy.
         ctx.expect_ok(ctx.req(F.CFG_CMD_MACRO_BEGIN, mbegin), F.CFG_CMD_MACRO_BEGIN, "MACRO_BEGIN")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_PROFILE_BEGIN, pbegin), F.CFG_ERR_EBUSY, "PROFILE_BEGIN while macro open")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_PROFILE_BEGIN, pbegin), F.CFG_ERR_EBUSY, "PROFILE_BEGIN while macro open"
+        )
         ctx.expect_nak(ctx.req(F.CFG_CMD_SAVE_ALL), F.CFG_ERR_EBUSY, "SAVE_ALL while macro open")
         ctx.expect_nak(ctx.req(F.CFG_CMD_PROFILE_COMMIT), F.CFG_ERR_EINVAL, "PROFILE_COMMIT while macro open")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_PROFILE_DATA, b"\x00\x00" + blob_p[:8]), F.CFG_ERR_EINVAL,
-                       "PROFILE_DATA while macro open")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_PROFILE_DATA, b"\x00\x00" + blob_p[:8]),
+            F.CFG_ERR_EINVAL,
+            "PROFILE_DATA while macro open",
+        )
         ctx.expect_ok(ctx.req(F.CFG_CMD_MACRO_ABORT), F.CFG_CMD_MACRO_ABORT, "MACRO_ABORT")
         n += 12
     finally:
         ctx.abort_uploads()
     res.metrics.update(macro_id=mid, checks=n)
-    res.detail = (f"macro {mid}: same error paths as profile + EBUSY mutex both ways, SAVE_ALL EBUSY "
-                  f"while uploading, cross-kind COMMIT/DATA → EINVAL ({n} checks, no flash writes)")
+    res.detail = (
+        f"macro {mid}: same error paths as profile + EBUSY mutex both ways, SAVE_ALL EBUSY "
+        f"while uploading, cross-kind COMMIT/DATA → EINVAL ({n} checks, no flash writes)"
+    )
 
 
 def t_macro_roundtrip(ctx: HilContext, res: TestResult) -> None:
@@ -638,7 +695,9 @@ def t_active(ctx: HilContext, res: TestResult) -> None:
     ctx.need_device()
     assert ctx.dev is not None
     if not ctx.readback and not ctx.opts.allow_flash_write:
-        raise Skip("fw < 0.23 persists every SET_ACTIVE to flash (debounced) — rerun with --allow-flash-write")
+        raise Skip(
+            "fw < 0.23 persists every SET_ACTIVE to flash (debounced) — rerun with --allow-flash-write"
+        )
     orig = ctx.dev.get_active_slot()
     ctx.check(orig == ctx.orig_active, f"GET_ACTIVE {orig} != GET_INFO active {ctx.orig_active}")
     order = [(orig + k) % 5 for k in range(1, 6)]  # ends on orig
@@ -712,15 +771,17 @@ def t_interactive(ctx: HilContext, res: TestResult) -> None:
         items.append((f"encoder {e}", exp))
     passed, failed, skipped = [], [], []
     title = prof["name"] if prof else f"slot {active}"
-    ctx.log(f"Interactive: active profile {title!r}. Focus a scratch text editor, "
-            "press each control, answer y/n/s/q.")
+    ctx.log(
+        f"Interactive: active profile {title!r}. Focus a scratch text editor, "
+        "press each control, answer y/n/s/q."
+    )
     for name, exp in items:
         try:
             ans = (ctx.prompt(f"  {name:<12} expect {exp} — OK? [y/n/s/q] ") or "").strip().lower()
         except EOFError:  # stdin closed → treat as quit
             ans = "q"
         if ans.startswith("q"):
-            skipped += [n for n, _ in items[len(passed) + len(failed) + len(skipped):]]
+            skipped += [n for n, _ in items[len(passed) + len(failed) + len(skipped) :]]
             break
         (passed if ans.startswith("y") else failed if ans.startswith("n") else skipped).append(name)
     res.metrics.update(passed=len(passed), failed=failed, skipped=len(skipped))
@@ -754,8 +815,10 @@ def t_restore_check(ctx: HilContext, res: TestResult) -> None:
     if ctx.anim and ctx.orig_anim_info is not None:
         ai = ctx.dev.anim_info()
         o = ctx.orig_anim_info
-        if (ai["stored_valid"], ai["crc"] if ai["stored_valid"] else 0) != \
-                (o["stored_valid"], o["crc"] if o["stored_valid"] else 0):
+        if (ai["stored_valid"], ai["crc"] if ai["stored_valid"] else 0) != (
+            o["stored_valid"],
+            o["crc"] if o["stored_valid"] else 0,
+        ):
             diffs.append("stored animation")
         if ai["uploading"]:
             diffs.append("animation upload still open")
@@ -764,13 +827,15 @@ def t_restore_check(ctx: HilContext, res: TestResult) -> None:
         anim_note = "; animation + idle settings identical"
     if diffs:
         raise Fail(f"device state differs from start: {', '.join(diffs)}")
-    res.detail = (f"active slot {active}, 5 profile + 5 macro CRCs identical to start{anim_note}; "
-                  "no upload open")
+    res.detail = (
+        f"active slot {active}, 5 profile + 5 macro CRCs identical to start{anim_note}; no upload open"
+    )
 
 
 # --------------------------------------------------------------------------
-# Step 24b — OLED idle animation
+# OLED idle animation
 # --------------------------------------------------------------------------
+
 
 def _need_anim(ctx: HilContext) -> None:
     ctx.need_device()
@@ -805,14 +870,20 @@ def t_anim_info(ctx: HilContext, res: TestResult) -> None:
         ctx.check(len(parsed.frames) == info["frame_count"], "frame_count mismatch")
         ctx.orig_anim_blob = blob
     res.metrics.update(info=info, settings=ctx.orig_anim_settings)
-    stored = (f"stored '{info['name']}' {info['frame_count']} frames @ {info['fps']} fps "
-              f"{info['total_len']} B (read back + parsed)" if info["stored_valid"] else "no stored animation")
+    stored = (
+        f"stored '{info['name']}' {info['frame_count']} frames @ {info['fps']} fps "
+        f"{info['total_len']} B (read back + parsed)"
+        if info["stored_valid"]
+        else "no stored animation"
+    )
     t = ""
     if info["last_frame_bus_us"]:
         t = f"; last OLED frame {info['last_frame_bus_us']} us bus / {info['last_frame_wall_us']} us wall"
     s = ctx.orig_anim_settings
-    res.detail = (f"{stored}; settings enabled={s['enabled']} idle={s['idle_timeout_s']} s "
-                  f"blank={s['blank_timeout_s']} s{t}")
+    res.detail = (
+        f"{stored}; settings enabled={s['enabled']} idle={s['idle_timeout_s']} s "
+        f"blank={s['blank_timeout_s']} s{t}"
+    )
 
 
 def t_anim_protocol(ctx: HilContext, res: TestResult) -> None:
@@ -831,7 +902,9 @@ def t_anim_protocol(ctx: HilContext, res: TestResult) -> None:
     try:
         ctx.expect_nak(begin(total=8), F.CFG_ERR_EINVAL, "ANIM_BEGIN len 8")
         ctx.expect_nak(begin(total=A.REGION_SIZE + 1), F.CFG_ERR_EINVAL, "ANIM_BEGIN len > region")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_BEGIN, b"\x00\x01"), F.CFG_ERR_EINVAL, "ANIM_BEGIN short payload")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_BEGIN, b"\x00\x01"), F.CFG_ERR_EINVAL, "ANIM_BEGIN short payload"
+        )
         ctx.expect_nak(data(0, blob[:16]), F.CFG_ERR_EINVAL, "ANIM_DATA without BEGIN")
         ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT), F.CFG_ERR_EINVAL, "ANIM_COMMIT without BEGIN")
         n += 5
@@ -845,18 +918,33 @@ def t_anim_protocol(ctx: HilContext, res: TestResult) -> None:
         ctx.check(info["uploading"] and info["upload_got"] == 96, f"ANIM_INFO during upload {info}")
         # EBUSY across upload kinds while the animation upload is open.
         pb = test_profile_blob()
-        ctx.expect_nak(ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
-                       F.CFG_ERR_EBUSY, "PROFILE_BEGIN during anim upload")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
+            F.CFG_ERR_EBUSY,
+            "PROFILE_BEGIN during anim upload",
+        )
         mb = test_macro_blob()
-        ctx.expect_nak(ctx.req(F.CFG_CMD_MACRO_BEGIN, struct.pack("<BHI", 0, len(mb), F.crc32(mb))),
-                       F.CFG_ERR_EBUSY, "MACRO_BEGIN during anim upload")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_MACRO_BEGIN, struct.pack("<BHI", 0, len(mb), F.crc32(mb))),
+            F.CFG_ERR_EBUSY,
+            "MACRO_BEGIN during anim upload",
+        )
         ctx.expect_nak(ctx.req(F.CFG_CMD_SAVE_ALL), F.CFG_ERR_EBUSY, "SAVE_ALL during anim upload")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, A.pack_settings(True, 60, 600)),
-                       F.CFG_ERR_EBUSY, "ANIM_SETTINGS_SET during anim upload")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", 0)), F.CFG_ERR_EBUSY,
-                       "ANIM_READ during anim upload")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_PREVIEW, bytes([A.PREVIEW_PLAY])), F.CFG_ERR_EBUSY,
-                       "ANIM_PREVIEW during anim upload")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, A.pack_settings(True, 60, 600)),
+            F.CFG_ERR_EBUSY,
+            "ANIM_SETTINGS_SET during anim upload",
+        )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", 0)),
+            F.CFG_ERR_EBUSY,
+            "ANIM_READ during anim upload",
+        )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_PREVIEW, bytes([A.PREVIEW_PLAY])),
+            F.CFG_ERR_EBUSY,
+            "ANIM_PREVIEW during anim upload",
+        )
         # Incomplete COMMIT auto-aborts (nothing was flushed: < 4 KiB sent).
         ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT), F.CFG_ERR_EINVAL, "ANIM_COMMIT incomplete")
         ctx.check(not ctx.dev.anim_info()["uploading"], "upload still open after failed COMMIT")
@@ -868,29 +956,44 @@ def t_anim_protocol(ctx: HilContext, res: TestResult) -> None:
         ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_ABORT), F.CFG_CMD_ANIM_ABORT, "ANIM_ABORT idempotent")
         n += 4
         # Reverse EBUSY: animation BEGIN while a profile upload is open.
-        ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
-                      F.CFG_CMD_PROFILE_BEGIN, "PROFILE_BEGIN")
+        ctx.expect_ok(
+            ctx.req(F.CFG_CMD_PROFILE_BEGIN, struct.pack("<BHI", 0, len(pb), F.crc32(pb))),
+            F.CFG_CMD_PROFILE_BEGIN,
+            "PROFILE_BEGIN",
+        )
         ctx.expect_nak(begin(), F.CFG_ERR_EBUSY, "ANIM_BEGIN during profile upload")
         ctx.expect_ok(ctx.req(F.CFG_CMD_PROFILE_ABORT), F.CFG_CMD_PROFILE_ABORT, "PROFILE_ABORT")
         n += 3
         # Stored animation untouched (no sector was written).
         after = ctx.dev.anim_info()
         if ctx.orig_anim_info is not None:
-            ctx.check(after["stored_valid"] == ctx.orig_anim_info["stored_valid"]
-                      and after["crc"] == ctx.orig_anim_info["crc"], "stored animation changed")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", A.REGION_SIZE)), F.CFG_ERR_EINVAL,
-                       "ANIM_READ past region")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x02" + bytes(7)), F.CFG_ERR_EINVAL,
-                       "ANIM_SETTINGS_SET enabled=2")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x01"), F.CFG_ERR_EINVAL,
-                       "ANIM_SETTINGS_SET short")
+            ctx.check(
+                after["stored_valid"] == ctx.orig_anim_info["stored_valid"]
+                and after["crc"] == ctx.orig_anim_info["crc"],
+                "stored animation changed",
+            )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_READ, struct.pack("<I", A.REGION_SIZE)),
+            F.CFG_ERR_EINVAL,
+            "ANIM_READ past region",
+        )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x02" + bytes(7)),
+            F.CFG_ERR_EINVAL,
+            "ANIM_SETTINGS_SET enabled=2",
+        )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_SETTINGS_SET, b"\x01"), F.CFG_ERR_EINVAL, "ANIM_SETTINGS_SET short"
+        )
         n += 4
     finally:
         ctx.abort_uploads()
     res.metrics.update(checks=n)
-    res.detail = (f"bad BEGIN/DATA/COMMIT → EINVAL, sequential DATA only, EBUSY both ways vs profile/macro/"
-                  f"SAVE_ALL/settings/read/preview, incomplete COMMIT auto-aborts, ABORT idempotent, "
-                  f"stored animation untouched ({n} checks, no flash writes)")
+    res.detail = (
+        f"bad BEGIN/DATA/COMMIT → EINVAL, sequential DATA only, EBUSY both ways vs profile/macro/"
+        f"SAVE_ALL/settings/read/preview, incomplete COMMIT auto-aborts, ABORT idempotent, "
+        f"stored animation untouched ({n} checks, no flash writes)"
+    )
 
 
 def t_anim_preview(ctx: HilContext, res: TestResult) -> None:
@@ -899,7 +1002,9 @@ def t_anim_preview(ctx: HilContext, res: TestResult) -> None:
     try:
         ctx.dev.anim_preview(A.PREVIEW_BUILTIN)
         i = ctx.dev.anim_info()
-        ctx.check(i["playing"] and i["builtin_active"] and i["preview"], f"builtin preview state {i['status']:#x}")
+        ctx.check(
+            i["playing"] and i["builtin_active"] and i["preview"], f"builtin preview state {i['status']:#x}"
+        )
         ctx.dev.anim_preview(A.PREVIEW_PLAY)
         i = ctx.dev.anim_info()
         ctx.check(i["playing"], "PLAY preview not playing")
@@ -950,29 +1055,42 @@ def t_anim_roundtrip(ctx: HilContext, res: TestResult) -> None:
     try:
         info = ctx.dev.anim_info()
         ctx.check(info["stored_valid"] and info["crc"] == F.crc32(blob), f"ANIM_INFO after upload {info}")
-        ctx.check(info["frame_count"] == 24 and info["fps"] == 10 and info["name"] == "hiltest",
-                  "header fields mismatch")
+        ctx.check(
+            info["frame_count"] == 24 and info["fps"] == 10 and info["name"] == "hiltest",
+            "header fields mismatch",
+        )
         rb = ctx.dev.anim_download()
         ctx.check(rb == blob, "read-back differs from uploaded blob")
         # Bad CRC: data is flushed then rejected → stored animation invalidated.
         bad_crc = F.crc32(blob) ^ 0xDEADBEEF
-        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(blob), bad_crc)),
-                      F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN bad crc")
+        ctx.expect_ok(
+            ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(blob), bad_crc)),
+            F.CFG_CMD_ANIM_BEGIN,
+            "ANIM_BEGIN bad crc",
+        )
         for off, chunk in A.iter_chunks(blob):
-            ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk, timeout_ms=5000),
-                          F.CFG_CMD_ANIM_DATA, f"ANIM_DATA@{off}")
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG,
-                       "ANIM_COMMIT bad crc")
+            ctx.expect_ok(
+                ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk, timeout_ms=5000),
+                F.CFG_CMD_ANIM_DATA,
+                f"ANIM_DATA@{off}",
+            )
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG, "ANIM_COMMIT bad crc"
+        )
         ctx.check(not ctx.dev.anim_info()["stored_valid"], "stored animation still valid after bad COMMIT")
         # Structurally invalid blob with a correct CRC (fps 0 in header).
         broken = bytearray(blob)
         broken[8] = 0
-        ctx.expect_ok(ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(broken), F.crc32(bytes(broken)))),
-                      F.CFG_CMD_ANIM_BEGIN, "ANIM_BEGIN broken")
+        ctx.expect_ok(
+            ctx.req(F.CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(broken), F.crc32(bytes(broken)))),
+            F.CFG_CMD_ANIM_BEGIN,
+            "ANIM_BEGIN broken",
+        )
         for off, chunk in A.iter_chunks(bytes(broken)):
             ctx.req(F.CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk, timeout_ms=5000)
-        ctx.expect_nak(ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG,
-                       "ANIM_COMMIT invalid header")
+        ctx.expect_nak(
+            ctx.req(F.CFG_CMD_ANIM_COMMIT, timeout_ms=5000), F.CFG_ERR_EBADMSG, "ANIM_COMMIT invalid header"
+        )
     finally:
         ctx.abort_uploads()
         if backup is not None:
@@ -986,8 +1104,10 @@ def t_anim_roundtrip(ctx: HilContext, res: TestResult) -> None:
     else:
         ctx.check(not after["stored_valid"], "expected no stored animation after restore")
     res.metrics.update(upload_ms=round(ms, 1), blob_len=len(blob))
-    res.detail = (f"{len(blob)} B / 24 frames uploaded in {ms:.0f} ms, info + read-back match; bad CRC and "
-                  f"invalid header → EBADMSG + invalidated; {restored}")
+    res.detail = (
+        f"{len(blob)} B / 24 frames uploaded in {ms:.0f} ms, info + read-back match; bad CRC and "
+        f"invalid header → EBADMSG + invalidated; {restored}"
+    )
 
 
 TESTS: list[tuple[str, str, Callable[[HilContext, TestResult], None]]] = [
@@ -1047,10 +1167,15 @@ class HilReport:
         }
 
 
-def run_suite(opts: HilOptions, *, hid_module=None, mock: bool = False,
-              prompt: Optional[Callable[[str], str]] = None,
-              log: Optional[Callable[[str], None]] = None,
-              on_result: Optional[Callable[[TestResult], None]] = None) -> HilReport:
+def run_suite(
+    opts: HilOptions,
+    *,
+    hid_module=None,
+    mock: bool = False,
+    prompt: Optional[Callable[[str], str]] = None,
+    log: Optional[Callable[[str], None]] = None,
+    on_result: Optional[Callable[[TestResult], None]] = None,
+) -> HilReport:
     ctx = HilContext(opts, hid_module=hid_module, mock=mock, prompt=prompt, log=log)
     results: list[TestResult] = []
     selected = set(opts.only or TEST_IDS) - set(opts.skip or [])
@@ -1097,6 +1222,15 @@ def run_suite(opts: HilOptions, *, hid_module=None, mock: bool = False,
 
 
 __all__ = [
-    "FAIL", "PASS", "SKIP", "HilOptions", "HilReport", "TEST_IDS", "TESTS",
-    "TestResult", "run_suite", "test_macro_blob", "test_profile_blob",
+    "FAIL",
+    "PASS",
+    "SKIP",
+    "TESTS",
+    "TEST_IDS",
+    "HilOptions",
+    "HilReport",
+    "TestResult",
+    "run_suite",
+    "test_macro_blob",
+    "test_profile_blob",
 ]

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from macropad_config.models.macro import (  # noqa: E402
+from macropad_config.models.macro import (
     MacroStep,
     default_macros_path,
     load_library,

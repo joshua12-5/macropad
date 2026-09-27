@@ -24,7 +24,6 @@ extern "C" {
 #define TEXT_ID_LS_LA       7
 
 const char *text_table_get(uint8_t text_id);
-uint8_t text_table_count(void);
 
 #ifdef __cplusplus
 }

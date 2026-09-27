@@ -69,15 +69,6 @@ class Profile:
         self.oled = dict(self.oled)
         self.oled["title"] = str(title)
 
-    def summary(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "schema_version": self.schema_version,
-            "oled_title": self.oled_title,
-            "source": str(self.source_path) if self.source_path else None,
-        }
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
@@ -137,9 +128,7 @@ def make_blank_profile(profile_id: str, name: str) -> Profile:
     if not name:
         raise ValueError("profile name must be non-empty")
     if not is_valid_profile_id(profile_id):
-        raise ValueError(
-            f"invalid profile id {profile_id!r} (expected ^[a-z][a-z0-9_]*$)"
-        )
+        raise ValueError(f"invalid profile id {profile_id!r} (expected ^[a-z][a-z0-9_]*$)")
     keys = {str(i): {"type": "DISABLED"} for i in range(1, 13)}
     encoder = {
         "cw": {"type": "VOLUME", "dir": "up"},
@@ -166,9 +155,7 @@ def duplicate_profile(src: Profile, new_id: str, new_name: str) -> Profile:
     if not new_name:
         raise ValueError("profile name must be non-empty")
     if not is_valid_profile_id(new_id):
-        raise ValueError(
-            f"invalid profile id {new_id!r} (expected ^[a-z][a-z0-9_]*$)"
-        )
+        raise ValueError(f"invalid profile id {new_id!r} (expected ^[a-z][a-z0-9_]*$)")
     profile = Profile(
         schema_version=int(src.schema_version),
         id=new_id,
@@ -193,9 +180,7 @@ def delete_profile_file(profile: Profile) -> None:
     profile.source_path = None
 
 
-def suggest_profile_path(
-    name: str, profile_id: str, directory: Path | str
-) -> Path:
+def suggest_profile_path(name: str, profile_id: str, directory: Path | str) -> Path:
     """Pick a unique JSON path under *directory* for a new profile file.
 
     Prefer ``{name with spaces removed}.json``. If that exists, fall back to

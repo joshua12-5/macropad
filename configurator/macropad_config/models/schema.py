@@ -24,7 +24,6 @@ class ActionType(str, Enum):
 ACTION_TYPES = frozenset(t.value for t in ActionType)
 
 VOLUME_DIRS = frozenset({"up", "down", "mute"})
-KNOWN_MODS = frozenset({"CTRL", "SHIFT", "ALT", "GUI", "WIN", "CMD"})
 
 
 class SchemaError(ValueError):
@@ -79,9 +78,7 @@ def validate_profile_dict(data: Any) -> dict[str, Any]:
 
     version = data.get("schema_version")
     if version != SCHEMA_VERSION:
-        raise SchemaError(
-            f"unsupported schema_version {version!r} (expected {SCHEMA_VERSION})"
-        )
+        raise SchemaError(f"unsupported schema_version {version!r} (expected {SCHEMA_VERSION})")
 
     for field in ("id", "name"):
         if not isinstance(data.get(field), str) or not data[field]:

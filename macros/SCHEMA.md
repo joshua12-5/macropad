@@ -1,4 +1,4 @@
-# Macro step schema (firmware Step 9 + host library Step 13)
+# Macro step schema (firmware engine + host library)
 
 Built-in macros live in `firmware/src/macros.c` as packed RAM/ROM step tables.
 The **host library** (`macros/library.json`) is the configurator source of truth for
@@ -45,7 +45,7 @@ Profile actions use `"type": "MACRO", "macro_id": N`.
 - Non-blocking: `macros_task()` every ~1 ms.
 - Matrix HID updates are skipped while `macros_busy()` or `actions_busy()`.
 
-## Host JSON library (Step 13)
+## Host JSON library
 
 File: [`macros/library.json`](library.json) (override path with `MACROPAD_MACROS_PATH`).
 

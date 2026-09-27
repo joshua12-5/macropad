@@ -1,4 +1,4 @@
-"""Minimal GIF89a writer (Step 24b) — no Pillow needed.
+"""Minimal GIF89a writer — no Pillow needed.
 
 Used for "Export GIF…" in the animation editor, the preset preview image and
 smoke round-trips. Frames are 1bpp OLED frames rendered with an on/off
@@ -8,11 +8,11 @@ colour, optionally scaled up by an integer factor.
 from __future__ import annotations
 
 import struct
-from typing import Iterable, List, Sequence, Tuple
+from collections.abc import Iterable, Sequence
 
 from . import codec as A
 
-RGB = Tuple[int, int, int]
+RGB = tuple[int, int, int]
 OLED_ON: RGB = (0xE6, 0xF3, 0xFF)
 OLED_OFF: RGB = (0x05, 0x07, 0x0C)
 
@@ -66,15 +66,21 @@ def _lzw_encode(indices: bytes, min_code_size: int) -> bytes:
 def _sub_blocks(data: bytes) -> bytes:
     out = bytearray()
     for i in range(0, len(data), 255):
-        chunk = data[i:i + 255]
+        chunk = data[i : i + 255]
         out.append(len(chunk))
         out += chunk
     out.append(0)
     return bytes(out)
 
 
-def encode_gif(frames: Sequence[bytes], width: int, height: int, palette: Sequence[RGB],
-               delay_cs: int | Sequence[int] = 5, loop: bool = True) -> bytes:
+def encode_gif(
+    frames: Sequence[bytes],
+    width: int,
+    height: int,
+    palette: Sequence[RGB],
+    delay_cs: int | Sequence[int] = 5,
+    loop: bool = True,
+) -> bytes:
     """frames: palette-index bytes (width*height each)."""
     pal = list(palette)
     size_bits = 1
@@ -88,21 +94,21 @@ def encode_gif(frames: Sequence[bytes], width: int, height: int, palette: Sequen
     for r, g, b in pal:
         out += bytes((r, g, b))
     if loop:
-        out += b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00"
+        out += b"\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"
     delays = [delay_cs] * len(frames) if isinstance(delay_cs, int) else list(delay_cs)
     for idx, frame in enumerate(frames):
         if len(frame) != width * height:
             raise ValueError("frame size mismatch")
-        out += b"\x21\xF9\x04" + struct.pack("<BHBB", 0x04, max(2, int(delays[idx])), 0, 0)
-        out += b"\x2C" + struct.pack("<HHHHB", 0, 0, width, height, 0)
+        out += b"\x21\xf9\x04" + struct.pack("<BHBB", 0x04, max(2, int(delays[idx])), 0, 0)
+        out += b"\x2c" + struct.pack("<HHHHB", 0, 0, width, height, 0)
         out.append(min_code)
         out += _sub_blocks(_lzw_encode(bytes(frame), min_code))
-    out += b"\x3B"
+    out += b"\x3b"
     return bytes(out)
 
 
-def oled_frames_to_indices(frames: Iterable[bytes], scale: int = 1) -> List[bytes]:
-    res: List[bytes] = []
+def oled_frames_to_indices(frames: Iterable[bytes], scale: int = 1) -> list[bytes]:
+    res: list[bytes] = []
     W, H = A.WIDTH, A.HEIGHT
     for f in frames:
         bits = A.frame_to_bits(f)
@@ -119,8 +125,16 @@ def oled_frames_to_indices(frames: Iterable[bytes], scale: int = 1) -> List[byte
     return res
 
 
-def write_oled_gif(path, frames: Sequence[bytes], fps: int, *, scale: int = 1, loop: bool = True,
-                   on: RGB = OLED_ON, off: RGB = OLED_OFF) -> bytes:
+def write_oled_gif(
+    path,
+    frames: Sequence[bytes],
+    fps: int,
+    *,
+    scale: int = 1,
+    loop: bool = True,
+    on: RGB = OLED_ON,
+    off: RGB = OLED_OFF,
+) -> bytes:
     idx = oled_frames_to_indices(frames, scale)
     delay = max(2, round(100 / max(1, int(fps))))
     data = encode_gif(idx, A.WIDTH * scale, A.HEIGHT * scale, [off, on], delay, loop)

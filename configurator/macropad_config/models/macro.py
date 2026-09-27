@@ -1,4 +1,4 @@
-"""Macro library dataclasses + JSON load/save (Step 13)."""
+"""Macro library dataclasses + JSON load/save."""
 
 from __future__ import annotations
 
@@ -174,10 +174,7 @@ class Macro:
         steps_raw = data.get("steps")
         if not isinstance(steps_raw, list):
             raise SchemaError(f"{path}: steps must be a list")
-        steps = [
-            MacroStep.from_dict(s, path=f"{path}.steps[{i}]")
-            for i, s in enumerate(steps_raw)
-        ]
+        steps = [MacroStep.from_dict(s, path=f"{path}.steps[{i}]") for i, s in enumerate(steps_raw)]
         if not steps:
             raise SchemaError(f"{path}: steps must be non-empty")
         if steps[-1].op != "END":
@@ -239,14 +236,9 @@ class MacroLibrary:
         return len(self.macros) < before
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, Any], *, path: Path | None = None
-    ) -> MacroLibrary:
+    def from_dict(cls, data: dict[str, Any], *, path: Path | None = None) -> MacroLibrary:
         validated = validate_library_dict(data)
-        macros = [
-            Macro.from_dict(m, path=f"macros[{i}]")
-            for i, m in enumerate(validated["macros"])
-        ]
+        macros = [Macro.from_dict(m, path=f"macros[{i}]") for i, m in enumerate(validated["macros"])]
         return cls(
             schema_version=int(validated["schema_version"]),
             macros=macros,
@@ -265,9 +257,7 @@ def validate_library_dict(data: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as exc:
         raise SchemaError("schema_version must be int") from exc
     if version != MACRO_SCHEMA_VERSION:
-        raise SchemaError(
-            f"unsupported schema_version {version} (expected {MACRO_SCHEMA_VERSION})"
-        )
+        raise SchemaError(f"unsupported schema_version {version} (expected {MACRO_SCHEMA_VERSION})")
     macros_raw = data.get("macros")
     if not isinstance(macros_raw, list):
         raise SchemaError("macros must be a list")

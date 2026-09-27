@@ -22,7 +22,7 @@
 
 static uint8_t last_report[8];
 static bool last_valid;
-/* Step 24b: keys that woke the display from the idle animation are swallowed
+/* keys that woke the display from the idle animation are swallowed
  * (not reported) until physically released. Bit (key_number - 1). */
 static uint16_t suppress_mask;
 

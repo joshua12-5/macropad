@@ -1,6 +1,6 @@
 # Hardware test checklist
 
-Use after flashing `macropad_step24b.uf2` / release `macropad-fw-X.Y.Z.uf2` (or current step UF2) on a real
+Use after flashing `macropad.uf2` (local build) / release `macropad-fw-X.Y.Z.uf2` on a real
 RP2040-Zero + matrix + EC11 + SSD1306 build. **Run the automated HIL suite
 first** (section 0), then tick the manual items below — the protocol items it
 covers are marked *(HIL)*.
@@ -8,7 +8,7 @@ covers are marked *(HIL)*.
 **Prep:** Pico SDK 2.1.1 build (`PICO_BOARD=waveshare_rp2040_zero`) or CI `macropad-firmware-uf2` artifact → copy UF2 while BOOTSEL held → wait for USB re-enum.
 Configurator: release bundle (`MacropadConfigurator --hil …` runs the suite below) or `cd configurator && python -m macropad_config` (`hidapi` from requirements.txt).
 
-## 0. Automated HIL suite (Step 23)
+## 0. Automated HIL suite
 
 ```bash
 cd configurator
@@ -83,7 +83,7 @@ interfaces), hence the guided checklist.
 - [ ] Key toast appears briefly on press
 - [ ] Profile-select menu draws; highlight moves with encoder
 
-## OLED idle animation (Step 24b, fw 0.25+)
+## OLED idle animation (fw 0.25+)
 
 Use **Tools → Idle animation…** in the configurator. Tip: set *Start after* to 10 s and
 *Screen off after* to 30 s, **Push idle settings**, then restore 60 s / 600 s at the end.

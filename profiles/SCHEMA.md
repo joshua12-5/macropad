@@ -15,7 +15,7 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 
 ## Action object
 
-| `type` | Payload | Firmware behavior (Step 8) |
+| `type` | Payload | Firmware behavior |
 |--------|---------|----------------------------|
 | `DISABLED` | — | No-op |
 | `KEY` | `key` | Held via matrix HID report |
@@ -31,8 +31,8 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 ### ID fields
 
 - **`text_id`**: index into firmware `text_table` (shared by TEXT / URL / APP).
-- **`macro_id`**: index into firmware built-in macro table (Step 9).
-- **`app_id`**: treated as `text_id` in Step 8 (launch string + Enter).
+- **`macro_id`**: index into the device macro bank (0–4).
+- **`app_id`**: treated as `text_id` (launch string + Enter).
 
 Firmware ships packed C copies of five profiles; JSON is the host/library form for the configurator.
 

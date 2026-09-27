@@ -1,4 +1,4 @@
-# Pinned build environment for release artifacts (Step 24, .github/workflows/release.yml).
+# Pinned build environment for release artifacts (.github/workflows/release.yml).
 # Runtime deps match configurator/requirements.txt; PySide6-Essentials is the
 # QtCore/QtGui/QtWidgets subset of PySide6 (the app uses nothing else) and
 # keeps bundles ~3x smaller than the full PySide6 meta-package.

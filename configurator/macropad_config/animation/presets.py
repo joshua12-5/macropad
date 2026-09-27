@@ -1,4 +1,4 @@
-"""Built-in procedural animations (Step 24b), generated in Python.
+"""Built-in procedural animations, generated in Python.
 
 Every preset returns ``(frames, fps)`` where frames are 1024-byte page-order
 buffers ready for :func:`codec.build_blob`. All presets loop seamlessly.
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple
 
 from . import codec as A
 from .font5x7 import ADVANCE, GLYPH_H, glyph, text_width
@@ -75,7 +75,8 @@ def _tri(t: float) -> float:
 
 # --------------------------------------------------------------------------
 
-def starfield(frames: int = 60, stars: int = 48, seed: int = 7, fps: int = 20) -> Tuple[List[bytes], int]:
+
+def starfield(frames: int = 60, stars: int = 48, seed: int = 7, fps: int = 20) -> tuple[list[bytes], int]:
     """3D warp starfield (same look as the firmware's built-in fallback).
 
     Stars have periodic depth so the loop closes: each star's z decreases by
@@ -88,7 +89,7 @@ def starfield(frames: int = 60, stars: int = 48, seed: int = 7, fps: int = 20) -
         sy = rng.uniform(-128, 128)
         phase = rng.random()
         table.append((sx, sy, phase))
-    out: List[bytes] = []
+    out: list[bytes] = []
     c = Canvas()
     for f in range(frames):
         c.clear()
@@ -108,8 +109,9 @@ def starfield(frames: int = 60, stars: int = 48, seed: int = 7, fps: int = 20) -
     return out, fps
 
 
-def bouncing_text(text: str = "MACROPAD", frames: int = 60, scale: int = 2,
-                  border: bool = True, fps: int = 20) -> Tuple[List[bytes], int]:
+def bouncing_text(
+    text: str = "MACROPAD", frames: int = 60, scale: int = 2, border: bool = True, fps: int = 20
+) -> tuple[list[bytes], int]:
     """DVD-logo style bounce. x/y follow triangle waves with 2 and 3 bounces
     per loop so the animation is seamless."""
     text = text or "MACROPAD"
@@ -120,7 +122,7 @@ def bouncing_text(text: str = "MACROPAD", frames: int = 60, scale: int = 2,
     pad = 2 if border else 0
     rx = max(0, W - tw - 2 * pad)
     ry = max(0, H - th - 2 * pad)
-    out: List[bytes] = []
+    out: list[bytes] = []
     c = Canvas()
     for f in range(frames):
         c.clear()
@@ -133,8 +135,9 @@ def bouncing_text(text: str = "MACROPAD", frames: int = 60, scale: int = 2,
     return out, fps
 
 
-def scroll_text(text: str = "HELLO FROM MACROPAD", scale: int = 2, speed: int = 2,
-                fps: int = 25) -> Tuple[List[bytes], int]:
+def scroll_text(
+    text: str = "HELLO FROM MACROPAD", scale: int = 2, speed: int = 2, fps: int = 25
+) -> tuple[list[bytes], int]:
     """Right-to-left marquee, vertically centred; loops when the text has
     fully left the screen (frame count = (128 + width) / speed)."""
     text = text or " "
@@ -144,7 +147,7 @@ def scroll_text(text: str = "HELLO FROM MACROPAD", scale: int = 2, speed: int = 
     span = W + tw + ADVANCE * scale
     count = max(1, math.ceil(span / speed))
     y = (H - th) // 2
-    out: List[bytes] = []
+    out: list[bytes] = []
     c = Canvas()
     for f in range(min(count, A.MAX_FRAMES)):
         c.clear()
@@ -165,11 +168,11 @@ _BAYER4 = (
 )
 
 
-def pulse(frames: int = 40, fps: int = 20) -> Tuple[List[bytes], int]:
+def pulse(frames: int = 40, fps: int = 20) -> tuple[list[bytes], int]:
     """Breathing glow: a radial gradient whose brightness follows a raised
     cosine, rendered with a 4x4 ordered (Bayer) dither, plus an outer ring
     that expands with the breath."""
-    out: List[bytes] = []
+    out: list[bytes] = []
     c = Canvas()
     cx, cy = (W - 1) / 2, (H - 1) / 2
     rmax = 30.0
@@ -191,12 +194,12 @@ def pulse(frames: int = 40, fps: int = 20) -> Tuple[List[bytes], int]:
 class Preset:
     key: str
     label: str
-    fn: Callable[..., Tuple[List[bytes], int]]
+    fn: Callable[..., tuple[list[bytes], int]]
     takes_text: bool = False
     default_text: str = ""
 
 
-PRESETS: Dict[str, Preset] = {
+PRESETS: dict[str, Preset] = {
     "starfield": Preset("starfield", "Starfield (warp)", starfield),
     "bounce": Preset("bounce", "Bouncing text", bouncing_text, True, "MACROPAD"),
     "scroll": Preset("scroll", "Scrolling text", scroll_text, True, "HELLO FROM MACROPAD"),
@@ -204,7 +207,7 @@ PRESETS: Dict[str, Preset] = {
 }
 
 
-def generate(key: str, text: str | None = None) -> Tuple[List[bytes], int]:
+def generate(key: str, text: str | None = None) -> tuple[list[bytes], int]:
     p = PRESETS[key]
     if p.takes_text:
         return p.fn(text=text if text is not None else p.default_text)

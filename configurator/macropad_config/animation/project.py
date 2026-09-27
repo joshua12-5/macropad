@@ -1,4 +1,4 @@
-"""Animation project files (``*.mpanim.json``) — Step 24b.
+"""Animation project files (``*.mpanim.json``).
 
 Stored in ``<user data>/animations`` (``paths.user_data_dir()``), overridable
 with ``MACROPAD_ANIMATIONS_DIR``. Format (see docs/ANIMATION.md)::
@@ -26,11 +26,11 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from . import codec as A
 from ..paths import user_data_dir
 from ..version import HOST_APP_VERSION
+from . import codec as A
 
 FORMAT_ID = "macropad-animation"
 SCHEMA_VERSION = 1
@@ -54,7 +54,7 @@ def animations_dir(create: bool = True) -> Path:
 
 @dataclass
 class AnimationProject:
-    frames: List[bytes] = field(default_factory=lambda: [bytes(A.FRAME_BYTES)])
+    frames: list[bytes] = field(default_factory=lambda: [bytes(A.FRAME_BYTES)])
     fps: int = 15
     loop: bool = True
     name: str = "custom"
@@ -82,10 +82,11 @@ class AnimationProject:
         return A.build_blob(self.frames, self.fps, self.loop, blob_name(self.name))
 
     @classmethod
-    def from_blob(cls, blob: bytes, name: Optional[str] = None) -> "AnimationProject":
+    def from_blob(cls, blob: bytes, name: Optional[str] = None) -> AnimationProject:
         parsed = A.parse_blob(blob)
-        return cls(frames=list(parsed.frames), fps=parsed.fps, loop=parsed.loop,
-                   name=name or parsed.name or "device")
+        return cls(
+            frames=list(parsed.frames), fps=parsed.fps, loop=parsed.loop, name=name or parsed.name or "device"
+        )
 
     # -- json ---------------------------------------------------------------
     def to_dict(self) -> dict:
@@ -109,7 +110,7 @@ class AnimationProject:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "AnimationProject":
+    def from_dict(cls, d: dict) -> AnimationProject:
         if d.get("format") != FORMAT_ID:
             raise ProjectError("not a macropad animation project")
         if int(d.get("schema_version", 0)) != SCHEMA_VERSION:
@@ -123,11 +124,15 @@ class AnimationProject:
         except Exception as exc:
             raise ProjectError(f"bad frame data: {exc}") from exc
         idle = d.get("idle") or {}
-        p = cls(frames=frames, fps=int(d.get("fps", 15)), loop=bool(d.get("loop", True)),
-                name=str(d.get("name") or "custom"),
-                idle_enabled=bool(idle.get("enabled", True)),
-                idle_timeout_s=int(idle.get("idle_timeout_s", A.DEFAULT_IDLE_S)),
-                blank_timeout_s=int(idle.get("blank_timeout_s", A.DEFAULT_BLANK_S)))
+        p = cls(
+            frames=frames,
+            fps=int(d.get("fps", 15)),
+            loop=bool(d.get("loop", True)),
+            name=str(d.get("name") or "custom"),
+            idle_enabled=bool(idle.get("enabled", True)),
+            idle_timeout_s=int(idle.get("idle_timeout_s", A.DEFAULT_IDLE_S)),
+            blank_timeout_s=int(idle.get("blank_timeout_s", A.DEFAULT_BLANK_S)),
+        )
         p.validate()
         return p
 
@@ -140,7 +145,7 @@ class AnimationProject:
         return path
 
     @classmethod
-    def load(cls, path: os.PathLike | str) -> "AnimationProject":
+    def load(cls, path: os.PathLike | str) -> AnimationProject:
         try:
             d = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -152,7 +157,3 @@ def blob_name(name: str) -> str:
     """ASCII, max 8 chars (blob header name field)."""
     clean = "".join(ch for ch in (name or "") if 32 <= ord(ch) < 127)
     return clean[:8]
-
-
-def list_projects() -> List[Path]:
-    return sorted(animations_dir(create=False).glob("*" + SUFFIX))

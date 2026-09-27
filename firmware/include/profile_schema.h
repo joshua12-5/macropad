@@ -22,13 +22,13 @@ extern "C" {
  *   TEXT    → text_id (firmware text_table)
  *   URL     → text_id (URL string in text_table)
  *   APP     → text_id (launch string; types string + Enter — host helper later)
- *   MACRO   → macro_id (Step 9)
+ *   MACRO   → macro_id
  */
 typedef enum {
     ACTION_DISABLED = 0,
     ACTION_KEY      = 1,  /* single HID key */
     ACTION_SHORTCUT = 2,  /* modifiers + key */
-    ACTION_MACRO    = 3,  /* macro_id (Step 9) */
+    ACTION_MACRO    = 3,  /* macro_id */
     ACTION_TEXT     = 4,  /* text_id → firmware string table */
     ACTION_MEDIA    = 5,  /* consumer usage */
     ACTION_VOLUME   = 6,  /* up/down/mute */

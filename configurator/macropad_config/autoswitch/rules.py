@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-
 SCHEMA_VERSION = 1
 DEFAULT_POLL_MS = 750
 POLL_MS_MIN = 100
@@ -82,9 +81,7 @@ def validate_rules(data: Any) -> AutoswitchRules:
     except (TypeError, ValueError) as exc:
         raise RulesError("poll_ms must be an int") from exc
     if not POLL_MS_MIN <= poll_ms <= POLL_MS_MAX:
-        raise RulesError(
-            f"poll_ms must be {POLL_MS_MIN}..{POLL_MS_MAX}, got {poll_ms}"
-        )
+        raise RulesError(f"poll_ms must be {POLL_MS_MIN}..{POLL_MS_MAX}, got {poll_ms}")
     fb = data.get("fallback_profile_id", None)
     if fb is not None and not isinstance(fb, str):
         raise RulesError("fallback_profile_id must be string or null")

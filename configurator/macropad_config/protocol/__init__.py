@@ -1,4 +1,4 @@
-"""USB config protocol framing + profile/macro blobs (Step 15–23)."""
+"""USB config protocol framing + profile/macro blobs."""
 
 from .frames import (
     CFG_CMD_ECHO,
@@ -76,12 +76,12 @@ __all__ = [
     "CFG_MAGIC",
     "CFG_PROTO_VERSION",
     "CFG_REPORT_SIZE",
-    "Frame",
-    "FrameError",
     "MACRO_BLOB_V1_SIZE",
     "MACRO_BUILTIN_COUNT",
     "MACRO_MAX_STEPS",
     "PROFILE_BLOB_V1_SIZE",
+    "Frame",
+    "FrameError",
     "crc32",
     "pack_frame",
     "pack_macro",

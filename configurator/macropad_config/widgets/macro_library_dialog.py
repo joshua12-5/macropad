@@ -1,4 +1,4 @@
-"""Modal dialog for editing the host macro library (Step 13)."""
+"""Modal dialog for editing the host macro library."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from ..models.macro import (
     save_library,
 )
 from ..models.schema import SchemaError
-from .action_editor import COMMON_KEYS, MEDIA_CODES, TEXT_LABELS
+from .action_editor import COMMON_KEYS, TEXT_LABELS
 
 # Consumer usage presets (label, value).
 CONSUMER_PRESETS: list[tuple[str, int]] = [
@@ -65,6 +65,9 @@ class MacroLibraryDialog(QDialog):
         self._loading = False
         self._dirty = False
         self._current_id: int | None = None
+        # Index of the step currently shown in the step editor (-1 = none). Edits are
+        # written back only to this step, and only when they actually change it.
+        self._editor_idx = -1
 
         self._build_ui()
         self._load_or_empty()
@@ -118,18 +121,10 @@ class MacroLibraryDialog(QDialog):
         right.addWidget(QLabel("Steps"))
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Op", "Mods", "Key", "Arg"])
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.Stretch
-        )
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemSelectionChanged.connect(self._on_step_selected)
@@ -162,6 +157,7 @@ class MacroLibraryDialog(QDialog):
         editor_box = QWidget()
         editor_layout = QFormLayout(editor_box)
         editor_layout.setContentsMargins(0, 8, 0, 0)
+        self._editor_form = editor_layout
 
         self._op_combo = QComboBox()
         self._op_combo.addItems(list(MACRO_OPS))
@@ -221,9 +217,6 @@ class MacroLibraryDialog(QDialog):
         consumer_layout.addWidget(self._consumer_edit)
         editor_layout.addRow("Consumer", consumer_wrap)
 
-        # Keep MEDIA_CODES imported for discoverability / future presets.
-        _ = MEDIA_CODES
-
         right.addWidget(editor_box)
         self._editor_box = editor_box
         self._editor_rows = {
@@ -233,7 +226,6 @@ class MacroLibraryDialog(QDialog):
             "text": text_wrap,
             "consumer": consumer_wrap,
         }
-        # Also need form labels visibility — hide whole rows via widgets.
 
         body.addLayout(right, stretch=3)
         root.addLayout(body, stretch=1)
@@ -245,8 +237,7 @@ class MacroLibraryDialog(QDialog):
         root.addWidget(self._error)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
@@ -262,18 +253,14 @@ class MacroLibraryDialog(QDialog):
             if self._path.is_file():
                 self._library = load_library(self._path)
             else:
-                self._library = MacroLibrary(
-                    schema_version=1, macros=[], source_path=self._path
-                )
+                self._library = MacroLibrary(schema_version=1, macros=[], source_path=self._path)
         except MacroLoadError as exc:
             QMessageBox.warning(
                 self,
                 "Macro library",
                 f"Could not load library:\n{exc}\n\nStarting empty.",
             )
-            self._library = MacroLibrary(
-                schema_version=1, macros=[], source_path=self._path
-            )
+            self._library = MacroLibrary(schema_version=1, macros=[], source_path=self._path)
         self._dirty = False
         self._refresh_list()
         if self._library.macros:
@@ -288,7 +275,7 @@ class MacroLibraryDialog(QDialog):
         self._apply_step_editor()
         self._sync_name_from_edit()
         try:
-            path = save_library(self._library, self._path)
+            save_library(self._library, self._path)
         except (OSError, SchemaError, ValueError) as exc:
             QMessageBox.critical(self, "Save failed", str(exc))
             return
@@ -299,11 +286,6 @@ class MacroLibraryDialog(QDialog):
             pass
         self.accept()
         # Store path for callers
-        self._saved_path = path
-
-    @property
-    def saved_path(self):
-        return getattr(self, "_saved_path", None)
 
     def library(self) -> MacroLibrary | None:
         return self._library
@@ -360,10 +342,15 @@ class MacroLibraryDialog(QDialog):
             self._set_editor_enabled(True)
             if macro.steps:
                 self._table.selectRow(0)
-            else:
-                self._clear_step_editor()
         finally:
             self._loading = False
+        # Load the editor for the selected row *after* the guarded block: the selection
+        # signal above is ignored while loading, and a stale editor used to be flushed
+        # back into step 0 on the next selection.
+        if macro.steps:
+            self._load_step_editor(macro.steps[0], 0)
+        else:
+            self._clear_step_editor()
         self._btn_dup.setEnabled(True)
         self._btn_del.setEnabled(True)
 
@@ -381,7 +368,7 @@ class MacroLibraryDialog(QDialog):
         self._btn_dup.setEnabled(False)
         self._btn_del.setEnabled(False)
 
-    def _set_editor_enabled(self, enabled: bool) -> None:  # noqa: FBT001
+    def _set_editor_enabled(self, enabled: bool) -> None:
         self._btn_add_step.setEnabled(enabled)
         self._btn_rm_step.setEnabled(enabled)
         self._btn_up.setEnabled(enabled)
@@ -500,9 +487,10 @@ class MacroLibraryDialog(QDialog):
         if macro is None or idx < 0 or idx >= len(macro.steps):
             self._clear_step_editor()
             return
-        self._load_step_editor(macro.steps[idx])
+        self._load_step_editor(macro.steps[idx], idx)
 
     def _clear_step_editor(self) -> None:
+        self._editor_idx = -1
         self._loading = True
         try:
             self._op_combo.setCurrentText("END")
@@ -519,7 +507,8 @@ class MacroLibraryDialog(QDialog):
         finally:
             self._loading = False
 
-    def _load_step_editor(self, step: MacroStep) -> None:
+    def _load_step_editor(self, step: MacroStep, idx: int) -> None:
+        self._editor_idx = idx
         self._loading = True
         try:
             self._editor_box.setEnabled(True)
@@ -565,11 +554,25 @@ class MacroLibraryDialog(QDialog):
         show_delay = op == "DELAY_MS"
         show_text = op == "TEXT"
         show_consumer = op == "CONSUMER"
-        self._mods_row.setVisible(show_key)
-        self._key_combo.setVisible(show_key)
-        self._delay_spin.setVisible(show_delay)
-        self._editor_rows["text"].setVisible(show_text)
-        self._editor_rows["consumer"].setVisible(show_consumer)
+        # Hide label + field together so e.g. a TAP step shows no Delay / Text id / Consumer labels.
+        for key, show in (
+            ("mods", show_key),
+            ("key", show_key),
+            ("delay", show_delay),
+            ("text", show_text),
+            ("consumer", show_consumer),
+        ):
+            self._editor_form.setRowVisible(self._editor_rows[key], show)
+
+    def visible_step_labels(self) -> list[str]:
+        """Labels of the step-editor rows currently shown (used by smokes / screenshots)."""
+        form = self._editor_form
+        out: list[str] = []
+        for i in range(form.rowCount()):
+            lab = form.itemAt(i, QFormLayout.ItemRole.LabelRole)
+            if lab is not None and lab.widget() is not None and form.isRowVisible(i):
+                out.append(lab.widget().text())
+        return out
 
     def _on_text_id_changed(self, value: int) -> None:
         self._text_hint.setText(TEXT_LABELS.get(value, ""))
@@ -592,8 +595,8 @@ class MacroLibraryDialog(QDialog):
         if self._loading:
             return
         macro = self._current_macro()
-        idx = self._selected_step_index()
-        if macro is None or idx < 0 or idx >= len(macro.steps):
+        idx = self._editor_idx
+        if macro is None or idx < 0 or idx >= len(macro.steps) or idx != self._selected_step_index():
             return
         op = self._op_combo.currentText()
         mods = [n for n, b in self._mod_boxes.items() if b.isChecked()]
@@ -622,6 +625,8 @@ class MacroLibraryDialog(QDialog):
             self._error.show()
             return
         self._error.hide()
+        if step.to_dict() == macro.steps[idx].to_dict():
+            return  # no real edit (selection change, focus-out, programmatic update)
         macro.steps[idx] = step
         self._loading = True
         try:
@@ -654,9 +659,7 @@ class MacroLibraryDialog(QDialog):
         if macro is None or idx < 0 or idx >= len(macro.steps):
             return
         if macro.steps[idx].op == "END" and idx == len(macro.steps) - 1:
-            QMessageBox.information(
-                self, "Remove step", "Cannot remove the trailing END step."
-            )
+            QMessageBox.information(self, "Remove step", "Cannot remove the trailing END step.")
             return
         del macro.steps[idx]
         if not macro.steps or macro.steps[-1].op != "END":
@@ -695,8 +698,7 @@ class MacroLibraryDialog(QDialog):
                 self,
                 "Unsaved changes",
                 "Discard changes to the macro library?",
-                QMessageBox.StandardButton.Discard
-                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
             if reply != QMessageBox.StandardButton.Discard:

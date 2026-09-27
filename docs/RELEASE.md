@@ -1,4 +1,4 @@
-# Releases (Step 24)
+# Releases
 
 Releases are built and published by **`.github/workflows/release.yml`** when a tag `vX.Y.Z` is
 pushed. Nothing is built on a developer machine; the workflow verifies versions, builds firmware
@@ -19,15 +19,14 @@ push tag vX.Y.Z ──► meta ──────────► firmware (reuse
 
 ## Cutting a release
 
-1. **Bump versions** (per [`VERSIONING.md`](VERSIONING.md)) for Step *N*:
+1. **Bump versions** (per [`VERSIONING.md`](VERSIONING.md)) for release `0.N.0`:
 
    | Item | Value | File |
    |------|-------|------|
    | `FW_VERSION_MINOR` | *N* | `firmware/include/config_protocol.h` |
    | `HOST_APP_VERSION`, `FW_VERSION_MINOR_CURRENT` | `0.N.0`, *N* | `configurator/macropad_config/version.py` |
    | `__version__` | `0.N.0` | `configurator/macropad_config/__init__.py` |
-   | CMake / UF2 target | `macropad_stepN` | `firmware/CMakeLists.txt` |
-   | USB `bcdDevice` | BCD `1.N` (Step 24 → `0x0118`, Step 24b / fw 0.25 → `0x0119`) | `firmware/src/usb_descriptors.c` |
+   | USB `bcdDevice` | BCD `1.N` (fw 0.25 → `0x0119`) | `firmware/src/usb_descriptors.c` |
    | Smokes / docs | expectations, matrix, READMEs | `scripts/smoke_version.py`, docs |
 
    Keep `CFG_PROTO_VERSION` and JSON `schema_version` at **1** unless intentionally breaking.
@@ -138,7 +137,7 @@ QT_QPA_PLATFORM=offscreen python packaging/ci_selftest.py dist/MacropadConfigura
 ```
 
 Firmware: see [`../firmware/README.md`](../firmware/README.md) (`cmake -B build -G Ninja
--DPICO_BOARD=waveshare_rp2040_zero && ninja -C build` → `build/macropad_stepN.uf2`). After
+-DPICO_BOARD=waveshare_rp2040_zero && ninja -C build` → `build/macropad.uf2`). After
 flashing, confirm Connect shows fw `0.N` / proto v1 and run
 `MacropadConfigurator --hil --allow-flash-write --json hil.json` (or
 `python configurator/scripts/hil_test.py …`) plus the manual part of

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release helpers used by .github/workflows/release.yml (Step 24).
+"""Release helpers used by .github/workflows/release.yml.
 
 Stdlib only; run from anywhere::
 
@@ -152,8 +152,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "versions":
             fw = fw_version()
-            print(json.dumps({"host": host_version(), "package": package_version(),
-                              "fw": f"{fw[0]}.{fw[1]}", "tag": f"v{host_version()}"}))
+            print(
+                json.dumps(
+                    {
+                        "host": host_version(),
+                        "package": package_version(),
+                        "fw": f"{fw[0]}.{fw[1]}",
+                        "tag": f"v{host_version()}",
+                    }
+                )
+            )
             return 0
         if args.cmd == "check":
             problems = check(args.tag)

@@ -1,6 +1,6 @@
 """QApplication entry for Macropad Configurator.
 
-Command line (Step 24)::
+Command line::
 
     MacropadConfigurator                 # start the GUI
     MacropadConfigurator --version       # print version info, exit 0
@@ -47,20 +47,28 @@ def version_text() -> str:
     from .paths import is_frozen
 
     kind = "frozen" if is_frozen() else "source"
-    return (f"Macropad Configurator {v.HOST_APP_VERSION} ({kind}; expects firmware "
-            f"{v.FW_VERSION_MAJOR_EXPECTED}.{v.FW_VERSION_MINOR_CURRENT}, "
-            f"protocol v{v.PROTO_VER})")
+    return (
+        f"Macropad Configurator {v.HOST_APP_VERSION} ({kind}; expects firmware "
+        f"{v.FW_VERSION_MAJOR_EXPECTED}.{v.FW_VERSION_MINOR_CURRENT}, "
+        f"protocol v{v.PROTO_VER})"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="MacropadConfigurator",
-                                description="Macropad Configurator (GUI unless a flag says otherwise)")
+    p = argparse.ArgumentParser(
+        prog="MacropadConfigurator", description="Macropad Configurator (GUI unless a flag says otherwise)"
+    )
     p.add_argument("--version", action="store_true", help="print version and exit")
-    p.add_argument("--self-test", action="store_true",
-                   help="run headless smoke checks (Qt offscreen) and exit 0/1")
+    p.add_argument(
+        "--self-test", action="store_true", help="run headless smoke checks (Qt offscreen) and exit 0/1"
+    )
     p.add_argument("--report", metavar="FILE", help="with --self-test/--version: also write output to FILE")
-    p.add_argument("--hil", nargs=argparse.REMAINDER, metavar="ARGS",
-                   help="run the HIL test tool with ARGS (see --hil --help)")
+    p.add_argument(
+        "--hil",
+        nargs=argparse.REMAINDER,
+        metavar="ARGS",
+        help="run the HIL test tool with ARGS (see --hil --help)",
+    )
     return p
 
 

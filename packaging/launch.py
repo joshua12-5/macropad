@@ -1,4 +1,4 @@
-"""PyInstaller entry script for Macropad Configurator (Step 24).
+"""PyInstaller entry script for Macropad Configurator.
 
 Kept outside the package so PyInstaller analyses ``macropad_config`` as a
 normal package (relative imports intact).

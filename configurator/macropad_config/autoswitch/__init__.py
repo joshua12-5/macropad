@@ -1,4 +1,4 @@
-"""Host-side foreground → profile auto-switch (Step 18)."""
+"""Host-side foreground → profile auto-switch."""
 
 from .matcher import BUILTIN_SLOT_MAP, MatchResult, match_foreground, resolve_slot
 from .rules import (
@@ -10,8 +10,8 @@ from .rules import (
 )
 
 __all__ = [
-    "AutoswitchRules",
     "BUILTIN_SLOT_MAP",
+    "AutoswitchRules",
     "MatchResult",
     "default_rules_path",
     "load_rules",

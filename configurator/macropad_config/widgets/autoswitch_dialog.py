@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -109,8 +108,7 @@ class AutoswitchDialog(QDialog):
             self._append_rule(rule)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
@@ -121,9 +119,7 @@ class AutoswitchDialog(QDialog):
         self._table.insertRow(row)
         self._table.setItem(row, 0, QTableWidgetItem(rule.profile_id))
         self._table.setItem(row, 1, QTableWidgetItem(", ".join(rule.process)))
-        self._table.setItem(
-            row, 2, QTableWidgetItem(rule.title_regex or "")
-        )
+        self._table.setItem(row, 2, QTableWidgetItem(rule.title_regex or ""))
         self._table.setItem(
             row,
             3,
@@ -131,9 +127,7 @@ class AutoswitchDialog(QDialog):
         )
 
     def _add_row(self) -> None:
-        self._append_rule(
-            Rule(profile_id="coding", process=["Code"], title_regex=None)
-        )
+        self._append_rule(Rule(profile_id="coding", process=["Code"], title_regex=None))
 
     def _remove_selected(self) -> None:
         rows = sorted({i.row() for i in self._table.selectedIndexes()}, reverse=True)

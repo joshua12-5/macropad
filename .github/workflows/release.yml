@@ -1,6 +1,6 @@
-# Release pipeline (Step 24).
+# Release pipeline.
 #
-#   git tag v0.24.0 && git push origin v0.24.0     → build, self-test, publish prerelease
+#   git tag vX.Y.Z && git push origin vX.Y.Z     → build, self-test, publish prerelease
 #   Actions → Release → Run workflow                → same builds, NO publish (dry run);
 #                                                     assets uploaded as the "release-dry-run" artifact
 #
@@ -33,13 +33,13 @@ env:
 jobs:
   meta:
     name: Version / changelog check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.v.outputs.tag }}
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: v
         name: Resolve tag + verify sources
         env:
@@ -58,7 +58,7 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           { echo "### Release $tag (publish=$publish)"; echo; cat release-notes.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: release-notes.md
@@ -90,9 +90,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -184,7 +184,7 @@ jobs:
           python packaging/ci_selftest.py "$exe" "out/selftest-$PLATFORM.txt" --expect-version "$VERSION"
           du -sh "$(dirname "$exe")" || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: configurator-${{ matrix.platform }}
           path: out/*
@@ -193,7 +193,7 @@ jobs:
   release:
     name: Assemble + publish
     needs: [meta, firmware, configurator]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -202,20 +202,20 @@ jobs:
       PUBLISH: ${{ needs.meta.outputs.publish }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: macropad-firmware-uf2
           path: fw
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: configurator-*
           path: cfg
           merge-multiple: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-notes
           path: .
@@ -224,7 +224,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p assets reports
-          uf2=$(ls fw/macropad_step*.uf2); elf=$(ls fw/macropad_step*.elf)
+          uf2=fw/macropad.uf2; elf=fw/macropad.elf
           cp "$uf2" "assets/macropad-fw-$VERSION.uf2"
           cp "$elf" "assets/macropad-fw-$VERSION.elf"
           (cd assets && sha256sum "macropad-fw-$VERSION.uf2" > "macropad-fw-$VERSION.uf2.sha256")
@@ -249,7 +249,7 @@ jobs:
 
       - name: Dry run — upload bundle instead of publishing
         if: needs.meta.outputs.publish != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-dry-run
           path: |

@@ -1,4 +1,4 @@
-# Macropad Configurator — runtime dependencies (Step 24)
+# Macropad Configurator — runtime dependencies
 PySide6>=6.6,<6.9
 
 # Vendor HID channel (Device menu). App runs without it.

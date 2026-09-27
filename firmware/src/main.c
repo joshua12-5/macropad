@@ -2,6 +2,7 @@
 #include "anim.h"
 #include "macros.h"
 #include "board_pins.h"
+#include "config_protocol.h"
 #include "encoder.h"
 #include "matrix.h"
 #include "oled_driver.h"
@@ -26,7 +27,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 24b: OLED idle animations ===\n");
+    printf("\n=== Macropad firmware %u.%u ===\n", (unsigned)FW_VERSION_MAJOR, (unsigned)FW_VERSION_MINOR);
 
     profiles_init();
     macros_init();   /* factory defaults into RAM before flash may override */
@@ -69,7 +70,7 @@ int main(void) {
         macros_task();
         oled_ui_task();
         anim_task();
-        oled_driver_task();   /* non-blocking framebuffer streaming (Step 24b) */
+        oled_driver_task();   /* non-blocking framebuffer streaming */
         storage_persist_task();
 
         const bool in_select = oled_ui_profile_select_active();
@@ -81,7 +82,7 @@ int main(void) {
             printf("Profile select: cancel (timeout)\n");
         }
 
-        /* Step 24b idle animation: held keys count as activity. A key that
+        /* Idle animation: held keys count as activity. A key that
          * wakes the display is swallowed until released (no HID, no action). */
         {
             bool woke = false;

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from macropad_config.models.profile import (  # noqa: E402
+from macropad_config.models.profile import (
     delete_profile_file,
     duplicate_profile,
     is_valid_profile_id,
@@ -26,7 +26,7 @@ from macropad_config.models.profile import (  # noqa: E402
     suggest_profile_id,
     suggest_profile_path,
 )
-from macropad_config.models.schema import validate_profile_dict  # noqa: E402
+from macropad_config.models.schema import validate_profile_dict
 
 
 def main() -> int:

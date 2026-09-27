@@ -1,6 +1,6 @@
 """Open the vendor-config HID interface and exchange framed packets.
 
-Requires an optional hidapi binding. Both Python APIs are supported (Step 23):
+Requires an optional hidapi binding. Both Python APIs are supported:
 
 * ``pip install hidapi`` (cython-hidapi): ``hid.device().open_path(...)`` —
   pinned in ``requirements.txt`` since Step 24 (wheels embed native hidapi;
@@ -18,7 +18,8 @@ from __future__ import annotations
 import struct
 import sys
 import time
-from typing import Callable, Iterable, Optional, Tuple
+from collections.abc import Callable, Iterable
+from typing import Optional
 
 from .frames import (
     CFG_ANIM_CHUNK_MAX,
@@ -31,6 +32,8 @@ from .frames import (
     CFG_CMD_ANIM_READ,
     CFG_CMD_ANIM_SETTINGS_GET,
     CFG_CMD_ANIM_SETTINGS_SET,
+    CFG_CMD_ECHO,
+    CFG_CMD_GET_ACTIVE,
     CFG_CMD_GET_INFO,
     CFG_CMD_MACRO_ABORT,
     CFG_CMD_MACRO_BEGIN,
@@ -39,17 +42,15 @@ from .frames import (
     CFG_CMD_MACRO_GET,
     CFG_CMD_MACRO_READ,
     CFG_CMD_NAK,
-    CFG_CMD_GET_ACTIVE,
-    CFG_CMD_ECHO,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
-    CFG_CMD_SAVE_ALL,
-    CFG_CMD_SET_ACTIVE,
     CFG_CMD_PROFILE_BEGIN,
     CFG_CMD_PROFILE_COMMIT,
     CFG_CMD_PROFILE_DATA,
     CFG_CMD_PROFILE_GET,
     CFG_CMD_PROFILE_READ,
+    CFG_CMD_SAVE_ALL,
+    CFG_CMD_SET_ACTIVE,
     CFG_ERR_EBADMSG,
     CFG_ERR_EBUSY,
     CFG_ERR_EINVAL,
@@ -66,14 +67,18 @@ from .frames import (
 from .macro_blob import (
     MACRO_BLOB_V1_SIZE,
     MACRO_DATA_MAX_CHUNK,
-    blob_crc as macro_blob_crc,
     iter_macro_data_chunks,
+)
+from .macro_blob import (
+    blob_crc as macro_blob_crc,
 )
 from .profile_blob import (
     PROFILE_BLOB_V1_SIZE,
     PROFILE_DATA_MAX_CHUNK,
-    blob_crc as profile_blob_crc,
     iter_profile_data_chunks,
+)
+from .profile_blob import (
+    blob_crc as profile_blob_crc,
 )
 
 USB_VID = 0x2E8A
@@ -214,9 +219,7 @@ class _HidHandle:
                 self._dev = None
 
 
-def list_config_devices(
-    vid: int = USB_VID, pid: int = USB_PID, *, hid_module=None
-) -> list[dict]:
+def list_config_devices(vid: int = USB_VID, pid: int = USB_PID, *, hid_module=None) -> list[dict]:
     """Enumerate matching HID interfaces (usage page 0xFF00 preferred)."""
     hid = hid_module if hid_module is not None else _import_hid()
     found: list[dict] = []
@@ -228,19 +231,6 @@ def list_config_devices(
         found.append(entry)
         _ = usage  # reserved for stricter filter later
     return found
-
-
-def iter_blob_data_chunks(
-    blob: bytes, chunk_size: int = PROFILE_DATA_MAX_CHUNK
-) -> Iterable[Tuple[int, bytes]]:
-    """Shared chunker for profile/macro DATA framing (offset + bytes)."""
-    if chunk_size < 1 or chunk_size > 50:
-        raise DeviceError(f"bad chunk_size {chunk_size}")
-    offset = 0
-    while offset < len(blob):
-        piece = blob[offset : offset + chunk_size]
-        yield offset, piece
-        offset += len(piece)
 
 
 class ConfigDevice:
@@ -282,7 +272,7 @@ class ConfigDevice:
             finally:
                 self._opened = False
 
-    def __enter__(self) -> "ConfigDevice":
+    def __enter__(self) -> ConfigDevice:
         self.open()
         return self
 
@@ -373,8 +363,7 @@ class ConfigDevice:
             err = resp.payload[0] if resp.payload else 0
             name = err_name(err)
             raise NakError(
-                f"{what} failed: device NAK {name} (code {err}). "
-                f"See protocol/PROTOCOL.md error table.",
+                f"{what} failed: device NAK {name} (code {err}). See docs/PROTOCOL.md error table.",
                 err,
             )
 
@@ -407,7 +396,7 @@ class ConfigDevice:
         commit_cmd: int,
         abort_cmd: int,
         label: str,
-        chunk_iter: Callable[[bytes], Iterable[Tuple[int, bytes]]],
+        chunk_iter: Callable[[bytes], Iterable[tuple[int, bytes]]],
         crc_fn: Callable[[bytes], int],
         timeout_ms: int = 2000,
     ) -> None:
@@ -415,9 +404,7 @@ class ConfigDevice:
         if not 0 <= int(slot_or_id) <= 4:
             raise DeviceError(f"{label} id/slot must be 0..4, got {slot_or_id}")
         if len(blob) != expected_size:
-            raise DeviceError(
-                f"{label} blob must be {expected_size} bytes, got {len(blob)}"
-            )
+            raise DeviceError(f"{label} blob must be {expected_size} bytes, got {len(blob)}")
 
         old_timeout = self._timeout_ms
         self._timeout_ms = timeout_ms
@@ -425,15 +412,11 @@ class ConfigDevice:
         committed = False
         try:
             crc = crc_fn(blob)
-            begin_pl = struct.pack(
-                "<BHI", int(slot_or_id) & 0xFF, expected_size, crc
-            )
+            begin_pl = struct.pack("<BHI", int(slot_or_id) & 0xFF, expected_size, crc)
             resp = self.transact(begin_cmd, self._next_seq(), begin_pl)
             self._raise_if_nak(resp, f"{label}_BEGIN")
             if resp.cmd != begin_cmd:
-                raise DeviceError(
-                    f"{label}_BEGIN unexpected cmd 0x{resp.cmd:02X}"
-                )
+                raise DeviceError(f"{label}_BEGIN unexpected cmd 0x{resp.cmd:02X}")
             started = True
 
             for offset, chunk in chunk_iter(blob):
@@ -441,16 +424,12 @@ class ConfigDevice:
                 resp = self.transact(data_cmd, self._next_seq(), data_pl)
                 self._raise_if_nak(resp, f"{label}_DATA@{offset}")
                 if resp.cmd != data_cmd:
-                    raise DeviceError(
-                        f"{label}_DATA unexpected cmd 0x{resp.cmd:02X}"
-                    )
+                    raise DeviceError(f"{label}_DATA unexpected cmd 0x{resp.cmd:02X}")
 
             resp = self.transact(commit_cmd, self._next_seq(), b"")
             self._raise_if_nak(resp, f"{label}_COMMIT")
             if resp.cmd != commit_cmd:
-                raise DeviceError(
-                    f"{label}_COMMIT unexpected cmd 0x{resp.cmd:02X}"
-                )
+                raise DeviceError(f"{label}_COMMIT unexpected cmd 0x{resp.cmd:02X}")
             committed = True
         except Exception:
             if started and not committed:
@@ -494,15 +473,12 @@ class ConfigDevice:
             timeout_ms=timeout_ms,
         )
 
-
     def set_active_slot(self, slot: int) -> None:
         """SET_ACTIVE (0x30) — switch RAM profile + OLED; no flash write."""
         slot = int(slot)
         if not 0 <= slot <= 4:
             raise DeviceError(f"slot must be 0..4, got {slot}")
-        resp = self.transact(
-            CFG_CMD_SET_ACTIVE, self._next_seq(), bytes([slot & 0xFF])
-        )
+        resp = self.transact(CFG_CMD_SET_ACTIVE, self._next_seq(), bytes([slot & 0xFF]))
         self._raise_if_nak(resp, "SET_ACTIVE")
         if resp.cmd != CFG_CMD_SET_ACTIVE:
             raise DeviceError(f"SET_ACTIVE unexpected cmd 0x{resp.cmd:02X}")
@@ -524,9 +500,7 @@ class ConfigDevice:
 
     def profile_get_meta(self, slot: int) -> dict:
         """PROFILE_GET → {slot, len, crc}."""
-        resp = self.transact(
-            CFG_CMD_PROFILE_GET, self._next_seq(), bytes([int(slot) & 0xFF])
-        )
+        resp = self.transact(CFG_CMD_PROFILE_GET, self._next_seq(), bytes([int(slot) & 0xFF]))
         self._raise_if_nak(resp, "PROFILE_GET")
         if resp.cmd != CFG_CMD_PROFILE_GET or len(resp.payload) < 7:
             raise DeviceError("bad PROFILE_GET response")
@@ -562,9 +536,7 @@ class ConfigDevice:
 
     def macro_get_meta(self, macro_id: int) -> dict:
         """MACRO_GET → {id, len, crc}."""
-        resp = self.transact(
-            CFG_CMD_MACRO_GET, self._next_seq(), bytes([int(macro_id) & 0xFF])
-        )
+        resp = self.transact(CFG_CMD_MACRO_GET, self._next_seq(), bytes([int(macro_id) & 0xFF]))
         self._raise_if_nak(resp, "MACRO_GET")
         if resp.cmd != CFG_CMD_MACRO_GET or len(resp.payload) < 7:
             raise DeviceError("bad MACRO_GET response")
@@ -627,14 +599,22 @@ class ConfigDevice:
         blob = bytes(blob)
         started = committed = False
         try:
-            self._anim_cmd(CFG_CMD_ANIM_BEGIN, struct.pack("<II", len(blob), _crc32(blob)),
-                           "ANIM_BEGIN", timeout_ms=timeout_ms)
+            self._anim_cmd(
+                CFG_CMD_ANIM_BEGIN,
+                struct.pack("<II", len(blob), _crc32(blob)),
+                "ANIM_BEGIN",
+                timeout_ms=timeout_ms,
+            )
             started = True
             off = 0
             while off < len(blob):
-                chunk = blob[off:off + CFG_ANIM_CHUNK_MAX]
-                self._anim_cmd(CFG_CMD_ANIM_DATA, struct.pack("<I", off) + chunk,
-                               f"ANIM_DATA@{off}", timeout_ms=timeout_ms)
+                chunk = blob[off : off + CFG_ANIM_CHUNK_MAX]
+                self._anim_cmd(
+                    CFG_CMD_ANIM_DATA,
+                    struct.pack("<I", off) + chunk,
+                    f"ANIM_DATA@{off}",
+                    timeout_ms=timeout_ms,
+                )
                 off += len(chunk)
                 if progress is not None and progress(off, len(blob)) is False:
                     raise DeviceError("animation upload cancelled")

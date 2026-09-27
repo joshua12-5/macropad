@@ -1,4 +1,4 @@
-"""Editable form for a single profile action dict (Step 11)."""
+"""Editable form for a single profile action dict."""
 
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ COMMON_KEYS = [
     "`",
 ]
 
-MACRO_LABELS = dict(BUILTIN_MACRO_NAMES)
 
 TEXT_LABELS = {
     0: "Hello",
@@ -96,6 +95,7 @@ class ActionEditor(QWidget):
         form = QFormLayout()
         form.setContentsMargins(0, 0, 0, 0)
         form.setSpacing(6)
+        self._form = form
 
         self._type = QComboBox()
         for at in ActionType:
@@ -204,7 +204,7 @@ class ActionEditor(QWidget):
 
         self._on_text_changed(self._text_spin.value())
 
-    def set_enabled(self, enabled: bool) -> None:  # noqa: FBT001
+    def set_enabled(self, enabled: bool) -> None:
         super().setEnabled(enabled)
         if not enabled:
             self._error.hide()
@@ -338,16 +338,30 @@ class ActionEditor(QWidget):
         show_volume = atype == ActionType.VOLUME.value
         show_profile = atype == ActionType.PROFILE.value
 
-        self._key_row.setVisible(show_key)
-        self._mods_row.setVisible(show_mods)
-        self._macro_row.setVisible(show_macro)
-        self._text_row.setVisible(show_text)
-        self._media_row.setVisible(show_media)
-        self._volume_row.setVisible(show_volume)
-        self._profile_row.setVisible(show_profile)
+        # Hide label + field together (QFormLayout.setRowVisible, Qt 6.4+) so rows that do
+        # not apply to the selected type leave no orphan labels behind.
+        for row, show in (
+            (self._key_row, show_key),
+            (self._mods_row, show_mods),
+            (self._macro_row, show_macro),
+            (self._text_row, show_text),
+            (self._media_row, show_media),
+            (self._volume_row, show_volume),
+            (self._profile_row, show_profile),
+        ):
+            self._form.setRowVisible(row, show)
 
-        # Hide form labels for invisible rows via parent form — labels stay;
-        # visibility on the field widgets is enough for usability.
+    def visible_field_labels(self) -> list[str]:
+        """Labels of the form rows currently shown (used by smokes / screenshots)."""
+        out: list[str] = []
+        for i in range(self._form.rowCount()):
+            lab = self._form.itemAt(i, QFormLayout.ItemRole.LabelRole)
+            fld = self._form.itemAt(i, QFormLayout.ItemRole.FieldRole)
+            if lab is None or lab.widget() is None or fld is None:
+                continue
+            if self._form.isRowVisible(i):
+                out.append(lab.widget().text())
+        return out
 
     def reload_macro_names(self) -> None:
         """Refresh MACRO combo from library.json (or built-in fallback)."""
@@ -407,7 +421,7 @@ class ActionEditor(QWidget):
             self._show_validation(None)
         except SchemaError as exc:
             self._show_validation(str(exc))
-        except Exception as exc:  # noqa: BLE001 — surface any build error
+        except Exception as exc:
             self._show_validation(str(exc))
         self.actionChanged.emit()
 

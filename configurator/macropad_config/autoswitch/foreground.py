@@ -83,11 +83,15 @@ def _windows() -> Optional[ForegroundInfo]:
 def _linux() -> Optional[ForegroundInfo]:
     # Prefer xdotool when available (X11). Wayland often cannot query focus.
     try:
-        wid = subprocess.check_output(
-            ["xdotool", "getactivewindow"],
-            stderr=subprocess.DEVNULL,
-            timeout=1.0,
-        ).decode("utf-8", errors="replace").strip()
+        wid = (
+            subprocess.check_output(
+                ["xdotool", "getactivewindow"],
+                stderr=subprocess.DEVNULL,
+                timeout=1.0,
+            )
+            .decode("utf-8", errors="replace")
+            .strip()
+        )
     except Exception:
         return None
     if not wid:
@@ -95,21 +99,30 @@ def _linux() -> Optional[ForegroundInfo]:
 
     title = None
     try:
-        title = subprocess.check_output(
-            ["xdotool", "getwindowname", wid],
-            stderr=subprocess.DEVNULL,
-            timeout=1.0,
-        ).decode("utf-8", errors="replace").strip() or None
+        title = (
+            subprocess.check_output(
+                ["xdotool", "getwindowname", wid],
+                stderr=subprocess.DEVNULL,
+                timeout=1.0,
+            )
+            .decode("utf-8", errors="replace")
+            .strip()
+            or None
+        )
     except Exception:
         title = None
 
     pid = None
     try:
-        pid_s = subprocess.check_output(
-            ["xdotool", "getwindowpid", wid],
-            stderr=subprocess.DEVNULL,
-            timeout=1.0,
-        ).decode("utf-8", errors="replace").strip()
+        pid_s = (
+            subprocess.check_output(
+                ["xdotool", "getwindowpid", wid],
+                stderr=subprocess.DEVNULL,
+                timeout=1.0,
+            )
+            .decode("utf-8", errors="replace")
+            .strip()
+        )
         pid = int(pid_s)
     except Exception:
         return ForegroundInfo(process=None, title=title)
@@ -134,37 +147,43 @@ def Path_read(path: str) -> str:
 
 
 def _darwin() -> Optional[ForegroundInfo]:
-    script = (
-        'tell application "System Events" to get {name, title} of '
-        "(first application process whose frontmost is true)"
-    )
-    # Simpler: app name + front window title separately for robustness.
+    # App name + front window title are queried separately for robustness.
     try:
-        name = subprocess.check_output(
-            [
-                "osascript",
-                "-e",
-                'tell application "System Events" to get name of '
-                "first application process whose frontmost is true",
-            ],
-            stderr=subprocess.DEVNULL,
-            timeout=2.0,
-        ).decode("utf-8", errors="replace").strip() or None
+        name = (
+            subprocess.check_output(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to get name of '
+                    "first application process whose frontmost is true",
+                ],
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+            )
+            .decode("utf-8", errors="replace")
+            .strip()
+            or None
+        )
     except Exception:
         return None
 
     title = None
     try:
-        title = subprocess.check_output(
-            [
-                "osascript",
-                "-e",
-                'tell application "System Events" to get title of '
-                "first window of (first application process whose frontmost is true)",
-            ],
-            stderr=subprocess.DEVNULL,
-            timeout=2.0,
-        ).decode("utf-8", errors="replace").strip() or None
+        title = (
+            subprocess.check_output(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to get title of '
+                    "first window of (first application process whose frontmost is true)",
+                ],
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+            )
+            .decode("utf-8", errors="replace")
+            .strip()
+            or None
+        )
     except Exception:
         title = None
 

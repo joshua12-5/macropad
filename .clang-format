@@ -1,0 +1,32 @@
+# Firmware C style (firmware/src, firmware/include). Matches the existing code:
+# 4-space indent, attached braces, `type *name`, ~100 columns, aligned continuation args.
+# Usage: clang-format -i firmware/src/*.c firmware/include/*.h   (clang-format ≥ 15)
+BasedOnStyle: LLVM
+Language: Cpp
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+IndentCaseLabels: false
+PointerAlignment: Right
+DerivePointerAlignment: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments: true
+SpacesBeforeTrailingComments: 1
+AlignEscapedNewlines: Left
+BinPackArguments: true
+BinPackParameters: true
+SortIncludes: Never
+IncludeBlocks: Preserve
+ReflowComments: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+SpaceAfterCStyleCast: false
+Cpp11BracedListStyle: false

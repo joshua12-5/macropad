@@ -1,4 +1,4 @@
-"""Shared host version and compatibility helpers (Step 24b).
+"""Shared host version and compatibility helpers.
 
 Keep in sync with firmware ``FW_VERSION_*`` / ``CFG_PROTO_VERSION`` and the
 matrix in ``docs/VERSIONING.md``.
@@ -6,10 +6,11 @@ matrix in ``docs/VERSIONING.md``.
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional
 
 # Host configurator semver (About / Connect display).
 HOST_APP_VERSION = "0.25.0"
+COPYRIGHT = "Copyright (c) 2026 Joshua Zamora"
 
 # Must match firmware CFG_PROTO_VERSION and frames.CFG_PROTO_VERSION.
 PROTO_VER = 1
@@ -19,12 +20,12 @@ FW_VERSION_MAJOR_EXPECTED = 0
 FW_VERSION_MINOR_CURRENT = 25
 
 # Minimum FW_VERSION_MINOR (same major) for Device menu features.
-MIN_FW_MINOR_UPLOAD = 16          # profile BEGIN/DATA/COMMIT
-MIN_FW_MINOR_MACRO_UPLOAD = 17    # macro bank sync
-MIN_FW_MINOR_AUTOSWITCH = 18      # SET_ACTIVE / GET_ACTIVE
-MIN_FW_MINOR_SAVE_ALL = 19        # SAVE_ALL 0x32
-MIN_FW_MINOR_READBACK = 23        # PROFILE_READ 0x15 / MACRO_READ 0x25
-MIN_FW_MINOR_ANIM = 25            # OLED idle animation 0x40-0x48 (Step 24b)
+MIN_FW_MINOR_UPLOAD = 16  # profile BEGIN/DATA/COMMIT
+MIN_FW_MINOR_MACRO_UPLOAD = 17  # macro bank sync
+MIN_FW_MINOR_AUTOSWITCH = 18  # SET_ACTIVE / GET_ACTIVE
+MIN_FW_MINOR_SAVE_ALL = 19  # SAVE_ALL 0x32
+MIN_FW_MINOR_READBACK = 23  # PROFILE_READ 0x15 / MACRO_READ 0x25
+MIN_FW_MINOR_ANIM = 25  # OLED idle animation 0x40-0x48
 
 # JSON / blob schema versions (host validators).
 PROFILE_SCHEMA_VERSION = 1
@@ -36,14 +37,13 @@ def fw_version_string(major: int, minor: int) -> str:
     return f"{int(major)}.{int(minor)}"
 
 
-def check_proto_ver(device_proto_ver: int) -> Tuple[bool, str]:
+def check_proto_ver(device_proto_ver: int) -> tuple[bool, str]:
     """Return (ok, message). ok False → host must warn; do not assume features."""
     try:
         got = int(device_proto_ver)
     except (TypeError, ValueError):
         return False, (
-            f"Device protocol version unknown ({device_proto_ver!r}); "
-            f"host expects proto_ver={PROTO_VER}."
+            f"Device protocol version unknown ({device_proto_ver!r}); host expects proto_ver={PROTO_VER}."
         )
     if got != PROTO_VER:
         return False, (
@@ -54,9 +54,7 @@ def check_proto_ver(device_proto_ver: int) -> Tuple[bool, str]:
     return True, f"proto_ver={got} OK (host {PROTO_VER})"
 
 
-def _fw_tuple(
-    fw_major: Optional[int], fw_minor: Optional[int]
-) -> Optional[Tuple[int, int]]:
+def _fw_tuple(fw_major: Optional[int], fw_minor: Optional[int]) -> Optional[tuple[int, int]]:
     if fw_major is None or fw_minor is None:
         return None
     try:
@@ -84,27 +82,19 @@ def fw_supports_upload(fw_major: Optional[int], fw_minor: Optional[int]) -> bool
     return fw_at_least(fw_major, fw_minor, min_minor=MIN_FW_MINOR_UPLOAD)
 
 
-def fw_supports_macro_upload(
-    fw_major: Optional[int], fw_minor: Optional[int]
-) -> bool:
+def fw_supports_macro_upload(fw_major: Optional[int], fw_minor: Optional[int]) -> bool:
     return fw_at_least(fw_major, fw_minor, min_minor=MIN_FW_MINOR_MACRO_UPLOAD)
 
 
-def fw_supports_autoswitch(
-    fw_major: Optional[int], fw_minor: Optional[int]
-) -> bool:
+def fw_supports_autoswitch(fw_major: Optional[int], fw_minor: Optional[int]) -> bool:
     return fw_at_least(fw_major, fw_minor, min_minor=MIN_FW_MINOR_AUTOSWITCH)
 
 
-def fw_supports_save_all(
-    fw_major: Optional[int], fw_minor: Optional[int]
-) -> bool:
+def fw_supports_save_all(fw_major: Optional[int], fw_minor: Optional[int]) -> bool:
     return fw_at_least(fw_major, fw_minor, min_minor=MIN_FW_MINOR_SAVE_ALL)
 
 
-def fw_supports_readback(
-    fw_major: Optional[int], fw_minor: Optional[int]
-) -> bool:
+def fw_supports_readback(fw_major: Optional[int], fw_minor: Optional[int]) -> bool:
     return fw_at_least(fw_major, fw_minor, min_minor=MIN_FW_MINOR_READBACK)
 
 
@@ -128,7 +118,4 @@ def compat_summary(info: dict) -> str:
     fw = fw_version_string(major, minor) if major is not None and minor is not None else "?"
     ok, _ = check_proto_ver(proto if proto is not None else -1)
     flag = "OK" if ok else "MISMATCH"
-    return (
-        f"host {HOST_APP_VERSION} | fw {fw} | proto v{proto} ({flag}) | "
-        f"expect proto {PROTO_VER}"
-    )
+    return f"host {HOST_APP_VERSION} | fw {fw} | proto v{proto} ({flag}) | expect proto {PROTO_VER}"

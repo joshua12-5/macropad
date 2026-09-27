@@ -17,13 +17,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from macropad_config.models.profile import (  # noqa: E402
+from macropad_config.models.profile import (
     default_profiles_dir,
     load_profile,
     load_profiles_dir,
     save_profile,
 )
-from macropad_config.models.schema import SchemaError, validate_action  # noqa: E402
+from macropad_config.models.schema import SchemaError, validate_action
 
 
 def main() -> int:
@@ -95,11 +95,11 @@ def main() -> int:
 
     # Optional GUI import (do not fail step if EGL missing)
     try:
-        from macropad_config.widgets.action_editor import ActionEditor  # noqa: F401
         from macropad_config.main_window import MainWindow  # noqa: F401
+        from macropad_config.widgets.action_editor import ActionEditor  # noqa: F401
 
         print("OK     GUI modules importable")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"SKIP   GUI import ({exc})")
 
     print("PASS")

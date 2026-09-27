@@ -1,4 +1,4 @@
-"""Headless self-test for source and frozen builds (Step 24, anim check Step 24b).
+"""Headless self-test for source and frozen builds .
 
 ``MacropadConfigurator --self-test`` (or ``python -m macropad_config
 --self-test``) imports every module, exercises the protocol / blob code,
@@ -19,8 +19,8 @@ import sys
 import tempfile
 import time
 import traceback
-from pathlib import Path
-from typing import Callable, TextIO
+from collections.abc import Callable
+from typing import TextIO
 
 # Every module shipped in the package; importing them catches PyInstaller
 # hidden-import misses that a lazy import would only hit at runtime.
@@ -67,8 +67,10 @@ MODULES = (
 def _chk_version() -> str:
     from . import version as v
 
-    return (f"host {v.HOST_APP_VERSION}, expects fw "
-            f"{v.FW_VERSION_MAJOR_EXPECTED}.{v.FW_VERSION_MINOR_CURRENT}, proto {v.PROTO_VER}")
+    return (
+        f"host {v.HOST_APP_VERSION}, expects fw "
+        f"{v.FW_VERSION_MAJOR_EXPECTED}.{v.FW_VERSION_MINOR_CURRENT}, proto {v.PROTO_VER}"
+    )
 
 
 def _chk_imports() -> str:
@@ -90,12 +92,16 @@ def _chk_frames() -> str:
 
 
 def _chk_anim() -> str:
-    """Step 24b: animation blob encode/decode (all presets + edge frames)."""
+    """Animation blob encode/decode (all presets + edge frames)."""
     from .animation import codec as A
     from .animation import presets as P
 
-    edge = [bytes(A.FRAME_BYTES), bytes([0xFF]) * A.FRAME_BYTES,
-            bytes(range(256)) * 4, bytes([0x55, 0xAA]) * 512]
+    edge = [
+        bytes(A.FRAME_BYTES),
+        bytes([0xFF]) * A.FRAME_BYTES,
+        bytes(range(256)) * 4,
+        bytes([0x55, 0xAA]) * 512,
+    ]
     blob = A.build_blob(edge, 12, loop=False, name="edge")
     back = A.parse_blob(blob)
     assert back.frames == edge and back.fps == 12 and not back.loop, "edge roundtrip"
@@ -136,8 +142,10 @@ def _chk_data() -> str:
     for m in lib.macros:
         unpack_macro(pack_macro(m), macro_id=m.id)
     rules = load_rules(default_rules_path())
-    return (f"{len(profiles)} profiles, {len(lib.macros)} macros, "
-            f"{len(rules.rules)} autoswitch rules (from {default_profiles_dir().parent})")
+    return (
+        f"{len(profiles)} profiles, {len(lib.macros)} macros, "
+        f"{len(rules.rules)} autoswitch rules (from {default_profiles_dir().parent})"
+    )
 
 
 def _chk_hid() -> str:
@@ -163,8 +171,9 @@ def _chk_hil_mock() -> str:
     counts = {}
     for api in ("cython", "pyhidapi"):
         mod = MockHidModule(MockFirmware(), api=api)
-        rep = run_suite(HilOptions(pings=5, allow_flash_write=False, timeout_ms=200),
-                        hid_module=mod, mock=True)
+        rep = run_suite(
+            HilOptions(pings=5, allow_flash_write=False, timeout_ms=200), hid_module=mod, mock=True
+        )
         c = rep.counts
         bad = [f"{r.id}: {r.detail}" for r in rep.results if r.status == "FAIL"]
         assert not bad, f"{api}: " + "; ".join(bad)
@@ -179,8 +188,7 @@ def _chk_qt() -> str:
 
     from .main_window import MainWindow
 
-    app = QApplication.instance() or QApplication([sys.argv[0], "-platform",
-                                                   os.environ["QT_QPA_PLATFORM"]])
+    app = QApplication.instance() or QApplication([sys.argv[0], "-platform", os.environ["QT_QPA_PLATFORM"]])
     win = MainWindow()
     win.show()
     for _ in range(5):
@@ -198,8 +206,7 @@ def _chk_qt() -> str:
     dlg.close()
     win.close()
     app.processEvents()
-    return (f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on "
-            f"'{app.platformName()}' ({title})")
+    return f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on '{app.platformName()}' ({title})"
 
 
 CHECKS: tuple[tuple[str, Callable[[], str]], ...] = (
@@ -222,8 +229,11 @@ def run_self_test(out: TextIO) -> int:
     os.environ.setdefault("MACROPAD_USER_DATA", tmp.name)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-    print(f"Macropad Configurator self-test — python {platform.python_version()} "
-          f"{platform.machine()} on {platform.platform()}", file=out)
+    print(
+        f"Macropad Configurator self-test — python {platform.python_version()} "
+        f"{platform.machine()} on {platform.platform()}",
+        file=out,
+    )
     print(f"  frozen={is_frozen()} resources={resource_root()}", file=out)
     failed = 0
     for name, fn in CHECKS:
@@ -231,7 +241,7 @@ def run_self_test(out: TextIO) -> int:
         try:
             detail = fn()
             status = "WARN" if detail.startswith("WARN") else "PASS"
-        except BaseException as exc:  # noqa: BLE001 — report everything
+        except BaseException as exc:
             if isinstance(exc, KeyboardInterrupt):
                 raise
             status, detail = "FAIL", f"{type(exc).__name__}: {exc}"
@@ -240,13 +250,13 @@ def run_self_test(out: TextIO) -> int:
         ms = (time.perf_counter() - t0) * 1000.0
         print(f"[{status}] {name:<9} {detail}  ({ms:.0f} ms)", file=out)
         out.flush()
-    print(f"SELF-TEST {'FAILED' if failed else 'OK'}: {len(CHECKS) - failed}/{len(CHECKS)} checks passed",
-          file=out)
+    print(
+        f"SELF-TEST {'FAILED' if failed else 'OK'}: {len(CHECKS) - failed}/{len(CHECKS)} checks passed",
+        file=out,
+    )
     out.flush()
     try:
         tmp.cleanup()
     except OSError:
         pass
     return 1 if failed else 0
-
-

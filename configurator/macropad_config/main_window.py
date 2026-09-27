@@ -1,4 +1,4 @@
-"""Main application window — Step 24 release packaging."""
+"""Main application window."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFormLayout,
-    QInputDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import version as app_version
 from .models.profile import (
     Profile,
     default_profiles_dir,
@@ -36,12 +37,11 @@ from .models.profile import (
 )
 from .models.schema import SchemaError
 from .widgets.action_editor import ActionEditor
+from .widgets.autoswitch_dialog import AutoswitchDialog
 from .widgets.macro_library_dialog import MacroLibraryDialog
 from .widgets.pad_preview import PadPreview
 from .widgets.profile_dialog import ProfileNameIdDialog
-from .widgets.autoswitch_dialog import AutoswitchDialog
 from .widgets.profile_list import ProfileListWidget
-from . import version as app_version
 
 DARK_STYLE = """
 QMainWindow, QWidget {
@@ -269,23 +269,19 @@ class MainWindow(QMainWindow):
 
         connect_act = QAction("&Connect / Get device info", self)
         connect_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
-        connect_act.setStatusTip("PING + GET_INFO over vendor HID (Step 15)")
+        connect_act.setStatusTip("PING + GET_INFO over vendor HID")
         connect_act.triggered.connect(self._device_connect_info)
         device_menu.addAction(connect_act)
 
         self._upload_act = QAction("&Upload profile to device…", self)
         self._upload_act.setShortcut(QKeySequence("Ctrl+Shift+U"))
-        self._upload_act.setStatusTip(
-            "Pack selected profile and upload into a device slot (0–4)"
-        )
+        self._upload_act.setStatusTip("Pack selected profile and upload into a device slot (0–4)")
         self._upload_act.triggered.connect(self._device_upload_profile)
         device_menu.addAction(self._upload_act)
 
         self._upload_macros_act = QAction("Upload &macros to device…", self)
         self._upload_macros_act.setShortcut(QKeySequence("Ctrl+Shift+M"))
-        self._upload_macros_act.setStatusTip(
-            "Upload host macro library ids 0–4 to the device flash bank"
-        )
+        self._upload_macros_act.setStatusTip("Upload host macro library ids 0–4 to the device flash bank")
         self._upload_macros_act.triggered.connect(self._device_upload_macros)
         device_menu.addAction(self._upload_macros_act)
 
@@ -315,7 +311,7 @@ class MainWindow(QMainWindow):
         autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
         tools_menu.addAction(autoswitch_dlg_act)
 
-        # Step 24b: OLED idle animation editor (authoring works offline; device
+        # OLED idle animation editor (authoring works offline; device
         # actions inside are gated on GET_INFO flag bit3 / fw 0.25+).
         self._anim_act = QAction("&Idle animation…", self)
         self._anim_act.setStatusTip(
@@ -325,9 +321,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self._anim_act)
 
         arch_tip_act = QAction("Architecture &overview…", self)
-        arch_tip_act.setStatusTip(
-            "Stack layers & data flow: docs/ARCHITECTURE.md in the repo"
-        )
+        arch_tip_act.setStatusTip("Stack layers & data flow: docs/ARCHITECTURE.md in the repo")
         arch_tip_act.triggered.connect(self._show_architecture_tip)
         tools_menu.addAction(arch_tip_act)
 
@@ -336,9 +330,7 @@ class MainWindow(QMainWindow):
         about_act.triggered.connect(self._show_about)
         help_menu.addAction(about_act)
         arch_help = QAction("&Architecture doc", self)
-        arch_help.setStatusTip(
-            "See docs/ARCHITECTURE.md — layers, flash vs RAM, protocol links"
-        )
+        arch_help.setStatusTip("See docs/ARCHITECTURE.md — layers, flash vs RAM, protocol links")
         arch_help.triggered.connect(self._show_architecture_tip)
         help_menu.addAction(arch_help)
 
@@ -447,8 +439,7 @@ class MainWindow(QMainWindow):
             self,
             "Unsaved changes",
             f"{reason}\n\nUnsaved profiles: {names}\n\nDiscard changes?",
-            QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
         return reply == QMessageBox.StandardButton.Discard
@@ -472,13 +463,9 @@ class MainWindow(QMainWindow):
             messages = "; ".join(f"{e.path.name}: {e.message}" for e in errors)
             self.statusBar().showMessage(f"Load errors: {messages}", 15000)
         elif not profiles:
-            self.statusBar().showMessage(
-                f"No profiles found in {self._profiles_dir}", 10000
-            )
+            self.statusBar().showMessage(f"No profiles found in {self._profiles_dir}", 10000)
         else:
-            self.statusBar().showMessage(
-                f"Loaded {len(profiles)} profile(s) from {self._profiles_dir}"
-            )
+            self.statusBar().showMessage(f"Loaded {len(profiles)} profile(s) from {self._profiles_dir}")
 
         if keep_id:
             self._profile_list.select_by_id(keep_id)
@@ -512,9 +499,7 @@ class MainWindow(QMainWindow):
                 self._dirty_ids.discard(profile.id)
                 saved += 1
             except (OSError, ValueError, SchemaError) as exc:
-                QMessageBox.critical(
-                    self, "Save failed", f"{profile.id}: {exc}"
-                )
+                QMessageBox.critical(self, "Save failed", f"{profile.id}: {exc}")
                 break
         self._profile_list.refresh_labels()
         self._update_save_actions()
@@ -628,13 +613,10 @@ class MainWindow(QMainWindow):
         if self._selection is None:
             return
         kind, selection_id = self._selection
-        label = (
-            f"Key {selection_id}" if kind == "key" else f"Encoder.{selection_id}"
-        )
+        label = f"Key {selection_id}" if kind == "key" else f"Encoder.{selection_id}"
         self._refresh_action_json(label)
 
-
-    # --- profile CRUD (Step 12) -----------------------------------------
+    # --- profile CRUD -----------------------------------------
 
     def _new_profile(self) -> None:
         existing = self._profile_list.existing_ids()
@@ -682,9 +664,7 @@ class MainWindow(QMainWindow):
             return
         self._profile_list.add_profile(profile, select=True)
         self._mark_dirty(profile)
-        self.statusBar().showMessage(
-            f"Duplicated {src.id} → {pid} — unsaved"
-        )
+        self.statusBar().showMessage(f"Duplicated {src.id} → {pid} — unsaved")
 
     def _delete_profile(self) -> None:
         profile = self._current or self._profile_list.current_profile()
@@ -698,10 +678,7 @@ class MainWindow(QMainWindow):
                 "\n\nThis is the last profile. You can delete it, "
                 "but the list will be empty until you create a new one."
             )
-        on_disk = (
-            profile.source_path is not None
-            and Path(profile.source_path).is_file()
-        )
+        on_disk = profile.source_path is not None and Path(profile.source_path).is_file()
         disk_note = (
             f"\n\nFile on disk will be removed:\n{profile.source_path}"
             if on_disk
@@ -710,10 +687,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Delete profile",
-            (
-                f"Delete profile {profile.name!r} ({profile.id})?"
-                f"{disk_note}{warn}"
-            ),
+            (f"Delete profile {profile.name!r} ({profile.id})?{disk_note}{warn}"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -753,17 +727,15 @@ class MainWindow(QMainWindow):
                 f"Profiles directory:\n{path}\n\n(Could not open file manager: {exc})",
             )
 
-    def closeEvent(self, event) -> None:  # noqa: N802
+    def closeEvent(self, event) -> None:
         if not self._confirm_discard_dirty("Quit with unsaved changes?"):
             event.ignore()
             return
         event.accept()
 
-
     def _open_macro_library(self) -> None:
         dlg = MacroLibraryDialog(parent=self)
         dlg.exec()
-
 
     def _open_anim_editor(self) -> None:
         from .widgets.anim_editor import AnimationEditorDialog
@@ -781,15 +753,11 @@ class MainWindow(QMainWindow):
     def _apply_device_feature_gates(self, info: dict | None) -> None:
         """Enable/disable upload / autoswitch / SAVE_ALL from GET_INFO fw."""
         if not info:
-            tip_u = app_version.feature_disabled_tooltip(
-                "Upload profile", app_version.MIN_FW_MINOR_UPLOAD
-            )
+            tip_u = app_version.feature_disabled_tooltip("Upload profile", app_version.MIN_FW_MINOR_UPLOAD)
             tip_m = app_version.feature_disabled_tooltip(
                 "Upload macros", app_version.MIN_FW_MINOR_MACRO_UPLOAD
             )
-            tip_a = app_version.feature_disabled_tooltip(
-                "Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH
-            )
+            tip_a = app_version.feature_disabled_tooltip("Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH)
             tip_s = app_version.feature_disabled_tooltip(
                 "Save device state", app_version.MIN_FW_MINOR_SAVE_ALL
             )
@@ -858,9 +826,7 @@ class MainWindow(QMainWindow):
                     f"(host expects proto_ver={app_version.PROTO_VER})."
                 )
             elif not app_version.fw_supports_autoswitch(major, minor):
-                tip = app_version.feature_disabled_tooltip(
-                    "Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH
-                )
+                tip = app_version.feature_disabled_tooltip("Auto-switch", app_version.MIN_FW_MINOR_AUTOSWITCH)
             else:
                 tip = "Connect to a device first to enable auto-switch."
             self._autoswitch_act.setToolTip(tip)
@@ -893,12 +859,11 @@ class MainWindow(QMainWindow):
         )
         return False
 
-
     def _device_connect_info(self) -> None:
-        """Open vendor HID, PING + GET_INFO, show result (Step 15)."""
+        """Open vendor HID, PING + GET_INFO, show result."""
         try:
             from .protocol.device import DeviceError, connect_and_info
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(
                 self,
                 "Device",
@@ -917,7 +882,7 @@ class MainWindow(QMainWindow):
                 f"Could not talk to the macropad.\n\n{exc}",
             )
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.statusBar().showMessage("Device error", 8000)
             QMessageBox.warning(self, "Device", str(exc))
             return
@@ -954,13 +919,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(status, 15000)
         QMessageBox.information(self, "Device info", msg)
 
-
     def _device_upload_profile(self) -> None:
         """Pack the selected profile and upload into a chosen device slot."""
         if self._current is None:
-            QMessageBox.information(
-                self, "Upload", "Select a profile to upload."
-            )
+            QMessageBox.information(self, "Upload", "Select a profile to upload.")
             return
 
         try:
@@ -969,10 +931,8 @@ class MainWindow(QMainWindow):
                 PROFILE_BLOB_V1_SIZE,
                 pack_profile,
             )
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(
-                self, "Upload", f"Protocol module unavailable:\n{exc}"
-            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Upload", f"Protocol module unavailable:\n{exc}")
             return
 
         default_slot = 0
@@ -994,10 +954,7 @@ class MainWindow(QMainWindow):
         slot, ok = QInputDialog.getInt(
             self,
             "Upload to device",
-            (
-                f"Upload profile {self._current.name!r} ({self._current.id})\n"
-                f"into device slot (0–4):"
-            ),
+            (f"Upload profile {self._current.name!r} ({self._current.id})\ninto device slot (0–4):"),
             default_slot,
             0,
             4,
@@ -1008,7 +965,7 @@ class MainWindow(QMainWindow):
 
         try:
             blob = pack_profile(self._current)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.critical(self, "Upload", f"Pack failed:\n{exc}")
             return
         if len(blob) != PROFILE_BLOB_V1_SIZE:
@@ -1019,9 +976,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self.statusBar().showMessage(
-            f"Uploading {self._current.id} → slot {slot}…"
-        )
+        self.statusBar().showMessage(f"Uploading {self._current.id} → slot {slot}…")
         try:
             with ConfigDevice(timeout_ms=2000) as dev:
                 try:
@@ -1033,15 +988,12 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Upload failed", 8000)
             QMessageBox.warning(self, "Upload failed", str(exc))
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.statusBar().showMessage("Upload failed", 8000)
             QMessageBox.warning(self, "Upload failed", str(exc))
             return
 
-        msg = (
-            f"Uploaded {self._current.name} ({self._current.id}) "
-            f"into device slot {slot}."
-        )
+        msg = f"Uploaded {self._current.name} ({self._current.id}) into device slot {slot}."
         self.statusBar().showMessage(msg, 15000)
         QMessageBox.information(self, "Upload", msg)
 
@@ -1051,8 +1003,8 @@ class MainWindow(QMainWindow):
             "About Macropad Configurator",
             (
                 "<b>Macropad Configurator</b><br>"
-                f"Version <b>{app_version.HOST_APP_VERSION}</b> — Step 24 "
-                "release packaging (tag-triggered builds, --self-test)<br><br>"
+                f"Version <b>{app_version.HOST_APP_VERSION}</b><br>"
+                "Desktop configurator for the RP2040 macropad.<br><br>"
                 f"Protocol (host): <b>{app_version.PROTO_VER}</b><br>"
                 f"Expected firmware: <b>{app_version.FW_VERSION_MAJOR_EXPECTED}."
                 f"{app_version.FW_VERSION_MINOR_CURRENT}</b><br>"
@@ -1063,7 +1015,8 @@ class MainWindow(QMainWindow):
                 "Loads/saves <code>profiles/</code> and <code>macros/library.json</code>.<br>"
                 "Compatibility: <code>docs/VERSIONING.md</code><br>"
                 "Architecture: <code>docs/ARCHITECTURE.md</code><br>"
-                "Device → Connect shows fw / proto; mismatches warn and gate features."
+                "Device → Connect shows fw / proto; mismatches warn and gate features.<br><br>"
+                f"{app_version.COPYRIGHT} — MIT License"
             ),
         )
 
@@ -1087,10 +1040,8 @@ class MainWindow(QMainWindow):
         """SAVE_ALL (0x32) — immediate device flash rewrite."""
         try:
             from .protocol.device import ConfigDevice, DeviceError
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(
-                self, "Save device state", f"Protocol module unavailable:\n{exc}"
-            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Save device state", f"Protocol module unavailable:\n{exc}")
             return
 
         self.statusBar().showMessage("Saving device state (SAVE_ALL)…")
@@ -1105,7 +1056,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Save device state failed", 8000)
             QMessageBox.warning(self, "Save device state failed", str(exc))
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.statusBar().showMessage("Save device state failed", 8000)
             QMessageBox.warning(self, "Save device state failed", str(exc))
             return
@@ -1119,7 +1070,6 @@ class MainWindow(QMainWindow):
         msg = "Device state saved (profiles + macros + active_slot)."
         self.statusBar().showMessage(msg, 10000)
         QMessageBox.information(self, "Save device state", msg)
-
 
     def _ensure_autoswitch(self):
         if self._autoswitch is not None:
@@ -1151,9 +1101,10 @@ class MainWindow(QMainWindow):
             rules = svc.rules
             if rules.schema_version != 1 or not rules.rules:
                 from .autoswitch.rules import load_rules
+
                 rules = load_rules()
                 svc.set_rules(rules)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Auto-switch", f"Could not load rules:\n{exc}")
             return
         profile_ids = []
@@ -1203,29 +1154,25 @@ class MainWindow(QMainWindow):
         svc.set_enabled(bool(checked))
 
     def _device_upload_macros(self) -> None:
-        """Upload host macro library ids 0–4 to the device (Step 17)."""
+        """Upload host macro library ids 0–4 to the device."""
         try:
             from .models.macro import load_library
             from .protocol.device import ConfigDevice, DeviceError
             from .protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(
-                self, "Upload macros", f"Module unavailable:\n{exc}"
-            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Upload macros", f"Module unavailable:\n{exc}")
             return
 
         try:
             library = load_library()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Upload macros", f"Could not load library:\n{exc}")
             return
 
         by_id = {m.id: m for m in library.macros}
         to_upload = [(i, by_id[i]) for i in range(5) if i in by_id]
         if not to_upload:
-            QMessageBox.information(
-                self, "Upload macros", "No macros with ids 0–4 in the library."
-            )
+            QMessageBox.information(self, "Upload macros", "No macros with ids 0–4 in the library.")
             return
 
         reply = QMessageBox.question(
@@ -1250,16 +1197,14 @@ class MainWindow(QMainWindow):
                 for mid, macro in to_upload:
                     blob = pack_macro(macro)
                     if len(blob) != MACRO_BLOB_V1_SIZE:
-                        raise DeviceError(
-                            f"macro {mid} blob size {len(blob)} != {MACRO_BLOB_V1_SIZE}"
-                        )
+                        raise DeviceError(f"macro {mid} blob size {len(blob)} != {MACRO_BLOB_V1_SIZE}")
                     dev.upload_macro(mid, blob)
                     uploaded += 1
         except DeviceError as exc:
             self.statusBar().showMessage("Macro upload failed", 8000)
             QMessageBox.warning(self, "Upload macros failed", str(exc))
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.statusBar().showMessage("Macro upload failed", 8000)
             QMessageBox.warning(self, "Upload macros failed", str(exc))
             return

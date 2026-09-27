@@ -1,4 +1,4 @@
-# OLED idle animations (Step 24b)
+# OLED idle animations
 
 The macropad can play a custom 128×64 animation on its SSD1306 when nobody is using it, and
 switch the display off later for burn-in protection. Animations are authored in the
@@ -129,7 +129,7 @@ window command (`21 00 7F 22 00 07`) plus 64 data transactions of 18 bytes (addr
 
 * bus time ≈ 8 × 22.5 µs + 64 × 18 × 22.5 µs ≈ **26.1 ms per 1 KiB frame**;
 * the old blocking `oled_driver_update()` stalled the main loop for those ~26 ms on every UI
-  repaint; since Step 24b `oled_driver_task()` sends at most **2 chunks (≈ 0.81 ms)** per 1 ms
+  repaint; since fw 0.25 `oled_driver_task()` sends at most **2 chunks (≈ 0.81 ms)** per 1 ms
   main-loop tick, so matrix scan, encoder, USB and the config channel keep running every tick
   while a frame streams over ~33 ticks (≈ 33 ms wall, ≈ 30 fps ceiling — the format caps fps at 30);
 * the real numbers of the last frame (bus µs and wall µs) are reported by `ANIM_INFO` and shown

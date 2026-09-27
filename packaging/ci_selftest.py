@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a packaged MacropadConfigurator's --version and --self-test (Step 24 CI).
+"""Run a packaged MacropadConfigurator's --version and --self-test (release CI).
 
     python packaging/ci_selftest.py <exe> <report.txt> [--expect-version X.Y.Z]
 
@@ -24,9 +24,15 @@ def run(exe: Path, args: list[str], report: Path, timeout: float) -> tuple[int, 
     report.parent.mkdir(parents=True, exist_ok=True)
     if report.exists():
         report.unlink()
-    proc = subprocess.run([str(exe), *args, "--report", str(report)], env=env,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          timeout=timeout, text=True, errors="replace")
+    proc = subprocess.run(
+        [str(exe), *args, "--report", str(report)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+        text=True,
+        errors="replace",
+    )
     text = report.read_text(encoding="utf-8", errors="replace") if report.exists() else ""
     if proc.stdout and proc.stdout.strip() and (not text or proc.returncode != 0):
         text += "\n--- process stdout/stderr ---\n" + proc.stdout

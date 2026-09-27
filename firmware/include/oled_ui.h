@@ -24,7 +24,7 @@ void oled_ui_notify_volume(int delta);   /* +1 / -1; updates local display level
 void oled_ui_notify_mute(void);
 void oled_ui_notify_key(uint8_t key_number);
 
-/* On-device profile select menu (Step 14). Render reads live from profiles.h. */
+/* On-device profile select menu. Render reads live from profiles.h. */
 bool oled_ui_profile_select_active(void);
 void oled_ui_profile_select_enter(uint8_t initial_index);
 void oled_ui_profile_select_set_cursor(uint8_t index);

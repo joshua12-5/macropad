@@ -1,4 +1,4 @@
-"""Command line for the HIL suite (Step 23). See ``--help``."""
+"""Command line for the HIL suite. See ``--help``."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from ..protocol.device import CFG_USAGE_PAGE, USB_PID, USB_VID, DeviceError, lis
 from .suite import FAIL, PASS, SKIP, TEST_IDS, HilOptions, run_suite
 
 EPILOG = f"""\
-tests (in order): {', '.join(TEST_IDS)}
+tests (in order): {", ".join(TEST_IDS)}
 
 flash wear: PROFILE/MACRO COMMIT and SAVE_ALL each erase+program the 4 KiB
 storage sector, so profile_roundtrip / macro_roundtrip / save_all are SKIPPED
@@ -36,31 +36,56 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="hil_test.py",
         description="Hardware-in-the-loop tests for the macropad vendor config HID "
-                    f"interface (VID {USB_VID:#06x} PID {USB_PID:#06x}, usage page "
-                    f"{CFG_USAGE_PAGE:#06x}). Host {ver.HOST_APP_VERSION}.",
+        f"interface (VID {USB_VID:#06x} PID {USB_PID:#06x}, usage page "
+        f"{CFG_USAGE_PAGE:#06x}). Host {ver.HOST_APP_VERSION}.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--list", action="store_true", help="list matching HID interfaces and exit")
     p.add_argument("--mock", action="store_true", help="run against the in-process mock device")
-    p.add_argument("--mock-fw-minor", type=int, default=ver.FW_VERSION_MINOR_CURRENT,
-                   metavar="N", help="firmware minor the mock reports (default %(default)s)")
-    p.add_argument("--mock-api", choices=("cython", "pyhidapi"), default="pyhidapi",
-                   help="hid module flavour the mock imitates (default %(default)s)")
+    p.add_argument(
+        "--mock-fw-minor",
+        type=int,
+        default=ver.FW_VERSION_MINOR_CURRENT,
+        metavar="N",
+        help="firmware minor the mock reports (default %(default)s)",
+    )
+    p.add_argument(
+        "--mock-api",
+        choices=("cython", "pyhidapi"),
+        default="pyhidapi",
+        help="hid module flavour the mock imitates (default %(default)s)",
+    )
     p.add_argument("--path", help="open this hidapi path instead of auto-selecting")
-    p.add_argument("--allow-flash-write", action="store_true",
-                   help="enable COMMIT round-trips and SAVE_ALL (writes flash)")
-    p.add_argument("--slot", type=int, choices=range(5), metavar="0-4",
-                   help="profile slot for upload tests (default: active+1)")
-    p.add_argument("--macro-id", type=int, choices=range(5), default=4, metavar="0-4",
-                   help="macro id for upload tests (default 4)")
+    p.add_argument(
+        "--allow-flash-write",
+        action="store_true",
+        help="enable COMMIT round-trips and SAVE_ALL (writes flash)",
+    )
+    p.add_argument(
+        "--slot",
+        type=int,
+        choices=range(5),
+        metavar="0-4",
+        help="profile slot for upload tests (default: active+1)",
+    )
+    p.add_argument(
+        "--macro-id",
+        type=int,
+        choices=range(5),
+        default=4,
+        metavar="0-4",
+        help="macro id for upload tests (default 4)",
+    )
     p.add_argument("--pings", type=int, default=20, metavar="N", help="PING count (default 20)")
     p.add_argument("--seed", type=int, default=23, help="RNG seed for ECHO payloads")
     p.add_argument("--timeout-ms", type=int, default=500, help="per-request timeout (default 500)")
-    p.add_argument("--strict-version", action="store_true",
-                   help="FAIL (not warn) when fw minor != host-expected minor")
-    p.add_argument("--interactive", action="store_true",
-                   help="guided key/encoder checklist (prompts on stdin)")
+    p.add_argument(
+        "--strict-version", action="store_true", help="FAIL (not warn) when fw minor != host-expected minor"
+    )
+    p.add_argument(
+        "--interactive", action="store_true", help="guided key/encoder checklist (prompts on stdin)"
+    )
     p.add_argument("--only", metavar="IDS", help="comma-separated test ids to run")
     p.add_argument("--skip", metavar="IDS", help="comma-separated test ids to skip")
     p.add_argument("--json", metavar="FILE", help="write a JSON report ('-' = stdout)")
@@ -99,14 +124,15 @@ def cmd_list(hid_module) -> int:
         path_s = path.decode("latin-1") if isinstance(path, bytes) else str(path)
         mark = "CONFIG" if d.get("_match_config") else "      "
         bcd = d.get("release_number")
-        print(f"{mark}  IF{d.get('interface_number', '?')}  usage {int(d.get('usage_page') or 0):#06x}/"
-              f"{int(d.get('usage') or 0):#04x}  bcd {int(bcd or 0):#06x}  "
-              f"{d.get('product_string') or ''!s:<24} serial {d.get('serial_number') or '-'}  path {path_s}")
+        print(
+            f"{mark}  IF{d.get('interface_number', '?')}  usage {int(d.get('usage_page') or 0):#06x}/"
+            f"{int(d.get('usage') or 0):#04x}  bcd {int(bcd or 0):#06x}  "
+            f"{d.get('product_string') or ''!s:<24} serial {d.get('serial_number') or '-'}  path {path_s}"
+        )
     return 0
 
 
-def main(argv: Optional[list[str]] = None, *, hid_module=None,
-         prompt=None, stream=None) -> int:
+def main(argv: Optional[list[str]] = None, *, hid_module=None, prompt=None, stream=None) -> int:
     args = build_parser().parse_args(argv)
     out = stream or sys.stdout
     color = not args.no_color and hasattr(out, "isatty") and out.isatty()
@@ -145,12 +171,21 @@ def main(argv: Optional[list[str]] = None, *, hid_module=None,
 
     target = "MOCK device" if args.mock else "hardware"
     if not args.quiet:
-        print(f"hil_test: host {ver.HOST_APP_VERSION}, expects fw "
-              f"{ver.FW_VERSION_MAJOR_EXPECTED}.{ver.FW_VERSION_MINOR_CURRENT}; target {target}; "
-              f"flash writes {'ENABLED' if args.allow_flash_write else 'disabled'}", file=out)
+        print(
+            f"hil_test: host {ver.HOST_APP_VERSION}, expects fw "
+            f"{ver.FW_VERSION_MAJOR_EXPECTED}.{ver.FW_VERSION_MINOR_CURRENT}; target {target}; "
+            f"flash writes {'ENABLED' if args.allow_flash_write else 'disabled'}",
+            file=out,
+        )
         print("-" * 72, file=out)
-    report = run_suite(opts, hid_module=hid_module, mock=args.mock, prompt=prompt,
-                       log=lambda m: print(m, file=out), on_result=on_result)
+    report = run_suite(
+        opts,
+        hid_module=hid_module,
+        mock=args.mock,
+        prompt=prompt,
+        log=lambda m: print(m, file=out),
+        on_result=on_result,
+    )
     c = report.counts
     if hasattr(hid_module, "firmware"):
         report.options["mock_flash_writes"] = hid_module.firmware.flash_writes

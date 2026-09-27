@@ -1,4 +1,4 @@
-"""Animation blob codec — mirrors firmware/include/anim_format.h (Step 24b).
+"""Animation blob codec — mirrors firmware/include/anim_format.h.
 
 Blob layout (little-endian)::
 
@@ -28,8 +28,9 @@ encoding per frame.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Sequence
+from typing import Optional
 
 from ..protocol.frames import crc32
 
@@ -76,6 +77,7 @@ class AnimFormatError(ValueError):
 # --------------------------------------------------------------------------
 # PackBits
 # --------------------------------------------------------------------------
+
 
 def packbits_encode(data: bytes) -> bytes:
     """PackBits: c<128 → c+1 literals; c>128 → repeat next byte 257-c times."""
@@ -142,6 +144,7 @@ def packbits_decode(data: bytes, out_len: int, *, xor_base: Optional[bytes] = No
 # Frame records
 # --------------------------------------------------------------------------
 
+
 def _check_frame(frame: bytes) -> bytes:
     frame = bytes(frame)
     if len(frame) != FRAME_BYTES:
@@ -157,7 +160,7 @@ def encode_record(frame: bytes, prev: Optional[bytes] = None, *, allow_delta: bo
     if len(rle) < len(best):
         best_enc, best = ENC_RLE, rle
     if prev is not None and allow_delta:
-        x = bytes(a ^ b for a, b in zip(frame, _check_frame(prev)))
+        x = bytes(a ^ b for a, b in zip(frame, _check_frame(prev), strict=True))
         d = packbits_encode(x)
         if len(d) < len(best):
             best_enc, best = ENC_DELTA, d
@@ -172,7 +175,7 @@ def decode_record(buf: bytes, offset: int, prev: bytes) -> tuple[bytes, int, int
     start = offset + REC_HDR_SIZE
     if start + ln > len(buf):
         raise AnimFormatError("truncated record payload")
-    pl = bytes(buf[start:start + ln])
+    pl = bytes(buf[start : start + ln])
     if enc == ENC_RAW:
         if ln != FRAME_BYTES:
             raise AnimFormatError("RAW record must be 1024 bytes")
@@ -190,13 +193,14 @@ def decode_record(buf: bytes, offset: int, prev: bytes) -> tuple[bytes, int, int
 # Blob
 # --------------------------------------------------------------------------
 
+
 @dataclass
 class AnimBlob:
-    frames: List[bytes]
+    frames: list[bytes]
     fps: int
     loop: bool = True
     name: str = ""
-    encodings: List[int] = field(default_factory=list)
+    encodings: list[int] = field(default_factory=list)
     data_len: int = 0
 
     @property
@@ -223,8 +227,17 @@ def build_blob(frames: Sequence[bytes], fps: int, loop: bool = True, name: str =
         data += encode_record(f, prev)
         prev = _check_frame(f)
     hdr = _HDR.pack(
-        MAGIC, VERSION, FLAG_LOOP if loop else 0, len(frames), fps, WIDTH, HEIGHT, 0,
-        len(data), crc32(bytes(data)), _clean_name(name),
+        MAGIC,
+        VERSION,
+        FLAG_LOOP if loop else 0,
+        len(frames),
+        fps,
+        WIDTH,
+        HEIGHT,
+        0,
+        len(data),
+        crc32(bytes(data)),
+        _clean_name(name),
     )
     return hdr + struct.pack("<I", crc32(hdr)) + bytes(data)
 
@@ -245,9 +258,14 @@ def parse_header(blob: bytes) -> dict:
     if (w, h) != (WIDTH, HEIGHT):
         raise AnimFormatError(f"unsupported size {w}x{h}")
     return {
-        "version": ver, "flags": flags, "loop": bool(flags & FLAG_LOOP),
-        "frame_count": count, "fps": fps, "data_len": data_len,
-        "data_crc": data_crc, "name": name.rstrip(b"\x00").decode("ascii", "replace"),
+        "version": ver,
+        "flags": flags,
+        "loop": bool(flags & FLAG_LOOP),
+        "frame_count": count,
+        "fps": fps,
+        "data_len": data_len,
+        "data_crc": data_crc,
+        "name": name.rstrip(b"\x00").decode("ascii", "replace"),
     }
 
 
@@ -257,11 +275,11 @@ def parse_blob(blob: bytes) -> AnimBlob:
     data_len = hdr["data_len"]
     if HEADER_SIZE + data_len > len(blob):
         raise AnimFormatError("blob truncated")
-    data = bytes(blob[HEADER_SIZE:HEADER_SIZE + data_len])
+    data = bytes(blob[HEADER_SIZE : HEADER_SIZE + data_len])
     if crc32(data) != hdr["data_crc"]:
         raise AnimFormatError("data CRC mismatch")
-    frames: List[bytes] = []
-    encs: List[int] = []
+    frames: list[bytes] = []
+    encs: list[int] = []
     prev = bytes(FRAME_BYTES)
     off = 0
     for i in range(hdr["frame_count"]):
@@ -274,8 +292,9 @@ def parse_blob(blob: bytes) -> AnimBlob:
         off += used
     if off != data_len:
         raise AnimFormatError("trailing bytes after last frame")
-    return AnimBlob(frames=frames, fps=hdr["fps"], loop=hdr["loop"], name=hdr["name"],
-                    encodings=encs, data_len=data_len)
+    return AnimBlob(
+        frames=frames, fps=hdr["fps"], loop=hdr["loop"], name=hdr["name"], encodings=encs, data_len=data_len
+    )
 
 
 def blob_stats(blob: bytes) -> dict:
@@ -284,9 +303,11 @@ def blob_stats(blob: bytes) -> dict:
     for e in parsed.encodings:
         counts[ENC_NAMES[e]] += 1
     return {
-        "total_len": len(blob), "frames": len(parsed.frames),
+        "total_len": len(blob),
+        "frames": len(parsed.frames),
         "raw_len": HEADER_SIZE + len(parsed.frames) * (REC_HDR_SIZE + FRAME_BYTES),
-        "region_size": REGION_SIZE, "fits": len(blob) <= REGION_SIZE,
+        "region_size": REGION_SIZE,
+        "fits": len(blob) <= REGION_SIZE,
         "encodings": counts,
     }
 
@@ -294,6 +315,7 @@ def blob_stats(blob: bytes) -> dict:
 # --------------------------------------------------------------------------
 # Pixel helpers (page order)
 # --------------------------------------------------------------------------
+
 
 def blank_frame() -> bytearray:
     return bytearray(FRAME_BYTES)
@@ -372,6 +394,7 @@ def frame_pixel_count(frame: bytes) -> int:
 # Wire helpers (ANIM_SETTINGS / ANIM_INFO payloads)
 # --------------------------------------------------------------------------
 
+
 def pack_settings(enabled: bool, idle_timeout_s: int, blank_timeout_s: int) -> bytes:
     for v, n in ((idle_timeout_s, "idle_timeout_s"), (blank_timeout_s, "blank_timeout_s")):
         if not 0 <= int(v) <= 0xFFFF:
@@ -395,14 +418,26 @@ def parse_anim_info(payload: bytes) -> dict:
     (max_raw,) = struct.unpack_from("<H", payload, 18)
     bus, wall, got = struct.unpack_from("<III", payload, 20)
     return {
-        "stored_valid": bool(st & 0x01), "uploading": bool(st & 0x02),
-        "playing": bool(st & 0x04), "blanked": bool(st & 0x08),
-        "builtin_active": bool(st & 0x10), "preview": bool(st & 0x20),
-        "region_ok": bool(st & 0x40), "status": st,
-        "format_version": payload[1], "frame_count": count, "fps": payload[4],
-        "flags": payload[5], "loop": bool(payload[5] & FLAG_LOOP),
-        "total_len": total, "crc": crc, "region_size": region, "max_frames_raw": max_raw,
-        "last_frame_bus_us": bus, "last_frame_wall_us": wall, "upload_got": got,
+        "stored_valid": bool(st & 0x01),
+        "uploading": bool(st & 0x02),
+        "playing": bool(st & 0x04),
+        "blanked": bool(st & 0x08),
+        "builtin_active": bool(st & 0x10),
+        "preview": bool(st & 0x20),
+        "region_ok": bool(st & 0x40),
+        "status": st,
+        "format_version": payload[1],
+        "frame_count": count,
+        "fps": payload[4],
+        "flags": payload[5],
+        "loop": bool(payload[5] & FLAG_LOOP),
+        "total_len": total,
+        "crc": crc,
+        "region_size": region,
+        "max_frames_raw": max_raw,
+        "last_frame_bus_us": bus,
+        "last_frame_wall_us": wall,
+        "upload_got": got,
         "name": bytes(payload[32:40]).rstrip(b"\x00").decode("ascii", "replace"),
     }
 
@@ -410,6 +445,6 @@ def parse_anim_info(payload: bytes) -> dict:
 def iter_chunks(blob: bytes, size: int = 48) -> Iterable[tuple[int, bytes]]:
     off = 0
     while off < len(blob):
-        piece = blob[off:off + size]
+        piece = blob[off : off + size]
         yield off, piece
         off += len(piece)

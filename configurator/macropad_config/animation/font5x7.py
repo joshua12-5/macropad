@@ -1,4 +1,4 @@
-"""5x7 ASCII font (32..126) — copy of firmware/src/oled_font.c (Step 24b).
+"""5x7 ASCII font (32..126) — copy of firmware/src/oled_font.c.
 
 Each glyph is 5 column bytes, bit0 = top pixel; draw with a 6 px advance
 exactly like ``oled_driver_draw_string``. ``smoke_anim_codec`` checks this

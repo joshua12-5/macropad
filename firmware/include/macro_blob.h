@@ -12,7 +12,7 @@ extern "C" {
 
 /*
  * Explicit little-endian wire format for one macro slot (no C struct padding).
- * See protocol/MACRO_BLOB.md.
+ * See docs/MACRO_BLOB.md.
  *
  * Layout:
  *   char name[16]          (NUL-padded)

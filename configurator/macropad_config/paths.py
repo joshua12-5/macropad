@@ -1,4 +1,4 @@
-"""Filesystem locations for bundled defaults and user data (Step 24).
+"""Filesystem locations for bundled defaults and user data.
 
 Two run modes:
 

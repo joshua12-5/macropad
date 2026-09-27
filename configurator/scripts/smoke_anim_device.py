@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: idle animation over the device protocol + editor GUI (Step 24b).
+"""Headless smoke: idle animation over the device protocol + editor GUI.
 
 * ConfigDevice anim_* API against the mock firmware: upload (progress, cancel),
   read-back, ANIM_INFO, settings persisted in the MPFL v3 image, preview,
@@ -20,7 +20,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import struct
 import sys
 import tempfile
 from pathlib import Path
@@ -34,12 +33,12 @@ _TMP = tempfile.TemporaryDirectory(prefix="smoke-anim-")
 os.environ["MACROPAD_USER_DATA"] = _TMP.name
 os.environ["MACROPAD_ANIMATIONS_DIR"] = str(Path(_TMP.name) / "animations")
 
-from macropad_config.animation import codec as A  # noqa: E402
-from macropad_config.animation import presets as P  # noqa: E402
-from macropad_config.hil import cli  # noqa: E402
-from macropad_config.hil.mock import FLASH_SECTOR_SIZE, MockFirmware, MockHidModule  # noqa: E402
-from macropad_config.protocol import frames as F  # noqa: E402
-from macropad_config.protocol.device import ConfigDevice, DeviceError, NakError  # noqa: E402
+from macropad_config.animation import codec as A
+from macropad_config.animation import presets as P
+from macropad_config.hil import cli
+from macropad_config.hil.mock import FLASH_SECTOR_SIZE, MockFirmware, MockHidModule
+from macropad_config.protocol import frames as F
+from macropad_config.protocol.device import ConfigDevice, DeviceError, NakError
 
 FAILS: list[str] = []
 
@@ -69,11 +68,20 @@ def check_protocol() -> None:
     seen = []
     dev.anim_upload(blob, lambda d, t: seen.append((d, t)))
     expect(seen and seen[-1] == (len(blob), len(blob)), "progress reaches total")
-    expect(fw.anim_sector_writes == (len(blob) + FLASH_SECTOR_SIZE - 1) // FLASH_SECTOR_SIZE,
-           f"only needed sectors written ({fw.anim_sector_writes})")
+    expect(
+        fw.anim_sector_writes == (len(blob) + FLASH_SECTOR_SIZE - 1) // FLASH_SECTOR_SIZE,
+        f"only needed sectors written ({fw.anim_sector_writes})",
+    )
     ai = dev.anim_info()
-    expect(ai["stored_valid"] and ai["frame_count"] == 40 and ai["fps"] == fps and ai["name"] == "stars"
-           and ai["crc"] == F.crc32(blob) and ai["total_len"] == len(blob), f"info after upload {ai}")
+    expect(
+        ai["stored_valid"]
+        and ai["frame_count"] == 40
+        and ai["fps"] == fps
+        and ai["name"] == "stars"
+        and ai["crc"] == F.crc32(blob)
+        and ai["total_len"] == len(blob),
+        f"info after upload {ai}",
+    )
     expect(dev.anim_download() == blob, "read-back")
     # cancel before the first sector flush keeps the stored animation
     big = A.build_blob(P.scroll_text("CANCEL ME")[0], 25)
@@ -83,8 +91,10 @@ def check_protocol() -> None:
     except DeviceError as exc:
         expect("cancel" in str(exc), f"cancel message {exc}")
     ai = dev.anim_info()
-    expect(ai["stored_valid"] and ai["crc"] == F.crc32(blob) and not ai["uploading"],
-           "cancel before first sector keeps the old animation")
+    expect(
+        ai["stored_valid"] and ai["crc"] == F.crc32(blob) and not ai["uploading"],
+        "cancel before first sector keeps the old animation",
+    )
     # cancel after a sector was written invalidates (builtin fallback)
     try:
         dev.anim_upload(big, lambda d, t: d < 6000)
@@ -102,7 +112,7 @@ def check_protocol() -> None:
         expect(False, "oversized upload accepted")
     except NakError as exc:
         expect(exc.code == F.CFG_ERR_EINVAL, f"oversized → {exc.code}")
-    max_blob = A.build_blob(noise[:A.MAX_FRAMES_RAW], 10)
+    max_blob = A.build_blob(noise[: A.MAX_FRAMES_RAW], 10)
     dev.anim_upload(max_blob)
     expect(dev.anim_info()["frame_count"] == A.MAX_FRAMES_RAW, "127 raw frames fit")
     expect(fw.anim_sector_writes > 32, "full region written")
@@ -138,8 +148,9 @@ def check_protocol() -> None:
 def run_hil(args, fw):
     out = io.StringIO()
     rep_path = Path(_TMP.name) / "rep.json"
-    code = cli.main(args + ["--json", str(rep_path), "--no-color"],
-                    hid_module=MockHidModule(fw, api="cython"), stream=out)
+    code = cli.main(
+        [*args, "--json", str(rep_path), "--no-color"], hid_module=MockHidModule(fw, api="cython"), stream=out
+    )
     data = json.loads(rep_path.read_text())
     return code, {r["id"]: r["status"] for r in data["results"]}, out.getvalue()
 
@@ -147,17 +158,26 @@ def run_hil(args, fw):
 def check_hil_catches_bugs() -> None:
     print("smoke_anim_device: HIL suite catches seeded animation bugs")
     code, st, out = run_hil(["--mock", "--allow-flash-write"], MockFirmware())
-    expect(code == 0 and all(st[t] == "PASS" for t in ("anim_info", "anim_protocol", "anim_preview",
-                                                        "anim_settings", "anim_roundtrip")),
-           f"clean mock should pass: {st}\n{out}")
+    expect(
+        code == 0
+        and all(
+            st[t] == "PASS"
+            for t in ("anim_info", "anim_protocol", "anim_preview", "anim_settings", "anim_roundtrip")
+        ),
+        f"clean mock should pass: {st}\n{out}",
+    )
 
     class AcceptsBadCrc(MockFirmware):
         def _handle_anim(self, cmd, seq, length, raw_pl):
-            if cmd == F.CFG_CMD_ANIM_COMMIT and self.anim_up_active and self.anim_up_got == self.anim_up_total:
+            if (
+                cmd == F.CFG_CMD_ANIM_COMMIT
+                and self.anim_up_active
+                and self.anim_up_got == self.anim_up_total
+            ):
                 if self.anim_up_got % FLASH_SECTOR_SIZE:
                     self._anim_flush_stage()
                 self.anim_up_active = False
-                self._anim_load_stored()   # BUG: no CRC compare against BEGIN
+                self._anim_load_stored()  # BUG: no CRC compare against BEGIN
                 return self._resp(cmd, seq)
             return super()._handle_anim(cmd, seq, length, raw_pl)
 
@@ -193,7 +213,9 @@ def check_gui() -> None:
     app = QApplication.instance() or QApplication([])
     msgs: list[str] = []
     QMessageBox.information = staticmethod(lambda *a, **k: msgs.append(str(a[2]) if len(a) > 2 else ""))
-    QMessageBox.warning = staticmethod(lambda *a, **k: msgs.append("WARN " + (str(a[2]) if len(a) > 2 else "")))
+    QMessageBox.warning = staticmethod(
+        lambda *a, **k: msgs.append("WARN " + (str(a[2]) if len(a) > 2 else ""))
+    )
     QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.Yes)
 
     fw = MockFirmware()
@@ -208,8 +230,10 @@ def check_gui() -> None:
     QTest.mouseRelease(dlg.canvas, Qt.LeftButton, Qt.NoModifier, QPoint(20 * z + 1, 10 * z + 1))
     app.processEvents()
     f0 = bytes(dlg.frames[0])
-    expect(all(A.get_pixel(f0, x, 10) for x in range(10, 21)) and A.frame_pixel_count(f0) == 11,
-           f"drag draws an 11 px line ({A.frame_pixel_count(f0)})")
+    expect(
+        all(A.get_pixel(f0, x, 10) for x in range(10, 21)) and A.frame_pixel_count(f0) == 11,
+        f"drag draws an 11 px line ({A.frame_pixel_count(f0)})",
+    )
     expect(dlg.dirty, "drawing marks dirty")
     # right button erases
     QTest.mousePress(dlg.canvas, Qt.RightButton, Qt.NoModifier, QPoint(15 * z + 1, 10 * z + 1))

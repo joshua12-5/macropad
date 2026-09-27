@@ -1,4 +1,4 @@
-"""In-process mock macropad (Step 23) — fake ``hid`` module + firmware model.
+"""In-process mock macropad — fake ``hid`` module + firmware model.
 
 The model mirrors ``firmware/src/config_protocol.c`` + ``storage.c`` +
 ``profile_blob.c`` / ``macro_blob.c`` / ``macros.c`` closely enough for the HIL
@@ -31,16 +31,16 @@ import json
 import struct
 import time
 from collections import deque
-from pathlib import Path
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from ..animation import codec as A
 from ..paths import resource_root
-from ..version import FW_VERSION_MINOR_CURRENT
 from ..protocol import frames as F
 from ..protocol.device import USB_PID, USB_VID
 from ..protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
 from ..protocol.profile_blob import PROFILE_BLOB_V1_SIZE, pack_profile_dict
+from ..version import FW_VERSION_MINOR_CURRENT
 
 PROFILE_SLOT_COUNT = 5
 MACRO_COUNT = 5
@@ -48,7 +48,7 @@ MACRO_MAX_STEPS = 24
 FLASH_SECTOR_SIZE = 4096
 STORAGE_MAGIC = 0x4C46504D  # 'MPFL'
 STORAGE_VERSION_2 = 2
-STORAGE_VERSION_3 = 3  # Step 24b: + 8-byte idle-animation settings block
+STORAGE_VERSION_3 = 3  # + 8-byte idle-animation settings block
 STORAGE_ACTIVE_DEBOUNCE_S = 4.0
 PRODUCT_TAG = b"MACROPAD"
 
@@ -61,6 +61,7 @@ _PROFILE_FILES = ("Default", "Gaming", "Coding", "Browser", "Photoshop")
 # --------------------------------------------------------------------------
 # Firmware blob canonicalisation (unpack → RAM struct → pack)
 # --------------------------------------------------------------------------
+
 
 def _fw_copy_name(field: bytes) -> bytes:
     """profile_blob.c / macro_blob.c copy_name(): force NUL at [15], zero tail."""
@@ -79,7 +80,7 @@ def fw_profile_canon(blob: bytes) -> Optional[bytes]:
         return None
     out = bytearray(blob[:PROFILE_BLOB_V1_SIZE])
     for off in (2, 18, 130):  # id, name, oled.title
-        out[off:off + 16] = _fw_copy_name(blob[off:off + 16])
+        out[off : off + 16] = _fw_copy_name(blob[off : off + 16])
     out[147] = 0  # pad
     return bytes(out)
 
@@ -92,7 +93,7 @@ def fw_macro_canon(blob: bytes) -> Optional[bytes]:
     count = blob[16]
     if count < 1 or count > MACRO_MAX_STEPS:
         return None
-    steps = [list(blob[18 + i * 6: 24 + i * 6]) for i in range(MACRO_MAX_STEPS)]
+    steps = [list(blob[18 + i * 6 : 24 + i * 6]) for i in range(MACRO_MAX_STEPS)]
     step_count = None
     for i in range(count):
         if steps[i][0] == 0:  # MACRO_END
@@ -109,20 +110,18 @@ def fw_macro_canon(blob: bytes) -> Optional[bytes]:
     out[17] = 0
     for i in range(step_count):
         s = steps[i]
-        out[18 + i * 6: 24 + i * 6] = bytes([s[0], s[1], s[2], 0, s[4], s[5]])
+        out[18 + i * 6 : 24 + i * 6] = bytes([s[0], s[1], s[2], 0, s[4], s[5]])
     return bytes(out)
 
 
 def _default_profiles() -> list[bytes]:
     blobs: list[bytes] = []
-    for i, name in enumerate(_PROFILE_FILES):
+    for name in _PROFILE_FILES:
         path = _REPO / "profiles" / f"{name}.json"
         try:
             blob = pack_profile_dict(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
-            blob = pack_profile_dict(
-                {"schema_version": 1, "id": name.lower(), "name": name.upper()}
-            )
+            blob = pack_profile_dict({"schema_version": 1, "id": name.lower(), "name": name.upper()})
         canon = fw_profile_canon(blob)
         assert canon is not None
         blobs.append(canon)
@@ -148,6 +147,7 @@ def _default_macros() -> list[bytes]:
 # --------------------------------------------------------------------------
 # Firmware model
 # --------------------------------------------------------------------------
+
 
 class MockFirmware:
     """Python port of the config protocol + storage state machine."""
@@ -182,18 +182,21 @@ class MockFirmware:
         self.persist_deadline = 0.0
         self.log: list[str] = []
         # Step 24b animation model
-        self.anim_settings = {"enabled": True, "idle_timeout_s": A.DEFAULT_IDLE_S,
-                              "blank_timeout_s": A.DEFAULT_BLANK_S}
-        self.anim_region = bytearray(b"\xFF" * A.REGION_SIZE)
+        self.anim_settings = {
+            "enabled": True,
+            "idle_timeout_s": A.DEFAULT_IDLE_S,
+            "blank_timeout_s": A.DEFAULT_BLANK_S,
+        }
+        self.anim_region = bytearray(b"\xff" * A.REGION_SIZE)
         self.anim_sector_writes = 0
         self.anim_up_active = False
         self.anim_up_total = 0
         self.anim_up_crc = 0
         self.anim_up_got = 0
         self.anim_up_sectors = 0
-        self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+        self.anim_up_stage = bytearray(b"\xff" * FLASH_SECTOR_SIZE)
         self.anim_stored: Optional[dict] = None
-        self.anim_state = "active"       # active / playing / blank
+        self.anim_state = "active"  # active / playing / blank
         self.anim_preview_mode = 0
         self.anim_builtin_playing = False
         if not blank_flash:
@@ -259,7 +262,7 @@ class MockFirmware:
         if not self.has_anim or not self.flash_image_valid():
             return None
         off = self._body_len(STORAGE_VERSION_2)
-        return A.unpack_settings(self.flash[off:off + A.SETTINGS_SIZE])
+        return A.unpack_settings(self.flash[off : off + A.SETTINGS_SIZE])
 
     # -- animation (anim.c) ---------------------------------------------------
     def _anim_upload_busy_other(self) -> bool:
@@ -269,15 +272,16 @@ class MockFirmware:
         if self.fail_flash:
             return False
         off = index * FLASH_SECTOR_SIZE
-        self.anim_region[off:off + FLASH_SECTOR_SIZE] = (
-            data if data is not None else b"\xFF" * FLASH_SECTOR_SIZE)
+        self.anim_region[off : off + FLASH_SECTOR_SIZE] = (
+            data if data is not None else b"\xff" * FLASH_SECTOR_SIZE
+        )
         self.anim_sector_writes += 1
         return True
 
     def _anim_load_stored(self) -> None:
         self.anim_stored = None
         try:
-            hdr = A.parse_header(bytes(self.anim_region[:A.HEADER_SIZE]))
+            hdr = A.parse_header(bytes(self.anim_region[: A.HEADER_SIZE]))
             total = A.HEADER_SIZE + hdr["data_len"]
             if total > A.REGION_SIZE:
                 return
@@ -297,7 +301,7 @@ class MockFirmware:
         if self.anim_up_sectors == 0:
             self.anim_stored = None
         self.anim_up_sectors += 1
-        self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+        self.anim_up_stage = bytearray(b"\xff" * FLASH_SECTOR_SIZE)
         return True
 
     def anim_abort(self) -> None:
@@ -353,7 +357,7 @@ class MockFirmware:
             self.anim_up_active = True
             self.anim_up_total, self.anim_up_crc = total, crc
             self.anim_up_got = self.anim_up_sectors = 0
-            self.anim_up_stage = bytearray(b"\xFF" * FLASH_SECTOR_SIZE)
+            self.anim_up_stage = bytearray(b"\xff" * FLASH_SECTOR_SIZE)
             return self._resp(cmd, seq)
         if cmd == F.CFG_CMD_ANIM_DATA:
             if length < 5 or length > 4 + F.CFG_ANIM_CHUNK_MAX or not self.anim_up_active:
@@ -379,7 +383,7 @@ class MockFirmware:
                 self.anim_abort()
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             self.anim_up_active = False
-            blob = bytes(self.anim_region[:self.anim_up_total])
+            blob = bytes(self.anim_region[: self.anim_up_total])
             ok = F.crc32(blob) == self.anim_up_crc
             if ok:
                 try:
@@ -405,12 +409,13 @@ class MockFirmware:
             (off,) = struct.unpack_from("<I", raw_pl, 0)
             if off >= A.REGION_SIZE:
                 return self._nak(seq, F.CFG_ERR_EINVAL)
-            chunk = bytes(self.anim_region[off:off + F.CFG_ANIM_CHUNK_MAX])
+            chunk = bytes(self.anim_region[off : off + F.CFG_ANIM_CHUNK_MAX])
             return self._resp(cmd, seq, struct.pack("<I", off) + chunk)
         if cmd == F.CFG_CMD_ANIM_SETTINGS_GET:
             st = self.anim_settings
-            return self._resp(cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"],
-                                                        st["blank_timeout_s"]))
+            return self._resp(
+                cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"], st["blank_timeout_s"])
+            )
         if cmd == F.CFG_CMD_ANIM_SETTINGS_SET:
             if length < A.SETTINGS_SIZE:
                 return self._nak(seq, F.CFG_ERR_EINVAL)
@@ -418,13 +423,14 @@ class MockFirmware:
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             if raw_pl[0] > 1:
                 return self._nak(seq, F.CFG_ERR_EINVAL)
-            self.anim_settings = A.unpack_settings(bytes(raw_pl[:A.SETTINGS_SIZE]))
+            self.anim_settings = A.unpack_settings(bytes(raw_pl[: A.SETTINGS_SIZE]))
             self.persist_pending = False
             if not self.save_all():
                 return self._nak(seq, F.CFG_ERR_EBUSY)
             st = self.anim_settings
-            return self._resp(cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"],
-                                                        st["blank_timeout_s"]))
+            return self._resp(
+                cmd, seq, A.pack_settings(st["enabled"], st["idle_timeout_s"], st["blank_timeout_s"])
+            )
         if cmd == F.CFG_CMD_ANIM_PREVIEW:
             if length < 1:
                 return self._nak(seq, F.CFG_ERR_EINVAL)
@@ -502,7 +508,7 @@ class MockFirmware:
     def _upload_data(self, offset: int, data: bytes) -> bool:
         if offset + len(data) > self.upload_len:
             return False
-        self.upload_buf[offset:offset + len(data)] = data
+        self.upload_buf[offset : offset + len(data)] = data
         for i in range(offset, offset + len(data)):
             self.upload_mask[i] = True
         return True
@@ -581,7 +587,7 @@ class MockFirmware:
             return None
         cmd = req[4]
         length = struct.unpack_from("<H", req, 6)[0]
-        pl = req[8: 8 + length]
+        pl = req[8 : 8 + length]
         raw_pl = req[8:60]  # firmware reads payload[] past length (zero padded)
 
         if cmd == F.CFG_CMD_PING:
@@ -592,8 +598,19 @@ class MockFirmware:
                 flags |= F.CFG_INFO_FLAG_READBACK
             if self.has_anim:
                 flags |= F.CFG_INFO_FLAG_ANIM
-            info = bytes([self.fw_major, self.fw_minor, F.CFG_PROTO_VERSION,
-                          self.active, PROFILE_SLOT_COUNT, flags]) + PRODUCT_TAG
+            info = (
+                bytes(
+                    [
+                        self.fw_major,
+                        self.fw_minor,
+                        F.CFG_PROTO_VERSION,
+                        self.active,
+                        PROFILE_SLOT_COUNT,
+                        flags,
+                    ]
+                )
+                + PRODUCT_TAG
+            )
             return self._resp(cmd, seq, info)
         if cmd == F.CFG_CMD_ECHO:
             return self._resp(cmd, seq, pl)
@@ -646,7 +663,7 @@ class MockFirmware:
             table = self.profiles if cmd == F.CFG_CMD_PROFILE_READ else self.macros
             if idx >= len(table) or offset >= len(table[idx]):
                 return self._nak(seq, F.CFG_ERR_EINVAL)
-            chunk = table[idx][offset: offset + F.CFG_READ_CHUNK_MAX]
+            chunk = table[idx][offset : offset + F.CFG_READ_CHUNK_MAX]
             return self._resp(cmd, seq, struct.pack("<BH", idx, offset) + chunk)
 
         if cmd == F.CFG_CMD_SET_ACTIVE:
@@ -746,8 +763,9 @@ class MockPyHidDevice(_MockHandle):
 class MockHidModule:
     """Stand-in for ``import hid`` exposing one mock macropad."""
 
-    def __init__(self, firmware: Optional[MockFirmware] = None, *, api: str = "cython",
-                 present: bool = True) -> None:
+    def __init__(
+        self, firmware: Optional[MockFirmware] = None, *, api: str = "cython", present: bool = True
+    ) -> None:
         self.firmware = firmware or MockFirmware()
         self.api = api
         self.present = present

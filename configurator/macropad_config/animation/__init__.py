@@ -1,4 +1,4 @@
-"""OLED idle animation authoring (Step 24b).
+"""OLED idle animation authoring.
 
 Pure-Python modules (no Qt import at package level):
 

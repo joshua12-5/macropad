@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer
 
 from .foreground import get_foreground
 from .matcher import MatchResult, match_foreground
 from .rules import AutoswitchRules, load_rules
-
 
 StatusCallback = Callable[[str], None]
 SwitchCallback = Callable[[MatchResult], None]
@@ -40,9 +40,6 @@ class AutoswitchService(QObject):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
-    def set_host_profile_ids(self, ids: Sequence[str]) -> None:
-        self._host_profile_ids = list(ids)
-
     def load(self, path=None) -> AutoswitchRules:
         self._rules = load_rules(path)
         self._timer.setInterval(max(100, int(self._rules.poll_ms)))
@@ -71,9 +68,6 @@ class AutoswitchService(QObject):
             self._last_slot = None
             self._reconnect_pending = False
             self._status("Auto-switch: disabled")
-
-    def is_enabled(self) -> bool:
-        return self._enabled
 
     def _status(self, msg: str) -> None:
         if self._on_status:

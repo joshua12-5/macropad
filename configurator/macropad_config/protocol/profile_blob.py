@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import struct
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from .frames import crc32
 
@@ -40,6 +41,7 @@ def _as_int(value: Any) -> int:
     if s.lower().startswith("0x"):
         return int(s, 16)
     return int(s, 10)
+
 
 MOD_BITS = {
     "CTRL": 0x01,
@@ -300,9 +302,7 @@ def pack_profile_dict(data: Mapping[str, Any]) -> bytes:
 def unpack_profile_dict(blob: bytes) -> dict[str, Any]:
     """Deserialize 148-byte blob → schema-v1 profile dict."""
     if len(blob) != PROFILE_BLOB_V1_SIZE:
-        raise ProfileBlobError(
-            f"expected {PROFILE_BLOB_V1_SIZE} bytes, got {len(blob)}"
-        )
+        raise ProfileBlobError(f"expected {PROFILE_BLOB_V1_SIZE} bytes, got {len(blob)}")
     schema = struct.unpack_from("<H", blob, 0)[0]
     if schema != 1:
         raise ProfileBlobError(f"unsupported schema_version {schema}")

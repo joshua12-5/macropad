@@ -23,8 +23,6 @@ bool profiles_set_active(uint8_t index);
 bool profiles_write_slot(uint8_t index, const profile_t *p);
 
 /* Cycle helpers for later profile-select UI. */
-bool profiles_next(void);
-bool profiles_prev(void);
 
 #ifdef __cplusplus
 }

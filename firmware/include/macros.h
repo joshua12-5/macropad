@@ -46,7 +46,6 @@ bool macros_fire(uint8_t macro_id);     /* start playback; false if busy/invalid
 bool macros_busy(void);
 void macros_abort(void);
 
-const char *macros_name(uint8_t macro_id);
 
 /* Replace RAM slot from host/firmware (aborts playback if id is active). */
 bool macros_replace(uint8_t id, const char *name,

@@ -37,7 +37,7 @@
 
 #define STORAGE_V2_BODY_SIZE  (STORAGE_HDR_SIZE + STORAGE_PROFILES_SIZE + STORAGE_MACROS_SIZE)
 
-/* Step 24b: v3 = v2 body + idle-animation settings block, then CRC. */
+/* v3 = v2 body + idle-animation settings block, then CRC. */
 #define STORAGE_ANIM_OFFSET   STORAGE_V2_BODY_SIZE
 #define STORAGE_V3_BODY_SIZE  (STORAGE_V2_BODY_SIZE + ANIM_SETTINGS_SIZE)
 #define STORAGE_IMAGE_SIZE    (STORAGE_V3_BODY_SIZE + STORAGE_CRC_SIZE)
@@ -53,8 +53,7 @@ enum {
     UPLOAD_MACRO = 2,
 };
 
-static bool g_loaded_from_flash;
-/* Step 23: true while the flash v2 image matches RAM profiles+macros
+/* true while the flash v2 image matches RAM profiles+macros
  * (after a v2 load or a successful save); false after a failed save. */
 static bool g_flash_in_sync;
 static uint8_t g_upload_kind;
@@ -70,7 +69,7 @@ _Static_assert(PROFILE_BLOB_V1_SIZE <= UPLOAD_BUF_MAX, "profile > upload buf");
 static uint8_t g_upload_buf[UPLOAD_BUF_MAX];
 static uint8_t g_upload_recv_mask[(UPLOAD_BUF_MAX + 7) / 8];
 
-/* Step 19 — debounced active_slot persist (SET_ACTIVE → quiet → one rewrite). */
+/* debounced active_slot persist (SET_ACTIVE → quiet → one rewrite). */
 static bool g_active_persist_pending;
 static absolute_time_t g_active_persist_deadline;
 
@@ -207,7 +206,7 @@ static bool build_image(uint8_t *out, uint8_t active_slot) {
 }
 
 /*
- * Step 22: one static sector buffer holds the image being written (image at
+ * one static sector buffer holds the image being written (image at
  * the front, 0xFF padding after). This used to be a 1.5 KiB stack array in
  * storage_save_all(), which pushed the USB-callback → COMMIT → save path past
  * the 2 KiB core-0 stack budget.
@@ -233,7 +232,6 @@ static bool program_image(uint8_t *sector) {
 }
 
 void storage_init(void) {
-    g_loaded_from_flash = false;
     g_flash_in_sync = false;
     g_upload_kind = UPLOAD_NONE;
     g_active_persist_pending = false;
@@ -250,7 +248,6 @@ void storage_init(void) {
         if (!anim_settings_unpack(&img[STORAGE_ANIM_OFFSET])) {
             anim_settings_defaults();
         }
-        g_loaded_from_flash = true;
         g_flash_in_sync = true;
         printf("stor load v3\n");
         return;
@@ -263,7 +260,6 @@ void storage_init(void) {
             return;
         }
         /* Idle settings at defaults; the next save upgrades to v3. */
-        g_loaded_from_flash = true;
         g_flash_in_sync = false;
         printf("stor load v2\n");
         return;
@@ -275,16 +271,11 @@ void storage_init(void) {
             return;
         }
         /* Macros already seeded by macros_init(); next save upgrades to v2. */
-        g_loaded_from_flash = true;
         printf("stor load v1 (macros factory)\n");
         return;
     }
 
     printf("stor load default\n");
-}
-
-bool storage_loaded_from_flash(void) {
-    return g_loaded_from_flash;
 }
 
 bool storage_save_all(void) {
@@ -301,7 +292,6 @@ bool storage_save_all(void) {
         printf("stor save fail\n");
         return false;
     }
-    g_loaded_from_flash = true;
     g_flash_in_sync = true;
     printf("stor save ok\n");
     return true;
@@ -330,7 +320,7 @@ void storage_persist_task(void) {
         storage_schedule_active_persist();
         return;
     }
-    /* Step 23: nothing to do if flash already matches RAM incl. active_slot
+    /* nothing to do if flash already matches RAM incl. active_slot
      * (e.g. host cycled SET_ACTIVE and restored the original slot). */
     const uint8_t *img = flash_image();
     if (g_flash_in_sync && image_valid_v3(img) &&
@@ -342,13 +332,6 @@ void storage_persist_task(void) {
     if (!storage_save_all()) {
         printf("stor debounce save fail\n");
     }
-}
-
-bool storage_save_slot(uint8_t index) {
-    if (index >= PROFILE_SLOT_COUNT) {
-        return false;
-    }
-    return storage_save_all();
 }
 
 bool storage_upload_busy(void) {

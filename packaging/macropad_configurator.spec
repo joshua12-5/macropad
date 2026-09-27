@@ -1,5 +1,4 @@
-# -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Macropad Configurator release builds (Step 24).
+# PyInstaller spec for Macropad Configurator release builds.
 #
 #   cd <repo> && pyinstaller --noconfirm --clean packaging/macropad_configurator.spec
 #
@@ -21,9 +20,7 @@ VERSION = re.search(r'HOST_APP_VERSION\s*=\s*"([^"]+)"', _ver_src).group(1)
 APP_NAME = "MacropadConfigurator"
 
 # Bundled read-only defaults → <bundle>/data/... (see macropad_config/paths.py)
-datas = [
-    (str(p), "data/profiles") for p in sorted((REPO / "profiles").glob("*.json"))
-]
+datas = [(str(p), "data/profiles") for p in sorted((REPO / "profiles").glob("*.json"))]
 datas += [
     (str(REPO / "macros" / "library.json"), "data/macros"),
     (str(REPO / "autoswitch" / "rules.json"), "data/autoswitch"),
@@ -46,8 +43,15 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "unittest", "pydoc_data", "PySide6.QtNetwork",
-              "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtWebEngineCore"],
+    excludes=[
+        "tkinter",
+        "unittest",
+        "pydoc_data",
+        "PySide6.QtNetwork",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtWebEngineCore",
+    ],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -61,9 +65,9 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=False,          # GUI app; --self-test/--version attach to the parent console
+    console=False,  # GUI app; --self-test/--version attach to the parent console
     disable_windowed_traceback=False,
-    target_arch=None,       # native: arm64 on macos-latest (see docs/RELEASE.md)
+    target_arch=None,  # native: arm64 on macos-latest (see docs/RELEASE.md)
     codesign_identity=None,
     entitlements_file=None,
 )
@@ -83,5 +87,6 @@ if sys.platform == "darwin":
             "CFBundleVersion": VERSION,
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "12.0",
+            "NSHumanReadableCopyright": "Copyright (c) 2026 Joshua Zamora. MIT License.",
         },
     )

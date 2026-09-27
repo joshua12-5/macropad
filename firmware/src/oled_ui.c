@@ -173,7 +173,7 @@ void oled_ui_task(void) {
         mark_dirty();
     }
 
-    /* Step 24b: the idle animation / blanking owns the framebuffer; keep the
+    /* the idle animation / blanking owns the framebuffer; keep the
      * dirty flag so the UI repaints as soon as it is released. */
     if (dirty && !anim_screen_owned()) {
         render();

@@ -237,7 +237,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
 
     case CFG_CMD_PROFILE_READ:
     case CFG_CMD_MACRO_READ: {
-        /* Step 23: chunked readback of the packed RAM blob (no flash I/O). */
+        /* chunked readback of the packed RAM blob (no flash I/O). */
         if (length < 3) {
             nak(resp, seq, CFG_ERR_EINVAL);
             return true;
@@ -387,7 +387,7 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         return true;
     }
 
-    /* ---- Step 24b: OLED idle animation ---- */
+    /* ---- OLED idle animation ---- */
     case CFG_CMD_ANIM_BEGIN: {
         if (length < 8) {
             nak(resp, seq, CFG_ERR_EINVAL);

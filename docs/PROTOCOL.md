@@ -1,16 +1,17 @@
 # Macropad USB Config Protocol (v1)
 
-Step 15 — framing + PING / GET_INFO / ECHO over a **second HID interface**.
-Step 16 — flash-backed profile slots + chunked **profile upload**.
-Step 17 — flash-backed **macro bank** sync + light protocol polish.
-Step 18 — host **auto app-switch** via `SET_ACTIVE`.
-Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
-Step 23 — HIL test tooling + `PROFILE_READ` / `MACRO_READ` readback.
-Step 24 — release packaging only; protocol unchanged (`FW_VERSION` 0.24, host 0.24.0).
-Step 24b — **OLED idle animation** commands `0x40`–`0x48`, GET_INFO flags bit3, storage v3
-(`FW_VERSION` 0.25, host 0.25.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md) and
-[`../docs/ANIMATION.md`](../docs/ANIMATION.md).
-**Steps 14–20 are complete.**
+Current: firmware **0.25**, host **0.25.0**, `proto_ver` **1**. Versioning rules:
+[`VERSIONING.md`](VERSIONING.md); animation format: [`ANIMATION.md`](ANIMATION.md).
+
+| Since fw | Added |
+|----------|-------|
+| 0.15 | framing + `PING` / `GET_INFO` / `ECHO` over a **second HID interface** |
+| 0.16 | flash-backed profile slots + chunked **profile upload** |
+| 0.17 | flash-backed **macro bank** sync |
+| 0.18 | host **auto app-switch** via `SET_ACTIVE` |
+| 0.19 | debounced active-slot persist + `SAVE_ALL` |
+| 0.23 | `PROFILE_READ` / `MACRO_READ` readback (GET_INFO flags bit2) |
+| 0.25 | **OLED idle animation** commands `0x40`–`0x48`, GET_INFO flags bit3, storage v3 |
 
 ## USB topology
 
@@ -97,7 +98,7 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | 5 | u8 | `flags` — **bit0** flash storage, **bit1** macro bank present, **bit2** readback (`PROFILE_READ`/`MACRO_READ`, fw 0.23+), **bit3** OLED idle animation (`0x40`–`0x48`, fw 0.25+) |
 | 6..13 | 8 bytes | product tag ASCII, e.g. `MACROPAD` (no NUL required) |
 
-### Profile upload (Step 16)
+### Profile upload (fw 0.16+)
 
 1. Host packs JSON → `profile_blob_v1` (148 bytes). See [`PROFILE_BLOB.md`](PROFILE_BLOB.md).
 2. `PROFILE_BEGIN` with destination slot `0..4`, `total_len=148`, CRC32 of the blob.
@@ -110,7 +111,7 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 
 `PROFILE_GET` returns metadata only (`slot`, `len`, `crc`).
 
-### Readback (Step 23)
+### Readback (fw 0.23+)
 
 `PROFILE_READ` (`0x15`) / `MACRO_READ` (`0x25`) return the **packed RAM blob**
 (the same bytes `PROFILE_GET` / `MACRO_GET` CRC over) in windows of up to
@@ -127,7 +128,7 @@ truncated after the first `END` (or `END` appended), step pad bytes = 0.
 Host packers emit the same canonical form, so an uploaded blob reads back
 byte-identical.
 
-### Macro upload (Step 17)
+### Macro upload (fw 0.17+)
 
 Same chunked flow as profiles:
 
@@ -144,7 +145,7 @@ Same chunked flow as profiles:
 **Busy mutex:** profile upload and macro upload are mutually exclusive — starting
 one while the other is active yields NAK `EBUSY`.
 
-### SET_ACTIVE / GET_ACTIVE (Step 18) + debounced persist (Step 19)
+### SET_ACTIVE / GET_ACTIVE (fw 0.18+) + debounced persist (fw 0.19+)
 
 Host-driven profile switch for auto app-switch:
 
@@ -156,14 +157,14 @@ Host-driven profile switch for auto app-switch:
 4. Empty OK response. Bad slot → NAK `EINVAL`.
 5. **Upload busy:** `SET_ACTIVE` remains OK (RAM only); staging is not disturbed.
 
-**Flash policy (Step 19):** `SET_ACTIVE` does **not** erase/program flash
+**Flash policy (fw 0.19+):** `SET_ACTIVE` does **not** erase/program flash
 immediately. The device schedules a debounced rewrite of the full storage image
 (profiles + macros + new `active_slot` already in RAM). If no new `SET_ACTIVE`
 arrives for ~4 seconds (`STORAGE_ACTIVE_DEBOUNCE_MS`), one sector rewrite runs.
 Repeated switches cancel and reschedule the quiet window. UART:
 `stor debounce save` then `stor save ok|fail`.
 
-**Step 23:** when the quiet window expires and flash already holds a valid v2
+**fw 0.23+:** when the quiet window expires and flash already holds a valid v2
 image that matches RAM (last load/save succeeded) with the same `active_slot`,
 the rewrite is skipped (`stor debounce skip (unchanged)`). Switching away and
 back — as autoswitch and the HIL suite do — no longer costs a sector write.
@@ -174,7 +175,7 @@ back — as autoswitch and the HIL suite do — no longer costs a sector write.
 Auto-switch requires the **configurator** (or another host agent) to be running —
 the device cannot observe host applications.
 
-### SAVE_ALL (Step 19)
+### SAVE_ALL (fw 0.19+)
 
 `CFG_CMD_SAVE_ALL = 0x32`, empty payload.
 
@@ -186,12 +187,12 @@ the device cannot observe host applications.
 Host Device menu **Save device state** uses this for an explicit save without
 waiting for the debounce timer.
 
-### OLED idle animation (Step 24b, fw 0.25+)
+### OLED idle animation (fw 0.25+)
 
 Gate on GET_INFO flags **bit3** (`CFG_INFO_FLAG_ANIM`) or `version.fw_supports_anim()`;
 older firmware answers these commands with `EINVAL` (unknown cmd). The blob format
 (`MPAN` header + RAW / RLE / DELTA frame records) is specified in
-[`../docs/ANIMATION.md`](../docs/ANIMATION.md); the host builds it with
+[`../docs/ANIMATION.md`](ANIMATION.md); the host builds it with
 `macropad_config.animation.codec.build_blob()`.
 
 **Upload** — same BEGIN / DATA / COMMIT / ABORT shape as profiles and macros, but the
@@ -263,7 +264,7 @@ Last 4 KiB sector, magic `MPFL`:
 | Field | Notes |
 |-------|-------|
 | magic u32 | `MPFL` |
-| version u16 | **3** (Step 24b; 2 before) |
+| version u16 | **3** (fw 0.25+; 2 before) |
 | active_slot u8 | |
 | flags u8 | |
 | profile_blob[5][148] | |
@@ -274,7 +275,7 @@ Last 4 KiB sector, magic `MPFL`:
 v1 images (profiles only) still load; macros stay at factory defaults until the
 next save upgrades the sector. v2 images load with default idle settings; every
 save writes v3. The animation frames live in their own region (see
-[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) flash map).
+[`../docs/ARCHITECTURE.md`](ARCHITECTURE.md) flash map).
 
 ### Error codes (`NAK` payload[0])
 
@@ -300,11 +301,11 @@ differs from the request.
 
 - `firmware/include/config_protocol.h` — constants + frame helpers
 - `firmware/src/config_protocol.c` — CRC, validate, dispatch, deferred TX
-- `firmware/src/storage.c` — flash sector v2 + profile/macro upload staging
+- `firmware/src/storage.c` — flash sector (MPFL v3) + profile/macro upload staging
 - `firmware/src/profile_blob.c` / `macro_blob.c` — pack/unpack wire ↔ RAM
 - `firmware/src/macros.c` — factory defaults + RAM working set + playback
 - `firmware/src/anim.c` / `anim_codec.c` — idle state machine, animation region upload,
-  playback, built-in starfield / blob validation + PackBits decode (Step 24b)
+  playback, built-in starfield / blob validation + PackBits decode
 - HID instance **1** OUT → `config_protocol_on_host_report`
 
 UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
@@ -328,10 +329,3 @@ UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 - `configurator/scripts/run_all_smokes.py` — aggregate smoke runner
 - `configurator/scripts/hil_test.py` + `macropad_config/hil/` — hardware-in-the-loop
   suite; `--mock` runs it against an in-process firmware model (`hil/mock.py`)
-
-## Deferred (later)
-
-- Step 20 testing / versioning polish
-- Step 21 changelog, host-smokes CI, release polish
-- Step 22 verified firmware build (SDK 2.1.1) + CI UF2 artifact
-- Step 23 HIL tooling + PROFILE_READ / MACRO_READ (was: "full download streaming")

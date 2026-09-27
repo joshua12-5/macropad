@@ -14,13 +14,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from macropad_config.autoswitch.matcher import (  # noqa: E402
+from macropad_config.autoswitch.matcher import (
     BUILTIN_SLOT_MAP,
     match_foreground,
     process_basename,
     resolve_slot,
 )
-from macropad_config.autoswitch.rules import (  # noqa: E402
+from macropad_config.autoswitch.rules import (
     RulesError,
     default_rules_path,
     load_rules,

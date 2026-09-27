@@ -74,9 +74,7 @@ class ProfileListWidget(QWidget):
         self._list.clear()
         for profile in self._profiles:
             item = QListWidgetItem(self._label_for(profile))
-            item.setToolTip(
-                str(profile.source_path) if profile.source_path else "(unsaved)"
-            )
+            item.setToolTip(str(profile.source_path) if profile.source_path else "(unsaved)")
             self._list.addItem(item)
         self._list.blockSignals(False)
 
@@ -109,9 +107,7 @@ class ProfileListWidget(QWidget):
     def add_profile(self, profile: Profile, *, select: bool = True) -> None:
         self._profiles.append(profile)
         item = QListWidgetItem(self._label_for(profile))
-        item.setToolTip(
-            str(profile.source_path) if profile.source_path else "(unsaved)"
-        )
+        item.setToolTip(str(profile.source_path) if profile.source_path else "(unsaved)")
         self._list.addItem(item)
         if select:
             self._list.setCurrentRow(len(self._profiles) - 1)
@@ -137,11 +133,7 @@ class ProfileListWidget(QWidget):
             item = self._list.item(i)
             if item is not None:
                 item.setText(self._label_for(profile))
-                item.setToolTip(
-                    str(profile.source_path)
-                    if profile.source_path
-                    else "(unsaved)"
-                )
+                item.setToolTip(str(profile.source_path) if profile.source_path else "(unsaved)")
 
     @staticmethod
     def _label_for(profile: Profile) -> str:

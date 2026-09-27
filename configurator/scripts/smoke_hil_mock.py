@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: HIL suite against the in-process mock macropad (Step 23).
+"""Headless smoke: HIL suite against the in-process mock macropad.
 
 Runs ``hil_test`` end-to-end through the real ConfigDevice / frames code with
 ``macropad_config.hil.mock`` standing in for hidapi + firmware, and checks the
@@ -23,17 +23,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from macropad_config.hil import cli  # noqa: E402
-from macropad_config.hil.mock import (  # noqa: E402
+from macropad_config.hil import cli
+from macropad_config.hil.mock import (
     MockFirmware,
     MockHidModule,
     fw_macro_canon,
     fw_profile_canon,
 )
-from macropad_config.hil.suite import test_macro_blob, test_profile_blob  # noqa: E402
-from macropad_config.protocol import frames as F  # noqa: E402
-from macropad_config.protocol.macro_blob import pack_macro  # noqa: E402
-from macropad_config.protocol.profile_blob import pack_profile_dict  # noqa: E402
+from macropad_config.hil.suite import test_macro_blob, test_profile_blob
+from macropad_config.protocol import frames as F
+from macropad_config.protocol.macro_blob import pack_macro
+from macropad_config.protocol.profile_blob import pack_profile_dict
 
 FAILS: list[str] = []
 
@@ -50,8 +50,9 @@ def run(argv, *, fw=None, api="pyhidapi", prompt=None, present=True):
     buf = io.StringIO()
     with tempfile.TemporaryDirectory() as td:
         jpath = Path(td) / "r.json"
-        code = cli.main(list(argv) + ["--json", str(jpath), "--pings", "5"],
-                        hid_module=mod, prompt=prompt, stream=buf)
+        code = cli.main(
+            [*argv, "--json", str(jpath), "--pings", "5"], hid_module=mod, prompt=prompt, stream=buf
+        )
         data = json.loads(jpath.read_text()) if jpath.exists() else {}
     status = {r["id"]: r["status"] for r in data.get("results", [])}
     return code, status, data, fw, buf.getvalue()
@@ -71,26 +72,47 @@ def main() -> int:
     expect(fw_profile_canon(test_profile_blob()) == test_profile_blob(), "test profile blob canonical")
     expect(fw_macro_canon(test_macro_blob()) == test_macro_blob(), "test macro blob canonical")
     # Host fix: steps after the first END are dropped (firmware truncates there).
-    trailing = pack_macro({"name": "t", "steps": [{"op": "TAP", "key": "A"}, {"op": "END"},
-                                                  {"op": "TAP", "key": "B"}]})
+    trailing = pack_macro(
+        {"name": "t", "steps": [{"op": "TAP", "key": "A"}, {"op": "END"}, {"op": "TAP", "key": "B"}]}
+    )
     expect(trailing[16] == 2 and fw_macro_canon(trailing) == trailing, "pack_macro truncates at END")
     # Firmware quirks mirrored: 16-char names lose the last char, bad schema/count rejected.
-    raw = bytearray(test_profile_blob()); raw[2:18] = b"ABCDEFGHIJKLMNOP"
+    raw = bytearray(test_profile_blob())
+    raw[2:18] = b"ABCDEFGHIJKLMNOP"
     expect(fw_profile_canon(bytes(raw))[2:18] == b"ABCDEFGHIJKLMNO\x00", "name NUL at [15]")
     raw[0] = 2
     expect(fw_profile_canon(bytes(raw)) is None, "schema 2 rejected")
-    m = bytearray(test_macro_blob()); m[16] = 25
+    m = bytearray(test_macro_blob())
+    m[16] = 25
     expect(fw_macro_canon(bytes(m)) is None, "step_count 25 rejected")
 
     print("smoke_hil_mock: default (flash-free) run, current fw (0.25)")
     code, st, data, fw, out = run(["--mock"])
     expect(code == 0, f"default exit {code}\n{out}")
     expect(data["summary"]["FAIL"] == 0, f"failures: {data['summary']}")
-    for tid in ("enumerate", "ping", "info", "echo", "malformed", "profile", "macro", "active",
-                "anim_info", "anim_protocol", "anim_preview", "restore_check"):
+    for tid in (
+        "enumerate",
+        "ping",
+        "info",
+        "echo",
+        "malformed",
+        "profile",
+        "macro",
+        "active",
+        "anim_info",
+        "anim_protocol",
+        "anim_preview",
+        "restore_check",
+    ):
         expect(st.get(tid) == "PASS", f"{tid} = {st.get(tid)}")
-    for tid in ("profile_roundtrip", "macro_roundtrip", "save_all", "anim_settings",
-                "anim_roundtrip", "interactive"):
+    for tid in (
+        "profile_roundtrip",
+        "macro_roundtrip",
+        "save_all",
+        "anim_settings",
+        "anim_roundtrip",
+        "interactive",
+    ):
         expect(st.get(tid) == "SKIP", f"{tid} should SKIP without flags, got {st.get(tid)}")
     fw.advance(5.0)  # let the SET_ACTIVE debounce fire
     expect(fw.flash_writes == 0, f"flash-free run wrote flash {fw.flash_writes}x")
@@ -103,23 +125,33 @@ def main() -> int:
     for api in ("pyhidapi", "cython"):
         code, st, data, fw, out = run(["--mock", "--allow-flash-write"], api=api)
         expect(code == 0 and data["summary"]["FAIL"] == 0, f"{api}: flash run failed\n{out}")
-        expect(st.get("profile_roundtrip") == "PASS" and st.get("macro_roundtrip") == "PASS"
-               and st.get("save_all") == "PASS", f"{api}: roundtrips {st}")
-        expect(st.get("anim_settings") == "PASS" and st.get("anim_roundtrip") == "PASS",
-               f"{api}: anim flash tests {st}")
+        expect(
+            st.get("profile_roundtrip") == "PASS"
+            and st.get("macro_roundtrip") == "PASS"
+            and st.get("save_all") == "PASS",
+            f"{api}: roundtrips {st}",
+        )
+        expect(
+            st.get("anim_settings") == "PASS" and st.get("anim_roundtrip") == "PASS",
+            f"{api}: anim flash tests {st}",
+        )
         # 2 profile + 2 macro + SAVE_ALL + 2 idle-settings rewrites of the MPFL sector.
         expect(fw.flash_writes == 7, f"{api}: expected 7 flash writes, got {fw.flash_writes}")
-        expect(fw.anim_sector_writes > 0 and fw.anim_stored is None,
-               f"{api}: anim region writes={fw.anim_sector_writes} stored={fw.anim_stored}")
+        expect(
+            fw.anim_sector_writes > 0 and fw.anim_stored is None,
+            f"{api}: anim region writes={fw.anim_sector_writes} stored={fw.anim_stored}",
+        )
         expect(fw.flash_image_valid_v2(), "flash image invalid after run")
         expect(fw.upload_kind == 0, "upload left open")
 
-    print("smoke_hil_mock: Step 22 firmware (no readback)")
+    print("smoke_hil_mock: fw 0.22 (no readback)")
     code, st, data, fw, out = run(["--mock"], fw=MockFirmware(fw_minor=22))
     expect(code == 0, f"fw22 exit {code}\n{out}")
     expect(st.get("active") == "SKIP", "fw22 active should SKIP without flash flag")
-    expect(all(st.get(t) == "SKIP" for t in ("anim_info", "anim_protocol", "anim_preview")),
-           f"fw22 anim tests should SKIP: {st}")
+    expect(
+        all(st.get(t) == "SKIP" for t in ("anim_info", "anim_protocol", "anim_preview")),
+        f"fw22 anim tests should SKIP: {st}",
+    )
     expect("WARN fw 0.22" in out, "fw22 version warning missing")
     code, st, _d, _fw, _o = run(["--mock", "--strict-version"], fw=MockFirmware(fw_minor=22))
     expect(code == 1 and st.get("info") == "FAIL", "--strict-version should FAIL fw22")
@@ -130,12 +162,14 @@ def main() -> int:
 
     print("smoke_hil_mock: interactive checklist")
     answers = iter(["y"] * 15)
-    code, st, _d, _fw, _o = run(["--mock", "--only", "interactive", "--interactive"],
-                                prompt=lambda _q: next(answers))
+    code, st, _d, _fw, _o = run(
+        ["--mock", "--only", "interactive", "--interactive"], prompt=lambda _q: next(answers)
+    )
     expect(code == 0 and st.get("interactive") == "PASS", f"interactive all-yes {st}")
     answers = iter(["y", "n"] + ["y"] * 13)
-    code, st, _d, _fw, _o = run(["--mock", "--only", "interactive", "--interactive"],
-                                prompt=lambda _q: next(answers))
+    code, st, _d, _fw, _o = run(
+        ["--mock", "--only", "interactive", "--interactive"], prompt=lambda _q: next(answers)
+    )
     expect(code == 1 and st.get("interactive") == "FAIL", "interactive 'n' should FAIL")
 
     print("smoke_hil_mock: suite catches seeded firmware bugs")
@@ -161,7 +195,8 @@ def main() -> int:
         def _upload_commit(self, kind):
             err = super()._upload_commit(kind)
             if err == 0 and kind == 1:
-                p = bytearray(self.profiles[self.upload_slot]); p[146] ^= 1
+                p = bytearray(self.profiles[self.upload_slot])
+                p[146] ^= 1
                 self.profiles[self.upload_slot] = bytes(p)
             return err
 
@@ -192,8 +227,10 @@ def main() -> int:
     fw = MockFirmware()
     resp = fw.on_host_report(F.pack_frame(F.CFG_CMD_PING, 9)[:20])
     frame = F.unpack_frame(resp)
-    expect(frame.cmd == F.CFG_CMD_NAK and frame.payload == bytes([F.CFG_ERR_EBADMSG]) and frame.seq == 9,
-           "short report → NAK EBADMSG")
+    expect(
+        frame.cmd == F.CFG_CMD_NAK and frame.payload == bytes([F.CFG_ERR_EBADMSG]) and frame.seq == 9,
+        "short report → NAK EBADMSG",
+    )
     expect(fw.on_host_report(b"\x01\x02") is None, "<6 byte report → no reply")
     _ = struct  # keep import for readers poking at frames
 

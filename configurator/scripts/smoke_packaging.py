@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: release packaging helpers (Step 24).
+"""Headless smoke: release packaging helpers.
 
 * ``packaging/release_tools.py``: tag ↔ version.py ↔ FW_VERSION ↔ CHANGELOG
   check (current tree passes; a mismatched copy fails), CHANGELOG section
@@ -17,7 +17,6 @@ Usage:
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 import shutil
@@ -32,10 +31,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(REPO / "packaging"))
 
-import release_tools as rt  # noqa: E402
+import release_tools as rt
 
-from macropad_config import __version__, paths, selftest  # noqa: E402
-from macropad_config import version as ver  # noqa: E402
+from macropad_config import __version__, paths, selftest
+from macropad_config import version as ver
 
 FAILS: list[str] = []
 
@@ -51,8 +50,10 @@ def main() -> int:
 
     # --- release_tools against the real tree ---------------------------------
     expect(rt.host_version() == ver.HOST_APP_VERSION == __version__, "host/package version mismatch")
-    expect(rt.fw_version() == (ver.FW_VERSION_MAJOR_EXPECTED, ver.FW_VERSION_MINOR_CURRENT),
-           f"FW_VERSION {rt.fw_version()} != version.py expectation")
+    expect(
+        rt.fw_version() == (ver.FW_VERSION_MAJOR_EXPECTED, ver.FW_VERSION_MINOR_CURRENT),
+        f"FW_VERSION {rt.fw_version()} != version.py expectation",
+    )
     problems = rt.check(tag)
     expect(problems == [], f"check({tag}) problems: {problems}")
     expect(rt.check("v9.9.9") != [], "check(v9.9.9) should fail")
@@ -62,8 +63,10 @@ def main() -> int:
     expect("[Unreleased]:" not in notes, "link footer leaked into notes")
     expect(rt.main(["check", tag]) == 0, "CLI check exit != 0")
 
-    sample = ("# Changelog\n\n## [Unreleased]\n\n- wip\n\n## [1.2.3] — 2026-01-01\n\n### Added\n\n"
-              "- thing\n\n## [1.2.2] — 2025-12-01\n\n- old\n\n[1.2.3]: https://x/y\n")
+    sample = (
+        "# Changelog\n\n## [Unreleased]\n\n- wip\n\n## [1.2.3] — 2026-01-01\n\n### Added\n\n"
+        "- thing\n\n## [1.2.2] — 2025-12-01\n\n- old\n\n[1.2.3]: https://x/y\n"
+    )
     expect(rt.changelog_section("1.2.3", sample) == "### Added\n\n- thing", "section parse")
     expect(rt.changelog_section("1.2.2", sample) == "- old", "last section / footer stop")
     try:
@@ -75,14 +78,21 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         t = Path(td)
         # Mismatched firmware version in a copy of the tree must be caught.
-        for rel in ("configurator/macropad_config/version.py", "configurator/macropad_config/__init__.py",
-                    "firmware/include/config_protocol.h", "CHANGELOG.md"):
+        for rel in (
+            "configurator/macropad_config/version.py",
+            "configurator/macropad_config/__init__.py",
+            "firmware/include/config_protocol.h",
+            "CHANGELOG.md",
+        ):
             (t / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / rel, t / rel)
         expect(rt.check(tag, repo=t) == [], "copied tree should pass")
         h = t / "firmware/include/config_protocol.h"
-        h.write_text(h.read_text().replace(f"FW_VERSION_MINOR        {ver.FW_VERSION_MINOR_CURRENT}u",
-                                           "FW_VERSION_MINOR        99u"))
+        h.write_text(
+            h.read_text().replace(
+                f"FW_VERSION_MINOR        {ver.FW_VERSION_MINOR_CURRENT}u", "FW_VERSION_MINOR        99u"
+            )
+        )
         p = rt.check(tag, repo=t)
         expect(any("firmware FW_VERSION" in x for x in p), f"fw mismatch not detected: {p}")
 
@@ -94,8 +104,14 @@ def main() -> int:
         (a / "a.uf2.sha256").write_text("x")
         text = rt.sha256sums(a)
         lines = text.strip().splitlines()
-        expect(lines == [f"{hashlib.sha256(b'aaa').hexdigest()}  a.uf2",
-                         f"{hashlib.sha256(b'bbb').hexdigest()}  b.zip"], f"sha256sums: {lines}")
+        expect(
+            lines
+            == [
+                f"{hashlib.sha256(b'aaa').hexdigest()}  a.uf2",
+                f"{hashlib.sha256(b'bbb').hexdigest()}  b.zip",
+            ],
+            f"sha256sums: {lines}",
+        )
         expect((a / "SHA256SUMS.txt").read_text() == text, "SHA256SUMS.txt not written")
 
         # --- paths: seeding ---------------------------------------------------
@@ -110,8 +126,10 @@ def main() -> int:
         (dest / "macros/library.json").write_text('{"user": true}')
         (dest / "profiles/Gaming.json").unlink()
         paths.seed_user_data(dest, REPO)
-        expect(json.loads((dest / "macros/library.json").read_text()) == {"user": True},
-               "seeding overwrote user macro library")
+        expect(
+            json.loads((dest / "macros/library.json").read_text()) == {"user": True},
+            "seeding overwrote user macro library",
+        )
         expect(not (dest / "profiles/Gaming.json").exists(), "deleted profile resurrected")
         os.environ["MACROPAD_USER_DATA"] = str(dest)
         expect(paths.user_data_dir() == dest, "MACROPAD_USER_DATA ignored")
@@ -119,11 +137,19 @@ def main() -> int:
 
     # --- entry point ---------------------------------------------------------
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
-    proc = subprocess.run([sys.executable, "-m", "macropad_config", "--version"], cwd=ROOT, env=env,
-                          capture_output=True, text=True, timeout=60)
+    proc = subprocess.run(
+        [sys.executable, "-m", "macropad_config", "--version"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     expect(proc.returncode == 0, f"--version exit {proc.returncode}: {proc.stderr[-300:]}")
-    expect(f"Macropad Configurator {ver.HOST_APP_VERSION} (source" in proc.stdout,
-           f"--version output: {proc.stdout!r}")
+    expect(
+        f"Macropad Configurator {ver.HOST_APP_VERSION} (source" in proc.stdout,
+        f"--version output: {proc.stdout!r}",
+    )
 
     # Non-Qt self-test checks in-process (Qt/imports need a GUI-capable libEGL).
     for name, fn in selftest.CHECKS:
@@ -132,7 +158,7 @@ def main() -> int:
         try:
             detail = fn()
             print(f"  self-test {name}: {detail}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             expect(False, f"self-test check {name}: {type(exc).__name__}: {exc}")
 
     if FAILS:

@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import struct
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from ..models.macro import MACRO_OPS, Macro, MacroStep
 from .frames import crc32
 from .profile_blob import (
+    bitmap_to_mods,
     hid_to_key_name,
     key_name_to_hid,
     mods_to_bitmap,
-    bitmap_to_mods,
 )
 
 MACRO_NAME_MAX = 16
@@ -89,10 +90,7 @@ def pack_macro(macro: Macro | Mapping[str, Any]) -> bytes:
     else:
         name = str(macro.get("name", ""))
         raw_steps = macro.get("steps") or []
-        steps = [
-            s if isinstance(s, MacroStep) else MacroStep.from_dict(s)
-            for s in raw_steps
-        ]
+        steps = [s if isinstance(s, MacroStep) else MacroStep.from_dict(s) for s in raw_steps]
 
     if not steps:
         raise MacroBlobError("steps must be non-empty")
@@ -106,12 +104,10 @@ def pack_macro(macro: Macro | Mapping[str, Any]) -> bytes:
 
     # Ensure final END; append if missing.
     if steps[-1].op != "END":
-        steps = list(steps) + [MacroStep(op="END")]
+        steps = [*steps, MacroStep(op="END")]
 
     if len(steps) > MACRO_MAX_STEPS:
-        raise MacroBlobError(
-            f"too many steps ({len(steps)} > {MACRO_MAX_STEPS})"
-        )
+        raise MacroBlobError(f"too many steps ({len(steps)} > {MACRO_MAX_STEPS})")
 
     buf = bytearray(MACRO_BLOB_V1_SIZE)
     buf[0:16] = _pad_name(name)
@@ -127,9 +123,7 @@ def pack_macro(macro: Macro | Mapping[str, Any]) -> bytes:
 def unpack_macro(blob: bytes, *, macro_id: int = 0) -> Macro:
     """Deserialize 162-byte blob → Macro (id supplied by caller)."""
     if len(blob) != MACRO_BLOB_V1_SIZE:
-        raise MacroBlobError(
-            f"expected {MACRO_BLOB_V1_SIZE} bytes, got {len(blob)}"
-        )
+        raise MacroBlobError(f"expected {MACRO_BLOB_V1_SIZE} bytes, got {len(blob)}")
     name = _read_name(blob[0:16])
     count = blob[16]
     if count < 1 or count > MACRO_MAX_STEPS:

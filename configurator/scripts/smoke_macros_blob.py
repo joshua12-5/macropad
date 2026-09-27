@@ -87,17 +87,13 @@ def test_hello_ops_roundtrip() -> None:
 def test_append_end_if_missing() -> None:
     from macropad_config.models.macro import Macro, MacroStep
 
-    m = Macro(
-        id=0,
-        name="tmp",
-        steps=[MacroStep(op="TAP", mods=[], key="A"), MacroStep(op="END")],
-    )
-    # Force-pack path already ensures END; simulate via dict without END
-    # by packing a Macro that has END then stripping is covered by pack_macro.
-    blob = pack_macro(
-        Macro(id=0, name="x", steps=[MacroStep(op="DELAY_MS", arg=10), MacroStep(op="END")])
-    )
-    expect(blob[16] >= 2, "count")
+    # A macro without a trailing END gets one appended by pack_macro.
+    m = Macro(id=0, name="tmp", steps=[MacroStep(op="TAP", mods=[], key="A")])
+    blob = pack_macro(m)
+    back = unpack_macro(blob, macro_id=0)
+    expect([s.op for s in back.steps] == ["TAP", "END"], f"END appended: {[s.op for s in back.steps]}")
+    blob2 = pack_macro(Macro(id=0, name="x", steps=[MacroStep(op="DELAY_MS", arg=10), MacroStep(op="END")]))
+    expect(blob2[16] >= 2, "count")
 
 
 def test_blob_crc_matches_frames_crc() -> None:

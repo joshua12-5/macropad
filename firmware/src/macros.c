@@ -398,13 +398,6 @@ void macros_abort(void) {
     settle_ticks = 0;
 }
 
-const char *macros_name(uint8_t macro_id) {
-    if (macro_id >= MACRO_BUILTIN_COUNT) {
-        return NULL;
-    }
-    return g_slots[macro_id].name;
-}
-
 bool macros_fire(uint8_t macro_id) {
     if (macro_id >= MACRO_BUILTIN_COUNT) {
         printf("MACRO: invalid id=%u\n", (unsigned)macro_id);

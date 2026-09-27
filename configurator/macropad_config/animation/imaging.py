@@ -1,4 +1,4 @@
-"""Image / GIF import → 128x64 1bpp OLED frames (Step 24b).
+"""Image / GIF import → 128x64 1bpp OLED frames.
 
 Uses QtGui (QImageReader handles GIF animation, PNG, JPEG, BMP, WebP…), so
 no Pillow dependency. Pipeline per source image:
@@ -12,15 +12,15 @@ no Pillow dependency. Pipeline per source image:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Optional
 
 from . import codec as A
 
 DITHER_THRESHOLD = "threshold"
 DITHER_FLOYD = "floyd-steinberg"
-DITHER_MODES = (DITHER_THRESHOLD, DITHER_FLOYD)
 
 
 @dataclass
@@ -28,7 +28,7 @@ class ImportOptions:
     dither: str = DITHER_FLOYD
     threshold: int = 128
     invert: bool = False
-    fit: str = "contain"          # "contain" (letterbox) or "stretch"
+    fit: str = "contain"  # "contain" (letterbox) or "stretch"
     background_white: bool = False  # alpha composites onto white instead of black
 
 
@@ -38,9 +38,9 @@ def _qt():
     return QtCore, QtGui
 
 
-def read_image_frames(path: str | Path) -> Tuple[list, Optional[int]]:
+def read_image_frames(path: str | Path) -> tuple[list, Optional[int]]:
     """Return (QImage list, fps guess from GIF delays or None)."""
-    QtCore, QtGui = _qt()
+    _QtCore, QtGui = _qt()
     reader = QtGui.QImageReader(str(path))
     reader.setAutoTransform(True)
     if not reader.canRead():
@@ -70,7 +70,7 @@ def _natural_key(p: Path):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)]
 
 
-def sort_sequence(paths: Sequence[str | Path]) -> List[Path]:
+def sort_sequence(paths: Sequence[str | Path]) -> list[Path]:
     return sorted((Path(p) for p in paths), key=_natural_key)
 
 
@@ -97,7 +97,7 @@ def image_to_gray(img, opts: ImportOptions) -> bytearray:
     bpl = gray.bytesPerLine()
     raw = bytes(gray.constBits())[: bpl * H]
     for y in range(H):
-        out[y * W:(y + 1) * W] = raw[y * bpl:y * bpl + W]
+        out[y * W : (y + 1) * W] = raw[y * bpl : y * bpl + W]
     return out
 
 
@@ -134,7 +134,7 @@ def image_to_frame(img, opts: ImportOptions) -> bytes:
     return gray_to_frame(image_to_gray(img, opts), opts)
 
 
-def import_files(paths: Sequence[str | Path], opts: ImportOptions) -> Tuple[List[bytes], Optional[int]]:
+def import_files(paths: Sequence[str | Path], opts: ImportOptions) -> tuple[list[bytes], Optional[int]]:
     """GIF (all frames) / single image / image sequence → (frames, fps guess)."""
     paths = list(paths)
     if not paths:

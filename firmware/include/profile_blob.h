@@ -12,7 +12,7 @@ extern "C" {
 
 /*
  * Explicit little-endian wire format for one profile (no C struct padding).
- * See protocol/PROFILE_BLOB.md.
+ * See docs/PROFILE_BLOB.md.
  *
  * Layout:
  *   u16 schema_version

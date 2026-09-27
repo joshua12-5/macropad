@@ -1,4 +1,4 @@
-"""Tools → Idle animation… — OLED idle-animation editor (Step 24b).
+"""Tools → Idle animation… — OLED idle-animation editor.
 
 Author 128x64 1bpp animations for the macropad's SSD1306:
 
@@ -16,8 +16,9 @@ Author 128x64 1bpp animations for the macropad's SSD1306:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
@@ -42,7 +43,6 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QRadioButton,
-    QSizePolicy,
     QSlider,
     QSpinBox,
     QToolButton,
@@ -70,7 +70,7 @@ def frame_qimage(frame: bytes, onion: Optional[bytes] = None) -> QImage:
     bits = A.frame_to_bits(frame)
     if onion is not None:
         ob = A.frame_to_bits(onion)
-        data = bytes(b if b else (2 if o else 0) for b, o in zip(bits, ob))
+        data = bytes(b if b else (2 if o else 0) for b, o in zip(bits, ob, strict=True))
     else:
         data = bytes(bits)
     img = QImage(data, W, H, W, QImage.Format_Indexed8)
@@ -89,12 +89,12 @@ def frame_pixmap(frame: bytes, scale: int = 1) -> QPixmap:
 # Widgets
 # --------------------------------------------------------------------------
 
+
 class OledView(QWidget):
     """Static OLED look-alike showing one frame (bezel + pixels)."""
 
     def __init__(self, scale: int = 2, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._scale = scale
         self._img: Optional[QImage] = None
         self.setFixedSize(W * scale + 16, H * scale + 16)
 
@@ -102,7 +102,7 @@ class OledView(QWidget):
         self._img = frame_qimage(frame) if frame is not None else None
         self.update()
 
-    def paintEvent(self, _ev) -> None:  # noqa: N802
+    def paintEvent(self, _ev) -> None:
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(0x15, 0x17, 0x1C))
         p.setPen(QPen(QColor(0x3A, 0x3F, 0x4A), 2))
@@ -168,7 +168,7 @@ class PixelCanvas(QWidget):
         self.update()
 
     # -- painting --------------------------------------------------------------
-    def paintEvent(self, _ev) -> None:  # noqa: N802
+    def paintEvent(self, _ev) -> None:
         p = QPainter(self)
         z = self._zoom
         if self._img is None:
@@ -218,7 +218,7 @@ class PixelCanvas(QWidget):
                 err += dx
                 y0 += sy
 
-    def mousePressEvent(self, ev) -> None:  # noqa: N802
+    def mousePressEvent(self, ev) -> None:
         if ev.button() not in (Qt.LeftButton, Qt.RightButton):
             return
         self.strokeStarted.emit()
@@ -231,7 +231,7 @@ class PixelCanvas(QWidget):
         self._last = (x, y)
         self._refresh()
 
-    def mouseMoveEvent(self, ev) -> None:  # noqa: N802
+    def mouseMoveEvent(self, ev) -> None:
         x, y = self._cell(ev)
         if 0 <= x < W and 0 <= y < H:
             self.hover.emit(x, y)
@@ -241,7 +241,7 @@ class PixelCanvas(QWidget):
         self._last = (x, y)
         self._refresh()
 
-    def mouseReleaseEvent(self, _ev) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, _ev) -> None:
         if self._stroke_value is not None:
             self._stroke_value = None
             self._last = None
@@ -252,10 +252,11 @@ class PixelCanvas(QWidget):
 # Import dialog
 # --------------------------------------------------------------------------
 
+
 class ImportDialog(QDialog):
     """Preview + options for GIF / image / sequence import."""
 
-    def __init__(self, paths: List[str], parent: QWidget | None = None) -> None:
+    def __init__(self, paths: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         from ..animation import imaging as IM
 
@@ -306,7 +307,9 @@ class ImportDialog(QDialog):
         self._threshold.setRange(1, 254)
         self._threshold.setValue(128)
         self._threshold_lbl = QLabel("128")
-        self._threshold.valueChanged.connect(lambda v: (self._threshold_lbl.setText(str(v)), self._opts_changed()))
+        self._threshold.valueChanged.connect(
+            lambda v: (self._threshold_lbl.setText(str(v)), self._opts_changed())
+        )
         th_row.addWidget(self._threshold)
         th_row.addWidget(self._threshold_lbl)
         form.addRow("Threshold", th_row)
@@ -329,7 +332,9 @@ class ImportDialog(QDialog):
         for b in (self._mode_replace, self._mode_append, self._mode_insert):
             mode_row.addWidget(b)
         form.addRow("Mode", mode_row)
-        self._use_fps = QCheckBox("Use the GIF's frame rate" + (f" ({self.fps_guess} fps)" if self.fps_guess else ""))
+        self._use_fps = QCheckBox(
+            "Use the GIF's frame rate" + (f" ({self.fps_guess} fps)" if self.fps_guess else "")
+        )
         self._use_fps.setChecked(bool(self.fps_guess))
         self._use_fps.setEnabled(bool(self.fps_guess))
         form.addRow("", self._use_fps)
@@ -353,9 +358,12 @@ class ImportDialog(QDialog):
 
     def options(self):
         return self._IM.ImportOptions(
-            dither=self._dither.currentData(), threshold=self._threshold.value(),
-            invert=self._invert.isChecked(), fit=self._fit.currentData(),
-            background_white=self._bg_white.isChecked())
+            dither=self._dither.currentData(),
+            threshold=self._threshold.value(),
+            invert=self._invert.isChecked(),
+            fit=self._fit.currentData(),
+            background_white=self._bg_white.isChecked(),
+        )
 
     def _opts_changed(self, *_a) -> None:
         self._threshold.setEnabled(self._dither.currentData() == self._IM.DITHER_THRESHOLD)
@@ -372,8 +380,9 @@ class ImportDialog(QDialog):
     def _update_preview(self, *_a) -> None:
         i = self._scrub.value()
         img = self._images[i]
-        self._src_view.setPixmap(QPixmap.fromImage(img).scaled(
-            W * 2, H * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._src_view.setPixmap(
+            QPixmap.fromImage(img).scaled(W * 2, H * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        )
         self._view.set_frame(self._IM.gray_to_frame(self._gray(i), self.options()))
 
     @property
@@ -388,7 +397,7 @@ class ImportDialog(QDialog):
     def use_fps(self) -> bool:
         return self._use_fps.isChecked() and bool(self.fps_guess)
 
-    def frames(self) -> List[bytes]:
+    def frames(self) -> list[bytes]:
         o = self.options()
         return [self._IM.gray_to_frame(self._gray(i), o) for i in range(len(self._images))]
 
@@ -396,6 +405,7 @@ class ImportDialog(QDialog):
 # --------------------------------------------------------------------------
 # Main editor dialog
 # --------------------------------------------------------------------------
+
 
 def _default_device_factory():
     from ..protocol.device import ConfigDevice
@@ -406,19 +416,23 @@ def _default_device_factory():
 class AnimationEditorDialog(QDialog):
     """Idle-animation editor (Tools → Idle animation…)."""
 
-    def __init__(self, parent: QWidget | None = None, *,
-                 device_factory: Optional[Callable[[], object]] = None,
-                 device_info: Optional[dict] = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        device_factory: Optional[Callable[[], object]] = None,
+        device_info: Optional[dict] = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Idle animation editor")
         self._device_factory = device_factory or _default_device_factory
         self._device_info = device_info
-        self.frames: List[bytearray] = [A.blank_frame()]
+        self.frames: list[bytearray] = [A.blank_frame()]
         self.cur = 0
         self.path: Optional[Path] = None
         self.dirty = False
-        self._undo: List[tuple] = []
-        self._redo: List[tuple] = []
+        self._undo: list[tuple] = []
+        self._redo: list[tuple] = []
         self._play_idx = 0
         self._playing = False
         self._stats_timer = QTimer(self)
@@ -506,8 +520,12 @@ class AnimationEditorDialog(QDialog):
         tools.addWidget(self.btn_clear)
         tools.addSpacing(10)
         tools.addWidget(QLabel("Shift"))
-        for label, dx, dy, tip in (("◀", -1, 0, "left"), ("▶", 1, 0, "right"),
-                                   ("▲", 0, -1, "up"), ("▼", 0, 1, "down")):
+        for label, dx, dy, tip in (
+            ("◀", -1, 0, "left"),
+            ("▶", 1, 0, "right"),
+            ("▲", 0, -1, "up"),
+            ("▼", 0, 1, "down"),
+        ):
             b = QToolButton()
             b.setText(label)
             b.setToolTip(f"Shift frame {tip} by 1 px (wraps around)")
@@ -543,8 +561,9 @@ class AnimationEditorDialog(QDialog):
         self.canvas = PixelCanvas()
         self.canvas.strokeStarted.connect(self._push_undo)
         self.canvas.edited.connect(self._on_canvas_edited)
-        self.canvas.hover.connect(lambda x, y: self.pos_label.setText(
-            f"x {x:3d}  y {y:2d}  page {y // 8}  byte {x + (y // 8) * W}"))
+        self.canvas.hover.connect(
+            lambda x, y: self.pos_label.setText(f"x {x:3d}  y {y:2d}  page {y // 8}  byte {x + (y // 8) * W}")
+        )
         self.brush.valueChanged.connect(self.canvas.set_brush)
         self.zoom.valueChanged.connect(self.canvas.set_zoom)
         center.addWidget(self.canvas, 0, Qt.AlignLeft | Qt.AlignTop)
@@ -574,8 +593,16 @@ class AnimationEditorDialog(QDialog):
         pl.addWidget(self.preset_text, 0, 2)
         pl.addWidget(self.btn_preset, 0, 3)
         pl.addWidget(self.btn_import, 1, 3)
-        pl.addWidget(QLabel("GIF, PNG sequence (multi-select) or single image; "
-                            "resized to fit 128×64, threshold or dithering."), 1, 0, 1, 3)
+        pl.addWidget(
+            QLabel(
+                "GIF, PNG sequence (multi-select) or single image; "
+                "resized to fit 128×64, threshold or dithering."
+            ),
+            1,
+            0,
+            1,
+            3,
+        )
         pl.setColumnStretch(2, 1)
         center.addWidget(preset_box)
         center.addStretch(1)
@@ -621,13 +648,16 @@ class AnimationEditorDialog(QDialog):
         self.idle_timeout.setRange(0, 65535)
         self.idle_timeout.setSuffix(" s")
         self.idle_timeout.setSpecialValueText("off")
-        self.idle_timeout.setToolTip("Seconds without key/encoder input before the animation starts (0 = off)")
+        self.idle_timeout.setToolTip(
+            "Seconds without key/encoder input before the animation starts (0 = off)"
+        )
         self.blank_timeout = QSpinBox()
         self.blank_timeout.setRange(0, 65535)
         self.blank_timeout.setSuffix(" s")
         self.blank_timeout.setSpecialValueText("never")
-        self.blank_timeout.setToolTip("Seconds without input before the display is switched off "
-                                      "(burn-in protection, 0 = never)")
+        self.blank_timeout.setToolTip(
+            "Seconds without input before the display is switched off (burn-in protection, 0 = never)"
+        )
         for w in (self.idle_timeout, self.blank_timeout):
             w.valueChanged.connect(lambda _: self._mark_dirty())
         self.idle_enabled.toggled.connect(lambda _: self._mark_dirty())
@@ -695,8 +725,14 @@ class AnimationEditorDialog(QDialog):
         self.btn_save_as.clicked.connect(lambda: self.save_project(ask=True))
         self.btn_export_gif.clicked.connect(self.export_gif)
         self.btn_export_bin.clicked.connect(self.export_blob)
-        for b in (self.btn_new, self.btn_open, self.btn_save, self.btn_save_as,
-                  self.btn_export_gif, self.btn_export_bin):
+        for b in (
+            self.btn_new,
+            self.btn_open,
+            self.btn_save,
+            self.btn_save_as,
+            self.btn_export_gif,
+            self.btn_export_bin,
+        ):
             bottom.addWidget(b)
         self.path_label = QLabel()
         self.path_label.setStyleSheet("color:#777;")
@@ -708,8 +744,10 @@ class AnimationEditorDialog(QDialog):
 
         # shortcuts
         for seq, fn in (
-            (QKeySequence.Undo, self.undo), (QKeySequence.Redo, self.redo),
-            (QKeySequence("Ctrl+Y"), self.redo), (QKeySequence.Save, self.save_project),
+            (QKeySequence.Undo, self.undo),
+            (QKeySequence.Redo, self.redo),
+            (QKeySequence("Ctrl+Y"), self.redo),
+            (QKeySequence.Save, self.save_project),
             (QKeySequence("Ctrl+D"), self.duplicate_frame),
             (QKeySequence("P"), lambda: self.tool_pen.setChecked(True)),
             (QKeySequence("E"), lambda: self.tool_erase.setChecked(True)),
@@ -727,16 +765,23 @@ class AnimationEditorDialog(QDialog):
     # ======================================================================
     def project(self) -> AnimationProject:
         return AnimationProject(
-            frames=[bytes(f) for f in self.frames], fps=self.fps.value(),
-            loop=self.loop.isChecked(), name=self.name_edit.text() or "custom",
+            frames=[bytes(f) for f in self.frames],
+            fps=self.fps.value(),
+            loop=self.loop.isChecked(),
+            name=self.name_edit.text() or "custom",
             idle_enabled=self.idle_enabled.isChecked(),
-            idle_timeout_s=self.idle_timeout.value(), blank_timeout_s=self.blank_timeout.value())
+            idle_timeout_s=self.idle_timeout.value(),
+            blank_timeout_s=self.blank_timeout.value(),
+        )
 
     def _load_project(self, proj: AnimationProject, *, mark_clean: bool) -> None:
         self.set_playing(False)
         self.frames = [bytearray(f) for f in proj.frames] or [A.blank_frame()]
-        for w, v in ((self.fps, proj.fps), (self.idle_timeout, proj.idle_timeout_s),
-                     (self.blank_timeout, proj.blank_timeout_s)):
+        for w, v in (
+            (self.fps, proj.fps),
+            (self.idle_timeout, proj.idle_timeout_s),
+            (self.blank_timeout, proj.blank_timeout_s),
+        ):
             w.blockSignals(True)
             w.setValue(int(v))
             w.blockSignals(False)
@@ -829,8 +874,8 @@ class AnimationEditorDialog(QDialog):
     def _on_rows_moved(self, _parent, start, end, _dest, row) -> None:
         # Drag-and-drop reorder inside the list widget.
         self._push_undo()
-        block = self.frames[start:end + 1]
-        del self.frames[start:end + 1]
+        block = self.frames[start : end + 1]
+        del self.frames[start : end + 1]
         insert_at = row if row < start else row - (end - start + 1)
         self.frames[insert_at:insert_at] = block
         QTimer.singleShot(0, lambda: self._rebuild_list(insert_at))
@@ -844,8 +889,9 @@ class AnimationEditorDialog(QDialog):
             if prev is not None and prev != self.cur:
                 onion = bytes(self.frames[prev])
         self.canvas.set_frame(f, onion)
-        self.frame_label.setText(f"Frame {self.cur + 1} / {len(self.frames)}   ·   "
-                                 f"{A.frame_pixel_count(f)} px lit")
+        self.frame_label.setText(
+            f"Frame {self.cur + 1} / {len(self.frames)}   ·   {A.frame_pixel_count(f)} px lit"
+        )
         if not self._playing:
             self.preview.set_frame(f)
 
@@ -958,12 +1004,17 @@ class AnimationEditorDialog(QDialog):
         enc = st["encodings"]
         dur = len(self.frames) / max(1, self.fps.value())
         color = "#2a7" if st["fits"] else "#c33"
-        warn = "" if st["fits"] else "<br><b style='color:#c33'>Too large for the device region — remove frames or simplify.</b>"
+        warn = (
+            ""
+            if st["fits"]
+            else "<br><b style='color:#c33'>Too large for the device region — remove frames or simplify.</b>"
+        )
         self.stats.setText(
             f"<b>{len(self.frames)}</b> frames · {dur:.1f} s per loop<br>"
             f"Encoded <b style='color:{color}'>{st['total_len']:,} B</b> of {A.REGION_SIZE // 1024} KiB "
             f"({pct:.1f} %) · raw {st['raw_len']:,} B<br>"
-            f"RLE {enc['RLE']} · delta {enc['DELTA']} · raw {enc['RAW']}{warn}")
+            f"RLE {enc['RLE']} · delta {enc['DELTA']} · raw {enc['RAW']}{warn}"
+        )
 
     # ======================================================================
     # Presets / import
@@ -982,9 +1033,13 @@ class AnimationEditorDialog(QDialog):
     def _confirm_replace(self, what: str) -> bool:
         if not self.dirty:
             return True
-        r = QMessageBox.question(self, "Replace animation",
-                                 f"{what} replaces the current frames. Continue?",
-                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        r = QMessageBox.question(
+            self,
+            "Replace animation",
+            f"{what} replaces the current frames. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
         return r == QMessageBox.Yes
 
     def load_preset(self, key: Optional[str] = None, *, confirm: bool = True) -> None:
@@ -1011,16 +1066,19 @@ class AnimationEditorDialog(QDialog):
         self._rebuild_list(0)
         self._mark_dirty()
 
-    def import_images(self, paths: Optional[List[str]] = None) -> Optional[ImportDialog]:
+    def import_images(self, paths: Optional[list[str]] = None) -> Optional[ImportDialog]:
         if not paths:
             paths, _ = QFileDialog.getOpenFileNames(
-                self, "Import GIF / images", str(Path.home()),
-                "Images (*.gif *.png *.jpg *.jpeg *.bmp *.webp);;All files (*)")
+                self,
+                "Import GIF / images",
+                str(Path.home()),
+                "Images (*.gif *.png *.jpg *.jpeg *.bmp *.webp);;All files (*)",
+            )
         if not paths:
             return None
         try:
             dlg = ImportDialog(list(paths), self)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Import", f"Could not read the image(s):\n{exc}")
             return None
         if dlg.exec() != QDialog.Accepted:
@@ -1053,9 +1111,13 @@ class AnimationEditorDialog(QDialog):
     def _maybe_save(self) -> bool:
         if not self.dirty:
             return True
-        r = QMessageBox.question(self, "Unsaved animation", "Save changes to this animation?",
-                                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                                 QMessageBox.Save)
+        r = QMessageBox.question(
+            self,
+            "Unsaved animation",
+            "Save changes to this animation?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
         if r == QMessageBox.Cancel:
             return False
         if r == QMessageBox.Save:
@@ -1073,8 +1135,11 @@ class AnimationEditorDialog(QDialog):
             if not self._maybe_save():
                 return
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open animation", str(animations_dir()),
-                f"Animation projects (*{SUFFIX});;Device blobs (*.mpan);;All files (*)")
+                self,
+                "Open animation",
+                str(animations_dir()),
+                f"Animation projects (*{SUFFIX});;Device blobs (*.mpan);;All files (*)",
+            )
         if not path:
             return
         try:
@@ -1093,8 +1158,9 @@ class AnimationEditorDialog(QDialog):
         path = self.path
         if ask or path is None:
             default = animations_dir() / f"{self.name_edit.text() or 'animation'}{SUFFIX}"
-            fn, _ = QFileDialog.getSaveFileName(self, "Save animation", str(default),
-                                                f"Animation projects (*{SUFFIX})")
+            fn, _ = QFileDialog.getSaveFileName(
+                self, "Save animation", str(default), f"Animation projects (*{SUFFIX})"
+            )
             if not fn:
                 return False
             if not fn.endswith(SUFFIX):
@@ -1112,24 +1178,30 @@ class AnimationEditorDialog(QDialog):
 
     def export_gif(self, path: Optional[str] = None, scale: int = 3) -> None:
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, "Export GIF", str(animations_dir() / "animation.gif"),
-                                                  "GIF (*.gif)")
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export GIF", str(animations_dir() / "animation.gif"), "GIF (*.gif)"
+            )
         if path:
-            write_oled_gif(path, [bytes(f) for f in self.frames], self.fps.value(),
-                           scale=scale, loop=self.loop.isChecked())
+            write_oled_gif(
+                path,
+                [bytes(f) for f in self.frames],
+                self.fps.value(),
+                scale=scale,
+                loop=self.loop.isChecked(),
+            )
 
     def export_blob(self, path: Optional[str] = None) -> None:
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, "Export device blob",
-                                                  str(animations_dir() / "animation.mpan"),
-                                                  "Device blob (*.mpan)")
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export device blob", str(animations_dir() / "animation.mpan"), "Device blob (*.mpan)"
+            )
         if path:
             try:
                 Path(path).write_bytes(self.project().to_blob())
             except (ProjectError, A.AnimFormatError, OSError) as exc:
                 QMessageBox.warning(self, "Export", str(exc))
 
-    def closeEvent(self, ev) -> None:  # noqa: N802
+    def closeEvent(self, ev) -> None:
         if self._maybe_save():
             self.set_playing(False)
             ev.accept()
@@ -1146,7 +1218,7 @@ class AnimationEditorDialog(QDialog):
         """Open + GET_INFO + feature gate. Returns an open device or None."""
         try:
             from ..protocol.device import DeviceError
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Device", f"Protocol module unavailable:\n{exc}")
             return None
         try:
@@ -1156,7 +1228,7 @@ class AnimationEditorDialog(QDialog):
         except DeviceError as exc:
             QMessageBox.information(self, "Device", f"Could not talk to the macropad.\n\n{exc}")
             return None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Device", str(exc))
             return None
         self._device_info = info
@@ -1168,12 +1240,15 @@ class AnimationEditorDialog(QDialog):
         if not ok_proto or not (has_flag and fw_ok):
             dev.close()
             fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
-            text = (msg if not ok_proto else
-                    f"This macropad runs firmware {fw}, which has no OLED idle-animation support.\n\n"
-                    f"Flash firmware {app_version.FW_VERSION_MAJOR_EXPECTED}."
-                    f"{app_version.MIN_FW_MINOR_ANIM}+ (Step 24b, macropad_step24b.uf2) to upload "
-                    "animations and change idle settings.\n\nYou can still design, save and export "
-                    "animations here.")
+            text = (
+                msg
+                if not ok_proto
+                else f"This macropad runs firmware {fw}, which has no OLED idle-animation support.\n\n"
+                f"Flash firmware {app_version.FW_VERSION_MAJOR_EXPECTED}."
+                f"{app_version.MIN_FW_MINOR_ANIM}+ (macropad-fw-X.Y.Z.uf2 from the Releases page) to upload "
+                "animations and change idle settings.\n\nYou can still design, save and export "
+                "animations here."
+            )
             self.dev_status.setText(f"Firmware {fw}: idle animations not supported.")
             QMessageBox.information(self, "Idle animation not supported", text)
             return None
@@ -1182,20 +1257,24 @@ class AnimationEditorDialog(QDialog):
     def _refresh_dev_status(self, dev) -> None:
         try:
             info = dev.anim_info()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.dev_status.setText(f"ANIM_INFO failed: {exc}")
             return
         fw = f"{self._device_info.get('fw_major')}.{self._device_info.get('fw_minor')}"
         if info["stored_valid"]:
-            stored = (f"stored '{info['name']}': {info['frame_count']} frames @ {info['fps']} fps, "
-                      f"{info['total_len']:,} B")
+            stored = (
+                f"stored '{info['name']}': {info['frame_count']} frames @ {info['fps']} fps, "
+                f"{info['total_len']:,} B"
+            )
         else:
             stored = "no stored animation (built-in starfield is used)"
-        state = ("blanked" if info["blanked"] else "playing" if info["playing"] else "normal UI")
+        state = "blanked" if info["blanked"] else "playing" if info["playing"] else "normal UI"
         timing = ""
         if info["last_frame_bus_us"]:
-            timing = (f" · last frame push {info['last_frame_bus_us'] / 1000:.1f} ms bus / "
-                      f"{info['last_frame_wall_us'] / 1000:.1f} ms wall")
+            timing = (
+                f" · last frame push {info['last_frame_bus_us'] / 1000:.1f} ms bus / "
+                f"{info['last_frame_wall_us'] / 1000:.1f} ms wall"
+            )
         self.dev_status.setText(f"fw {fw} · {stored} · display: {state}{timing}")
 
     def upload_to_device(self) -> bool:
@@ -1205,9 +1284,12 @@ class AnimationEditorDialog(QDialog):
             QMessageBox.warning(self, "Upload", str(exc))
             return False
         if len(blob) > A.REGION_SIZE:
-            QMessageBox.warning(self, "Upload",
-                                f"Encoded animation is {len(blob):,} B; the device region holds "
-                                f"{A.REGION_SIZE:,} B. Remove frames or simplify the artwork.")
+            QMessageBox.warning(
+                self,
+                "Upload",
+                f"Encoded animation is {len(blob):,} B; the device region holds "
+                f"{A.REGION_SIZE:,} B. Remove frames or simplify the artwork.",
+            )
             return False
         dev = self._open_device()
         if dev is None:
@@ -1227,12 +1309,14 @@ class AnimationEditorDialog(QDialog):
         try:
             dev.anim_upload(blob, cb)
             if self.push_with_upload.isChecked():
-                dev.anim_settings_set(enabled=self.idle_enabled.isChecked(),
-                                      idle_timeout_s=self.idle_timeout.value(),
-                                      blank_timeout_s=self.blank_timeout.value())
+                dev.anim_settings_set(
+                    enabled=self.idle_enabled.isChecked(),
+                    idle_timeout_s=self.idle_timeout.value(),
+                    blank_timeout_s=self.blank_timeout.value(),
+                )
             readback = dev.anim_download()
             self._refresh_dev_status(dev)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             prog.close()
             QMessageBox.warning(self, "Upload failed", str(exc))
             dev.close()
@@ -1253,7 +1337,7 @@ class AnimationEditorDialog(QDialog):
         try:
             dev.anim_preview(mode)
             self._refresh_dev_status(dev)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Device preview", str(exc))
         finally:
             dev.close()
@@ -1263,15 +1347,18 @@ class AnimationEditorDialog(QDialog):
         if dev is None:
             return
         try:
-            got = dev.anim_settings_set(enabled=self.idle_enabled.isChecked(),
-                                        idle_timeout_s=self.idle_timeout.value(),
-                                        blank_timeout_s=self.blank_timeout.value())
+            got = dev.anim_settings_set(
+                enabled=self.idle_enabled.isChecked(),
+                idle_timeout_s=self.idle_timeout.value(),
+                blank_timeout_s=self.blank_timeout.value(),
+            )
             self._refresh_dev_status(dev)
-            self.dev_status.setText(self.dev_status.text() +
-                                    f" · settings saved (idle {got['idle_timeout_s']} s, "
-                                    f"off {got['blank_timeout_s']} s, "
-                                    f"{'on' if got['enabled'] else 'disabled'})")
-        except Exception as exc:  # noqa: BLE001
+            self.dev_status.setText(
+                self.dev_status.text() + f" · settings saved (idle {got['idle_timeout_s']} s, "
+                f"off {got['blank_timeout_s']} s, "
+                f"{'on' if got['enabled'] else 'disabled'})"
+            )
+        except Exception as exc:
             QMessageBox.warning(self, "Idle settings", str(exc))
         finally:
             dev.close()
@@ -1284,15 +1371,18 @@ class AnimationEditorDialog(QDialog):
             blob = dev.anim_download()
             settings = dev.anim_settings_get()
             self._refresh_dev_status(dev)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(self, "Read from device", str(exc))
             return
         finally:
             dev.close()
         if blob is None:
-            QMessageBox.information(self, "Read from device",
-                                    "The device has no stored animation (it plays the built-in "
-                                    "starfield). Idle settings were loaded.")
+            QMessageBox.information(
+                self,
+                "Read from device",
+                "The device has no stored animation (it plays the built-in "
+                "starfield). Idle settings were loaded.",
+            )
             proj = self.project()
         else:
             if not self._confirm_replace("Reading the device animation"):

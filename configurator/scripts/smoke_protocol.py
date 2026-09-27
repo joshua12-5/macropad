@@ -23,7 +23,6 @@ from macropad_config.protocol.frames import (
     CFG_CMD_PING,
     CFG_CMD_SAVE_ALL,
     CFG_CMD_SET_ACTIVE,
-    CFG_ERR_EBADMSG,
     CFG_ERR_EINVAL,
     CFG_FLAG_RESPONSE,
     CFG_MAGIC,

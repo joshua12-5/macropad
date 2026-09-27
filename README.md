@@ -27,38 +27,14 @@ OLED                         ENCODER
 
 ## Status
 
-| Step | Topic | Status |
-|------|--------|--------|
-| 1 | System architecture | Done (chat) |
-| 2 | RP2040-Zero pinout | Frozen in `firmware/include/board_pins.h` |
-| 3 | Matrix scan | Done |
-| 4 | USB HID keyboard | Done |
-| 5 | Rotary encoder + volume/mute | Done |
-| 6 | SSD1306 OLED UI | Done |
-| 7 | Profile system (schema v1) | Done |
-| 8 | Action engine (TEXT/URL/APP/MACRO stub) | Done |
-| 9 | Non-blocking macro engine | Done |
-| 10 | PySide6 configurator shell | Done |
-| 11 | Key/encoder action editors | Done |
-| 12 | Profile manager (new / duplicate / delete) | Done |
-| 13 | Macro library editor (host JSON) | Done |
-| 14 | On-device profile select UI | Done |
-| 15 | USB config protocol (vendor HID) | Done |
-| 16 | Flash profile storage + USB upload | Done |
-| 17 | Macro-bank flash sync / polish | Done |
-| 18 | Auto app-switch / polish | Done |
-| 19 | Architecture hardening / polish | Done |
-| 20 | Testing / versioning polish | Done |
-| 21 | Changelog / CI smokes / release polish | Done |
-| 22 | Verified firmware build + CI UF2 artifact | Done |
-| 23 | Hardware-in-the-loop test tooling | Done |
-| 24 | Release packaging (tag → GitHub Release) | Done |
-| 24b | OLED idle animations (firmware + editor) | Done (unreleased) |
+Firmware **0.25** / configurator **0.25.0** (protocol v1). Feature-complete for the
+current hardware revision; the PCB and enclosure are not in this repo yet. Release history:
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Download
 
 Prebuilt binaries are on the **[Releases page](https://github.com/joshua12-5/macropad/releases)**
-(latest: [v0.24.0](https://github.com/joshua12-5/macropad/releases/tag/v0.24.0), prerelease):
+(latest: [v0.25.0](https://github.com/joshua12-5/macropad/releases/tag/v0.25.0), prerelease):
 
 | You have | Download | Then |
 |----------|----------|------|
@@ -73,64 +49,6 @@ SmartScreen / macOS Gatekeeper workarounds. `MacropadConfigurator --self-test` c
 headlessly; `--version` prints the version. Host and firmware minor versions should match
 (Help → About / Device → Get info).
 
-**Step 24b** adds **OLED idle animations**. Firmware: an idle state machine (idle timeout,
-default 60 s; blank timeout, default 10 min; 0 disables either), wake input swallowed, a
-non-blocking OLED flush so frame pushes never stall the matrix scan or USB, a dedicated 128 KiB
-animation region below the profile sector (up to 127 uncompressed frames, typically 500+ with the
-built-in RLE/delta compression), nine new protocol commands `0x40`–`0x48` (GET_INFO flag bit3),
-idle settings persisted in MPFL v3, and a built-in starfield. Configurator: **Tools → Idle
-animation…** with a 128×64 pixel editor (pen/eraser/line/rect/fill, invert, shift, onion skin,
-undo), frame list, live preview, GIF / image / PNG-sequence import with threshold or
-Floyd–Steinberg dithering, 4 presets (starfield, bouncing text, scrolling text, pulse), project
-files (`.mpanim.json`), GIF export and device upload / preview / settings. 13 host smokes.
-Versions: firmware **0.25**, host **0.25.0**, UF2 `macropad_step24b`, `bcdDevice` 0x0119.
-Details: [`docs/ANIMATION.md`](docs/ANIMATION.md).
-
-**Step 24** (kept) adds a tag-triggered release pipeline
-([`.github/workflows/release.yml`](.github/workflows/release.yml)): pushing `vX.Y.Z` checks the
-tag against `version.py` / `FW_VERSION` / CHANGELOG, builds the firmware and PyInstaller bundles
-for Windows, macOS and Linux, runs a headless `--self-test` on each packaged build and publishes a
-GitHub prerelease with `SHA256SUMS.txt`; a manual run is a publish-free dry run. The configurator
-gains `--version` / `--self-test` / `--hil`, per-user data dirs for frozen builds, and ships
-cython-hidapi (native library bundled). 11 host smokes (`smoke_packaging.py`). Versions: firmware
-**0.24**, host **0.24.0**, UF2 `macropad_step24`, `bcdDevice` 0x0118. How to cut a release:
-[`docs/RELEASE.md`](docs/RELEASE.md).
-
-**Step 23** (kept) adds hardware-in-the-loop tooling:
-[`configurator/scripts/hil_test.py`](configurator/scripts/hil_test.py) runs an
-ordered suite over the vendor config HID interface (PING latency, GET_INFO
-version handshake, ECHO + CRC injection, malformed-frame NAKs, profile / macro
-upload protocol + backup → upload → byte-compare → restore, SET_ACTIVE cycle,
-SAVE_ALL, guided key checklist) with PASS/FAIL/SKIP output, `--json`, and a
-non-zero exit on failure. Flash-writing steps need `--allow-flash-write`.
-`--mock` runs the same suite against an in-process firmware model — that is
-`smoke_hil_mock.py` in CI. Firmware 0.23 adds `PROFILE_READ` /
-`MACRO_READ` readback. How to run it on hardware:
-[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
-
-**Step 22** (kept) is the first real firmware compile: Pico SDK **2.1.1**,
-`PICO_BOARD=waveshare_rp2040_zero`, zero warnings under `-Wall -Wextra`, and a
-new GitHub Actions [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)
-that builds the firmware and uploads `macropad_step22.uf2` as the
-`macropad-firmware-uf2` artifact.
-
-**Step 21** (kept) adds release polish: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog,
-Steps 14–21), GitHub Actions [`.github/workflows/smokes.yml`](.github/workflows/smokes.yml)
-(host smokes), and [`docs/RELEASE.md`](docs/RELEASE.md).
-
-**Step 20** (kept): [`docs/VERSIONING.md`](docs/VERSIONING.md)
-(fw major.minor vs `proto_ver` vs JSON schemas), host
-`macropad_config/version.py` (feature min-fw gates), Connect/About proto
-mismatch warnings, `smoke_version.py`, and
-[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
-
-**Step 19** (kept): `docs/ARCHITECTURE.md`, debounced flash persist of
-`active_slot` after `SET_ACTIVE`, `SAVE_ALL` (`0x32`), clearer host errors,
-disconnect-safe autoswitch, `run_all_smokes.py`.
-
-**Step 18** (kept): host auto app-switch via `SET_ACTIVE` (`0x30`); Step 19 adds
-debounced flash persist so frequent switches still avoid per-switch erase.
-
 ## Architecture
 
 Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -141,9 +59,9 @@ CI runs host configurator smokes (`smokes.yml`) and the firmware build + size / 
 
 ## Protocol
 
-Wire format and commands: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md).
-Profile binary packing: [`protocol/PROFILE_BLOB.md`](protocol/PROFILE_BLOB.md).
-Macro binary packing: [`protocol/MACRO_BLOB.md`](protocol/MACRO_BLOB.md).
+Wire format and commands: [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+Profile binary packing: [`docs/PROFILE_BLOB.md`](docs/PROFILE_BLOB.md).
+Macro binary packing: [`docs/MACRO_BLOB.md`](docs/MACRO_BLOB.md).
 
 ## Profiles
 
@@ -153,7 +71,7 @@ Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](pr
 
 Host library (configurator source of truth): [`macros/library.json`](macros/library.json) + [`macros/SCHEMA.md`](macros/SCHEMA.md).
 
-Host library uploads into the firmware RAM working set + flash bank (Step 17).
+Device → Upload macros writes the library into the firmware RAM working set + flash bank.
 Factory defaults in `macros.c` seed empty flash / v1 images.
 
 ## Auto-switch
@@ -192,6 +110,7 @@ python scripts/smoke_load.py
 python scripts/smoke_edit.py
 python scripts/smoke_profile_mgr.py
 python scripts/smoke_macros.py
+python scripts/smoke_editor_forms.py # form rows per action / step type, macro dialog dirty tracking
 python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
 python scripts/smoke_macros_blob.py
@@ -208,8 +127,8 @@ python -m macropad_config --self-test # full headless self-test (Qt offscreen)
 See [`firmware/README.md`](firmware/README.md).
 
 Verified with [Pico SDK](https://github.com/raspberrypi/pico-sdk) tag **2.1.1** and
-`PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Flash target:
-`macropad_step24b.uf2` — or download `macropad-fw-X.Y.Z.uf2` from the
+`PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Local build output:
+`firmware/build/macropad.uf2` — or download `macropad-fw-X.Y.Z.uf2` from the
 [Releases page](https://github.com/joshua12-5/macropad/releases) (or the `macropad-firmware-uf2`
 artifact of the latest `Firmware build` Actions run).
 
@@ -226,7 +145,7 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step24b.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
@@ -235,7 +154,7 @@ ninja -C build
 
 **Flash:** last 4 KiB sector holds magic/`MPFL` image with 5 packed profile blobs + CRC
 (v3 adds the idle-animation settings); the 128 KiB just below it (`0x1DF000`–`0x1FEFFF`) holds
-the uploaded idle animation. Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#flash-map-step-24b).
+the uploaded idle animation. Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#flash-map).
 
 ## Pinout (locked)
 
@@ -248,6 +167,10 @@ the uploaded idle animation. Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTUR
 | NeoPixel (onboard) | GP16 |
 | Debug UART | GP0 TX, GP1 RX |
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) (dev setup, checks to run, commit style).
+
 ## License
 
-TBD by repo owner.
+[MIT](LICENSE) — Copyright (c) 2026 Joshua Zamora.

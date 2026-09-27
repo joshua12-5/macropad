@@ -53,8 +53,7 @@ class ProfileNameIdDialog(QDialog):
         layout.addWidget(self._error)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -64,9 +63,7 @@ class ProfileNameIdDialog(QDialog):
         if initial_id:
             self._id_manual = True
         elif initial_name:
-            self._id_edit.setText(
-                suggest_profile_id(initial_name, self._existing_ids)
-            )
+            self._id_edit.setText(suggest_profile_id(initial_name, self._existing_ids))
             self._id_manual = False
 
         self._validate()
@@ -104,7 +101,7 @@ class ProfileNameIdDialog(QDialog):
     def profile_id(self) -> str:
         return self._id_edit.text().strip()
 
-    def accept(self) -> None:  # noqa: D401
+    def accept(self) -> None:
         self._validate()
         if not self._ok.isEnabled():
             return

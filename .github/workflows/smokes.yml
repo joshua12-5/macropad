@@ -1,9 +1,6 @@
-# Host-only smokes — no Pico SDK / firmware build required.
-# Step 23: run_all_smokes includes smoke_hil_mock.py; the full HIL suite also
-# runs against the mock device and its JSON report is kept as an artifact.
-# Step 24: smoke_packaging.py (11 smokes) + full `--self-test` incl. Qt offscreen.
-# Step 24b: smoke_anim_codec.py (compiles firmware anim_codec.c with the host cc) +
-#   smoke_anim_device.py → 13 smokes.
+# Host-only checks — no Pico SDK / firmware build required:
+#   ruff (lint + format check) → run_all_smokes.py (14 smokes) → --self-test (Qt offscreen)
+#   → full HIL suite against the mock device (JSON report kept as an artifact).
 name: Host smokes
 
 on:
@@ -14,16 +11,16 @@ on:
 
 jobs:
   smokes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: configurator
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -34,6 +31,13 @@ jobs:
 
       - name: Install configurator dependencies
         run: pip install -r requirements.txt
+
+      - name: Ruff (lint + format check, config in ruff.toml)
+        working-directory: .
+        run: |
+          pip install "ruff==0.16.9"
+          ruff check --output-format=github .
+          ruff format --check .
 
       - name: Run all host smokes
         env:
@@ -50,7 +54,7 @@ jobs:
 
       - name: Upload HIL mock report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hil-mock-report
           path: configurator/hil-mock-report.json

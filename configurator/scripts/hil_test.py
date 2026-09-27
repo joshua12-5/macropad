@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware-in-the-loop tests over the vendor config HID interface (Step 23).
+"""Hardware-in-the-loop tests over the vendor config HID interface.
 
 Usage:
   cd configurator
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from macropad_config.hil.cli import main  # noqa: E402
+from macropad_config.hil.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

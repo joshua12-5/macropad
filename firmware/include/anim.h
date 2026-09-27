@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * OLED idle animation engine + flash store (Step 24b).
+ * OLED idle animation engine + flash store.
  *
  * Flash map (2 MiB, RP2040-Zero; offsets from flash start, XIP 0x10000000):
  *   0x000000 .. __flash_binary_end   firmware image (~60 KiB today)
@@ -72,11 +72,8 @@ void anim_task(void);
 void anim_note_input(void);
 bool anim_wake(void);
 bool anim_screen_owned(void);
-anim_state_t anim_state(void);
 
 /* Settings (RAM; persisted by storage.c in the MPFL v3 image). */
-void anim_settings_get(anim_settings_t *out);
-bool anim_settings_set(const anim_settings_t *in);   /* validates */
 void anim_settings_pack(uint8_t out[ANIM_SETTINGS_SIZE]);
 bool anim_settings_unpack(const uint8_t in[ANIM_SETTINGS_SIZE]);
 void anim_settings_defaults(void);

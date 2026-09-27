@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-/* Step 15–24b — USB vendor-HID config channel (v1 framing). */
+/* USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
@@ -27,34 +27,34 @@ extern "C" {
 #define CFG_CMD_GET_INFO        0x02u
 #define CFG_CMD_ECHO            0x03u
 
-/* Step 16 — chunked profile upload */
+/* chunked profile upload */
 #define CFG_CMD_PROFILE_BEGIN   0x10u
 #define CFG_CMD_PROFILE_DATA    0x11u
 #define CFG_CMD_PROFILE_COMMIT  0x12u
 #define CFG_CMD_PROFILE_ABORT   0x13u
 #define CFG_CMD_PROFILE_GET     0x14u  /* metadata only: slot,len,crc */
-#define CFG_CMD_PROFILE_READ    0x15u  /* Step 23: slot,offset → slot,offset,bytes */
+#define CFG_CMD_PROFILE_READ    0x15u  /* slot,offset → slot,offset,bytes */
 
-/* Step 17 — macro bank sync */
+/* macro bank sync */
 #define CFG_CMD_MACRO_BEGIN     0x20u
 #define CFG_CMD_MACRO_DATA      0x21u
 #define CFG_CMD_MACRO_COMMIT    0x22u
 #define CFG_CMD_MACRO_ABORT     0x23u
 #define CFG_CMD_MACRO_GET       0x24u  /* metadata only: id,len,crc */
-#define CFG_CMD_MACRO_READ      0x25u  /* Step 23: id,offset → id,offset,bytes */
+#define CFG_CMD_MACRO_READ      0x25u  /* id,offset → id,offset,bytes */
 
-/* Step 23 — max blob bytes per PROFILE_READ / MACRO_READ response
+/* max blob bytes per PROFILE_READ / MACRO_READ response
  * (payload = id u8 + offset u16 LE + up to 48 bytes). */
 #define CFG_READ_CHUNK_MAX      48u
 
-/* Step 18 — host-driven active profile (RAM + OLED only) */
+/* host-driven active profile (RAM + OLED only) */
 #define CFG_CMD_SET_ACTIVE      0x30u  /* payload: slot u8 */
 #define CFG_CMD_GET_ACTIVE      0x31u  /* response: slot u8 */
 
-/* Step 19 — immediate full storage rewrite (Device menu Save) */
+/* immediate full storage rewrite (Device menu Save) */
 #define CFG_CMD_SAVE_ALL        0x32u  /* empty payload */
 
-/* Step 24b — OLED idle animation (flash region below the MPFL sector) */
+/* OLED idle animation (flash region below the MPFL sector) */
 #define CFG_CMD_ANIM_BEGIN      0x40u  /* total_len u32, blob_crc u32 */
 #define CFG_CMD_ANIM_DATA       0x41u  /* offset u32 (sequential), bytes <= 48 */
 #define CFG_CMD_ANIM_COMMIT     0x42u  /* verify CRC + structure, activate */
@@ -77,8 +77,8 @@ extern "C" {
 
 #define CFG_INFO_FLAG_STORAGE   0x01u  /* bit0: flash profile storage present */
 #define CFG_INFO_FLAG_MACRO_BANK 0x02u /* bit1: flash macro bank present */
-#define CFG_INFO_FLAG_READBACK  0x04u  /* bit2: PROFILE_READ / MACRO_READ (Step 23) */
-#define CFG_INFO_FLAG_ANIM      0x08u  /* bit3: OLED idle animation cmds 0x40-0x48 (Step 24b) */
+#define CFG_INFO_FLAG_READBACK  0x04u  /* bit2: PROFILE_READ / MACRO_READ */
+#define CFG_INFO_FLAG_ANIM      0x08u  /* bit3: OLED idle animation cmds 0x40-0x48 */
 
 #define CFG_PRODUCT_TAG         "MACROPAD"  /* exactly 8 chars on the wire */
 #define CFG_PRODUCT_TAG_LEN     8u

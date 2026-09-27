@@ -1,20 +1,20 @@
-# Pico SDK build
-firmware/build/
+# ---- Firmware (Pico SDK / CMake) ----
+build/
 **/build/
-*.uf2
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
 *.elf
 *.bin
 *.hex
 *.map
 *.dis
+*.o
+*.a
+# UF2 images are produced by the build / release workflow, never committed
+*.uf2
 
-# IDE / OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Python configurator
+# ---- Python (configurator, packaging) ----
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,15 +23,40 @@ venv/
 .env/
 *.egg-info/
 .eggs/
-dist/
-build/
 *.egg
+dist/
+pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-pip-wheel-metadata/
+.coverage
+htmlcov/
 
-# KiCad backups (later)
+# PyInstaller work dirs (packaging/macropad_configurator.spec)
+*.spec.bak
+/packaging/build/
+/packaging/dist/
+
+# Local test / HIL output
+hil-report*.json
+hil-mock-report.json
+selftest*.txt
+release-notes.md
+/assets/
+/reports/
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- KiCad (future PCB) ----
 *-backups/
 *.kicad_pcb-bak
+*.kicad_sch-bak
 *.sch-bak
+fp-info-cache

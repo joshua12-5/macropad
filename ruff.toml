@@ -1,0 +1,30 @@
+# Ruff (lint + format) for the Python parts of the repo: configurator/ and packaging/.
+# CI: .github/workflows/smokes.yml runs `ruff check` and `ruff format --check`.
+line-length = 110
+target-version = "py310"
+extend-include = ["*.spec"]
+extend-exclude = ["configurator/.venv", "firmware/build"]
+
+[lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, ruff-specific
+select = ["E", "W", "F", "I", "B", "UP", "RUF"]
+ignore = [
+    "E501",    # long lines are handled by the formatter; strings/URLs may exceed
+    "RUF001",  # ambiguous unicode in strings: UI text deliberately uses – × → … characters
+    "RUF002",  # same, docstrings
+    "RUF003",  # same, comments
+    "UP007",   # keep Optional[...] where used; both spellings are fine on 3.10+
+    "UP045",   # same for Optional -> X | None
+    "B008",    # function calls in defaults (Qt enums) are fine here
+]
+
+[lint.per-file-ignores]
+"configurator/scripts/*.py" = ["E402"]  # scripts put configurator/ on sys.path before importing
+"packaging/*.spec" = ["F821"]  # PyInstaller injects Analysis/PYZ/EXE/COLLECT/BUNDLE
+
+[lint.isort]
+known-first-party = ["macropad_config"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

@@ -1,8 +1,8 @@
-# Versioning matrix (Step 24b)
+# Versioning matrix
 
 How firmware, wire protocol, and host JSON schemas relate — and what must match.
 
-## Matrix (shipping Step 24b)
+## Matrix (current)
 
 | Axis | Constant / field | Current | Where |
 |------|------------------|---------|--------|
@@ -16,10 +16,10 @@ How firmware, wire protocol, and host JSON schemas relate — and what must matc
 | Animation project | `schema_version` | **1** | `*.mpanim.json`, host `animation/project.py` |
 | Flash storage image | MPFL `version` | **3** | `firmware/src/storage.c` (v1/v2 still load) |
 | USB `bcdDevice` | `USB_BCD` | **0x0119** (1.25) | `firmware/src/usb_descriptors.c` |
-| CMake / UF2 | target name | `macropad_step24b` | `firmware/CMakeLists.txt` |
+| CMake / UF2 | target name | `macropad` (→ `build/macropad.uf2`; released as `macropad-fw-X.Y.Z.uf2`) | `firmware/CMakeLists.txt` |
 | Pico SDK | git tag | **2.1.1** (+ submodules) | `firmware/README.md`, `.github/workflows/firmware.yml` `PICO_SDK_TAG` |
 | Board | `PICO_BOARD` | **waveshare_rp2040_zero** | `firmware/CMakeLists.txt` default, CI env |
-| Release tag | `vMAJOR.MINOR.PATCH` | **v0.24.0** (latest published; 0.25.0 not tagged yet) | must equal host version and `FW_VERSION` major.minor; checked by `packaging/release_tools.py check` in `release.yml` |
+| Release tag | `vMAJOR.MINOR.PATCH` | **v0.25.0** | must equal host version and `FW_VERSION` major.minor; checked by `packaging/release_tools.py check` in `release.yml` |
 
 Firmware **major.minor** is a product revision (shown in Connect / GET_INFO).
 It is **not** the same number as `proto_ver` or JSON `schema_version`.
@@ -68,16 +68,16 @@ tooltip explaining the required version (Connect still works for info).
 
 | What you change | Bump | Also update |
 |-----------------|------|-------------|
-| Polish / host-only / docs / smokes in Steps 18–24 | `FW_VERSION_MINOR` + host `0.MINOR.0` + CMake `macropad_stepNN` + `bcdDevice` | READMEs, About, this matrix, CHANGELOG |
+| Any release (features, fixes, host-only changes) | `FW_VERSION_MINOR` + host `0.MINOR.0` + `bcdDevice` | READMEs, About, this matrix, CHANGELOG |
 | Incompatible wire change (new framing, cmd meaning) | `CFG_PROTO_VERSION` / `PROTO_VER` | Both sides; old hosts must warn |
 | Profile / macro / autoswitch JSON shape | that schema’s `schema_version` | SCHEMA.md, validators, blobs, firmware unpack |
 | Breaking firmware API without proto bump | raise `FW_VERSION_MAJOR` | Document min host; rare |
 
-**Practice for this repo:** Step *N* → `FW_VERSION_MINOR = N`, host
-`HOST_APP_VERSION = "0.N.0"`, UF2 `macropad_stepN`, keep `proto_ver` and JSON
-schemas at **1** until an intentional incompatibility. Feature steps inserted after
-Step 24 take the next minor with a letter suffix on the target: Step 24b → fw **0.25**,
-host **0.25.0**, `macropad_step24b`, `bcdDevice` 0x0119. New commands in the existing
+**Practice for this repo:** release `0.N.0` → `FW_VERSION_MINOR = N`, host
+`HOST_APP_VERSION = "0.N.0"`, `bcdDevice` `0x01NN` (BCD 1.N, e.g. 0.25 → `0x0119`), tag `v0.N.0`;
+keep `proto_ver` and JSON schemas at **1** until an intentional incompatibility. The CMake
+target is always `macropad` (it carried the step number, `macropad_stepNN`, up to 0.25.0
+development builds). New commands in the existing
 v1 framing are additive (older hosts ignore them, older firmware NAKs them with
 `EINVAL`), so `proto_ver` stays 1.
 

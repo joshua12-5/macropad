@@ -130,7 +130,7 @@ class PadPreview(QWidget):
         body.addLayout(enc_col, stretch=1)
         root.addLayout(body)
 
-        hint = QLabel("Click a key or encoder slot to edit its action (Step 11).")
+        hint = QLabel("Click a key or encoder slot to edit its action.")
         hint.setObjectName("hintLabel")
         hint.setWordWrap(True)
         root.addWidget(hint)

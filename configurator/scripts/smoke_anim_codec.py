@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: OLED idle-animation format + authoring helpers (Step 24b).
+"""Headless smoke: OLED idle-animation format + authoring helpers.
 
 * PackBits / record / blob encode-decode (edge cases, all presets, corruption);
 * Python constants vs firmware headers (anim_format.h, anim.h,
@@ -33,11 +33,12 @@ if str(ROOT) not in sys.path:
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from macropad_config.animation import codec as A  # noqa: E402
-from macropad_config.animation import font5x7, presets as P  # noqa: E402
-from macropad_config.animation.gifwriter import write_oled_gif  # noqa: E402
-from macropad_config.animation.project import AnimationProject, ProjectError  # noqa: E402
-from macropad_config.protocol import frames as F  # noqa: E402
+from macropad_config.animation import codec as A
+from macropad_config.animation import font5x7
+from macropad_config.animation import presets as P
+from macropad_config.animation.gifwriter import write_oled_gif
+from macropad_config.animation.project import AnimationProject, ProjectError
+from macropad_config.protocol import frames as F
 
 FAILS: list[str] = []
 
@@ -69,8 +70,13 @@ def c_int(text: str, name: str) -> int:
 def check_packbits() -> None:
     print("smoke_anim_codec: PackBits")
     rng = random.Random(24)
-    cases = [bytes(1024), bytes([0xFF]) * 1024, bytes(range(256)) * 4,
-             bytes([1, 2]) * 512, bytes([7]) * 127 + bytes([8]) * 129 + bytes([9]) * 768]
+    cases = [
+        bytes(1024),
+        bytes([0xFF]) * 1024,
+        bytes(range(256)) * 4,
+        bytes([1, 2]) * 512,
+        bytes([7]) * 127 + bytes([8]) * 129 + bytes([9]) * 768,
+    ]
     for n in (1, 2, 3, 127, 128, 129, 130, 256, 257):
         cases.append(bytes([5]) * n)
         cases.append(bytes(rng.randrange(256) for _ in range(n)))
@@ -88,9 +94,9 @@ def check_packbits() -> None:
     expect(len(A.packbits_encode(bytes(1024))) == 16, "1024 zeros → 8 runs of 128 (16 B)")
     expect(raises(lambda: A.packbits_decode(b"\x80\x00", 2)), "128 rejected")
     expect(raises(lambda: A.packbits_decode(b"\x05\x01", 6)), "truncated literal rejected")
-    expect(raises(lambda: A.packbits_decode(b"\xFF\x01", 3)), "short output rejected")
+    expect(raises(lambda: A.packbits_decode(b"\xff\x01", 3)), "short output rejected")
     base = bytes(rng.randrange(256) for _ in range(1024))
-    delta = bytes(a ^ b for a, b in zip(base, bytes(1024)))
+    delta = bytes(a ^ b for a, b in zip(base, bytes(1024), strict=True))
     expect(A.packbits_decode(A.packbits_encode(delta), 1024, xor_base=bytes(1024)) == base, "xor decode")
 
 
@@ -103,13 +109,17 @@ def check_blobs() -> dict:
         expect(len(frames) >= 10, f"{key} has {len(frames)} frames")
         blob = A.build_blob(frames, fps, True, key)
         back = A.parse_blob(blob)
-        expect(back.frames == frames and back.fps == fps and back.loop and back.name == key[:8],
-               f"{key} roundtrip")
+        expect(
+            back.frames == frames and back.fps == fps and back.loop and back.name == key[:8],
+            f"{key} roundtrip",
+        )
         expect(back.encodings[0] != A.ENC_DELTA, f"{key} frame 0 is a key frame")
         expect(len(blob) < A.REGION_SIZE, f"{key} fits region ({len(blob)} B)")
         out[key] = blob
-        print(f"    {key:<9} {len(frames):4d} frames @ {fps} fps → {len(blob):6d} B "
-              f"({len(blob) / len(frames):.0f} B/frame, enc {A.blob_stats(blob)['encodings']})")
+        print(
+            f"    {key:<9} {len(frames):4d} frames @ {fps} fps → {len(blob):6d} B "
+            f"({len(blob) / len(frames):.0f} B/frame, enc {A.blob_stats(blob)['encodings']})"
+        )
     # text presets react to user text
     f1, _ = P.scroll_text("A")
     f2, _ = P.scroll_text("A MUCH LONGER TICKER TEXT")
@@ -118,21 +128,25 @@ def check_blobs() -> dict:
     expect(A.frame_pixel_count(fb[0]) > 0, "bouncing text draws")
     # header layout
     blob = out["starfield"]
-    magic, ver, flags, count, fps, w, h = struct.unpack_from("<IBBHBBB", blob, 0)
+    magic, ver, flags, _count, _fps, w, h = struct.unpack_from("<IBBHBBB", blob, 0)
     expect((magic, ver, flags & 1, w, h) == (0x4E41504D, 1, 1, 128, 64), "header fields")
     expect(blob[:4] == b"MPAN", "magic bytes 'MPAN'")
     expect(F.crc32(blob[:28]) == struct.unpack_from("<I", blob, 28)[0], "header crc")
     # corruption
-    bad = bytearray(blob); bad[40] ^= 0x10
+    bad = bytearray(blob)
+    bad[40] ^= 0x10
     expect(raises(lambda: A.parse_blob(bytes(bad))), "data corruption detected")
-    bad = bytearray(blob); bad[8] = 31
+    bad = bytearray(blob)
+    bad[8] = 31
     expect(raises(lambda: A.parse_blob(bytes(bad))), "header corruption detected")
     expect(raises(lambda: A.parse_blob(blob[:-1])), "truncation detected")
     frames = [bytes([i]) * 1024 for i in range(3)]
     good = A.build_blob(frames, 5)
     # forge frame 0 as DELTA with valid CRCs
-    data = bytearray(good[32:]); data[0] = A.ENC_DELTA
-    hdr = bytearray(good[:32]); struct.pack_into("<I", hdr, 16, F.crc32(bytes(data)))
+    data = bytearray(good[32:])
+    data[0] = A.ENC_DELTA
+    hdr = bytearray(good[:32])
+    struct.pack_into("<I", hdr, 16, F.crc32(bytes(data)))
     struct.pack_into("<I", hdr, 28, F.crc32(bytes(hdr[:28])))
     expect(raises(lambda: A.parse_blob(bytes(hdr) + bytes(data))), "frame 0 DELTA rejected")
     expect(raises(lambda: A.build_blob([], 10)), "empty rejected")
@@ -149,7 +163,9 @@ def check_blobs() -> dict:
     out["edge"] = A.build_blob([bytes(1024), bytes([0xFF]) * 1024, bytes(range(256)) * 4], 30, False, "edge")
     # pixel helpers
     f = A.blank_frame()
-    A.set_pixel(f, 0, 0); A.set_pixel(f, 127, 63); A.set_pixel(f, 5, 9)
+    A.set_pixel(f, 0, 0)
+    A.set_pixel(f, 127, 63)
+    A.set_pixel(f, 5, 9)
     expect(f[0] == 1 and f[127 + 7 * 128] == 0x80 and f[5 + 128] == 0x02, "page order bits")
     expect(A.frame_from_bits(A.frame_to_bits(bytes(f))) == bytes(f), "bits roundtrip")
     s = A.shift_frame(bytes(f), 1, 0)
@@ -164,22 +180,44 @@ def check_firmware_consistency() -> None:
     anim_h = (REPO / "firmware/include/anim.h").read_text()
     proto = (REPO / "firmware/include/config_protocol.h").read_text()
     expect(c_int(fmt, "ANIM_MAGIC") == A.MAGIC, "MAGIC")
-    for cname, py in (("ANIM_VERSION", A.VERSION), ("ANIM_HEADER_SIZE", A.HEADER_SIZE),
-                      ("ANIM_REC_HDR_SIZE", A.REC_HDR_SIZE), ("ANIM_FRAME_BYTES", A.FRAME_BYTES),
-                      ("ANIM_MAX_FPS", A.MAX_FPS), ("ANIM_MAX_FRAMES", A.MAX_FRAMES),
-                      ("ANIM_ENC_RAW", A.ENC_RAW), ("ANIM_ENC_RLE", A.ENC_RLE),
-                      ("ANIM_ENC_DELTA", A.ENC_DELTA), ("ANIM_FLAG_LOOP", A.FLAG_LOOP)):
+    for cname, py in (
+        ("ANIM_VERSION", A.VERSION),
+        ("ANIM_HEADER_SIZE", A.HEADER_SIZE),
+        ("ANIM_REC_HDR_SIZE", A.REC_HDR_SIZE),
+        ("ANIM_FRAME_BYTES", A.FRAME_BYTES),
+        ("ANIM_MAX_FPS", A.MAX_FPS),
+        ("ANIM_MAX_FRAMES", A.MAX_FRAMES),
+        ("ANIM_ENC_RAW", A.ENC_RAW),
+        ("ANIM_ENC_RLE", A.ENC_RLE),
+        ("ANIM_ENC_DELTA", A.ENC_DELTA),
+        ("ANIM_FLAG_LOOP", A.FLAG_LOOP),
+    ):
         expect(c_int(fmt, cname) == py, f"{cname} {c_define(fmt, cname)} != {py}")
     expect("128u * 1024u" in c_define(anim_h, "ANIM_REGION_SIZE"), "ANIM_REGION_SIZE 128 KiB")
     expect("0x1DF000" in anim_h, "ANIM_REGION_OFFSET documented as 0x1DF000")
     expect(0x200000 - 4096 - A.REGION_SIZE == A.REGION_OFFSET == 0x1DF000, "region offset")
-    for cname, py in (("ANIM_SETTINGS_SIZE", A.SETTINGS_SIZE), ("ANIM_INFO_SIZE", A.INFO_SIZE),
-                      ("ANIM_DEFAULT_IDLE_S", A.DEFAULT_IDLE_S), ("ANIM_DEFAULT_BLANK_S", A.DEFAULT_BLANK_S),
-                      ("ANIM_PREVIEW_STOP", A.PREVIEW_STOP), ("ANIM_PREVIEW_PLAY", A.PREVIEW_PLAY),
-                      ("ANIM_PREVIEW_BUILTIN", A.PREVIEW_BUILTIN), ("ANIM_PREVIEW_BLANK", A.PREVIEW_BLANK)):
+    for cname, py in (
+        ("ANIM_SETTINGS_SIZE", A.SETTINGS_SIZE),
+        ("ANIM_INFO_SIZE", A.INFO_SIZE),
+        ("ANIM_DEFAULT_IDLE_S", A.DEFAULT_IDLE_S),
+        ("ANIM_DEFAULT_BLANK_S", A.DEFAULT_BLANK_S),
+        ("ANIM_PREVIEW_STOP", A.PREVIEW_STOP),
+        ("ANIM_PREVIEW_PLAY", A.PREVIEW_PLAY),
+        ("ANIM_PREVIEW_BUILTIN", A.PREVIEW_BUILTIN),
+        ("ANIM_PREVIEW_BLANK", A.PREVIEW_BLANK),
+    ):
         expect(c_int(anim_h, cname) == py, f"{cname} mismatch")
-    for name in ("ANIM_BEGIN", "ANIM_DATA", "ANIM_COMMIT", "ANIM_ABORT", "ANIM_INFO", "ANIM_READ",
-                 "ANIM_SETTINGS_GET", "ANIM_SETTINGS_SET", "ANIM_PREVIEW"):
+    for name in (
+        "ANIM_BEGIN",
+        "ANIM_DATA",
+        "ANIM_COMMIT",
+        "ANIM_ABORT",
+        "ANIM_INFO",
+        "ANIM_READ",
+        "ANIM_SETTINGS_GET",
+        "ANIM_SETTINGS_SET",
+        "ANIM_PREVIEW",
+    ):
         expect(c_int(proto, f"CFG_CMD_{name}") == getattr(F, f"CFG_CMD_{name}"), f"CFG_CMD_{name}")
     expect(c_int(proto, "CFG_INFO_FLAG_ANIM") == F.CFG_INFO_FLAG_ANIM, "CFG_INFO_FLAG_ANIM")
     expect(c_int(proto, "CFG_ANIM_CHUNK_MAX") == F.CFG_ANIM_CHUNK_MAX, "CFG_ANIM_CHUNK_MAX")
@@ -230,10 +268,23 @@ def check_c_codec(blobs: dict) -> None:
         t = Path(td)
         (t / "h.c").write_text(HARNESS)
         exe = t / "anim_host"
-        r = subprocess.run([cc, "-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
-                            f"-I{REPO / 'firmware/include'}", str(t / "h.c"),
-                            str(REPO / "firmware/src/anim_codec.c"), "-o", str(exe)],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            [
+                cc,
+                "-std=c11",
+                "-O1",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                f"-I{REPO / 'firmware/include'}",
+                str(t / "h.c"),
+                str(REPO / "firmware/src/anim_codec.c"),
+                "-o",
+                str(exe),
+            ],
+            capture_output=True,
+            text=True,
+        )
         expect(r.returncode == 0, f"host compile failed: {r.stderr}")
         if r.returncode:
             return
@@ -244,7 +295,8 @@ def check_c_codec(blobs: dict) -> None:
             if r.returncode == 0:
                 frames = A.parse_blob(blob).frames
                 expect((t / "o.bin").read_bytes() == b"".join(frames), f"C decode differs for {key}")
-        bad = bytearray(blobs["starfield"]); bad[100] ^= 1
+        bad = bytearray(blobs["starfield"])
+        bad[100] ^= 1
         (t / "b.bin").write_bytes(bytes(bad))
         r = subprocess.run([str(exe), str(t / "b.bin"), str(t / "o.bin")], capture_output=True, text=True)
         expect(r.returncode == 1, "C accepts corrupted blob")
@@ -258,7 +310,7 @@ def check_gif_and_import() -> None:
     from macropad_config.animation import imaging as IM
 
     _app = QGuiApplication.instance() or QGuiApplication([])
-    frames, fps = P.bouncing_text("GIF", frames=8)
+    frames, _fps = P.bouncing_text("GIF", frames=8)
     with tempfile.TemporaryDirectory() as td:
         t = Path(td)
         write_oled_gif(t / "a.gif", frames, 10, scale=1)
@@ -275,8 +327,13 @@ def check_gif_and_import() -> None:
         img.save(str(t / "sq.png"))
         fr, _ = IM.import_files([t / "sq.png"], IM.ImportOptions(dither=IM.DITHER_THRESHOLD))
         bits = A.frame_to_bits(fr[0])
-        expect(bits[32 * 128 + 32] and bits[32 * 128 + 95] and not bits[32 * 128 + 31]
-               and not bits[32 * 128 + 96], "fit keeps aspect + centres")
+        expect(
+            bits[32 * 128 + 32]
+            and bits[32 * 128 + 95]
+            and not bits[32 * 128 + 31]
+            and not bits[32 * 128 + 96],
+            "fit keeps aspect + centres",
+        )
         inv, _ = IM.import_files([t / "sq.png"], IM.ImportOptions(dither=IM.DITHER_THRESHOLD, invert=True))
         expect(A.get_pixel(inv[0], 0, 0) and not A.get_pixel(inv[0], 64, 32), "invert")
         # 50 % grey → FS gives ~50 % lit, threshold 128 → all lit
@@ -296,24 +353,41 @@ def check_gif_and_import() -> None:
             p.fillRect(i, 0, 1, 64, QColor(255, 255, 255))
             p.end()
             im.save(str(t / f"f{i}.png"))
-        seq, _ = IM.import_files([t / "f10.png", t / "f2.png", t / "f1.png"],
-                                 IM.ImportOptions(dither=IM.DITHER_THRESHOLD))
-        expect([next(x for x in range(128) if A.get_pixel(s, x, 5)) for s in seq] == [1, 2, 10],
-               "PNG sequence natural order")
+        seq, _ = IM.import_files(
+            [t / "f10.png", t / "f2.png", t / "f1.png"], IM.ImportOptions(dither=IM.DITHER_THRESHOLD)
+        )
+        expect(
+            [next(x for x in range(128) if A.get_pixel(s, x, 5)) for s in seq] == [1, 2, 10],
+            "PNG sequence natural order",
+        )
 
 
 def check_project() -> None:
     print("smoke_anim_codec: project files")
     frames, fps = P.pulse(frames=6)
-    proj = AnimationProject(frames=frames, fps=fps, loop=False, name="pulse test",
-                            idle_enabled=False, idle_timeout_s=90, blank_timeout_s=0)
+    proj = AnimationProject(
+        frames=frames,
+        fps=fps,
+        loop=False,
+        name="pulse test",
+        idle_enabled=False,
+        idle_timeout_s=90,
+        blank_timeout_s=0,
+    )
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / "x.mpanim.json"
         proj.save(path)
         back = AnimationProject.load(path)
-        expect(back.frames == frames and back.fps == fps and not back.loop and back.name == "pulse test"
-               and not back.idle_enabled and back.idle_timeout_s == 90 and back.blank_timeout_s == 0,
-               "project roundtrip")
+        expect(
+            back.frames == frames
+            and back.fps == fps
+            and not back.loop
+            and back.name == "pulse test"
+            and not back.idle_enabled
+            and back.idle_timeout_s == 90
+            and back.blank_timeout_s == 0,
+            "project roundtrip",
+        )
         blob = back.to_blob()
         expect(A.parse_blob(blob).name == "pulse te", "blob name truncated to 8")
         d = back.to_dict()

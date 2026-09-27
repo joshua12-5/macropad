@@ -22,6 +22,3 @@ const char *text_table_get(uint8_t text_id) {
     return k_strings[text_id];
 }
 
-uint8_t text_table_count(void) {
-    return TEXT_TABLE_COUNT;
-}

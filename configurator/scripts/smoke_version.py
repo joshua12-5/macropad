@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: version module imports + compat helpers (Step 24b).
+"""Headless smoke: version module imports + compat helpers.
 
 Usage:
   cd configurator
@@ -23,10 +23,10 @@ def expect(cond: bool, msg: str = "assertion failed") -> None:
 
 def main() -> int:
     from macropad_config import version as ver
-    from macropad_config.protocol import frames
-    from macropad_config.models.schema import SCHEMA_VERSION
-    from macropad_config.models.macro import MACRO_SCHEMA_VERSION
     from macropad_config.autoswitch import rules as as_rules
+    from macropad_config.models.macro import MACRO_SCHEMA_VERSION
+    from macropad_config.models.schema import SCHEMA_VERSION
+    from macropad_config.protocol import frames
 
     print("smoke_version: imports OK")
 
@@ -44,7 +44,7 @@ def main() -> int:
     expect(not bad, "proto 99 should fail")
     expect("mismatch" in bmsg.lower() or "expects" in bmsg.lower(), bmsg)
 
-    # Feature gates: Step 24 fw unlocks all; old minors gate correctly.
+    # Feature gates: current fw unlocks all; old minors gate correctly.
     expect(ver.fw_supports_upload(0, 24))
     expect(ver.fw_supports_macro_upload(0, 24))
     expect(ver.fw_supports_autoswitch(0, 24))
@@ -75,19 +75,15 @@ def main() -> int:
     tip = ver.feature_disabled_tooltip("Upload", ver.MIN_FW_MINOR_UPLOAD)
     expect("0.16+" in tip or "0.16" in tip, tip)
 
-    summary = ver.compat_summary(
-        {"fw_major": 0, "fw_minor": 25, "proto_ver": 1}
-    )
+    summary = ver.compat_summary({"fw_major": 0, "fw_minor": 25, "proto_ver": 1})
     expect("0.25.0" in summary and "OK" in summary, summary)
-    bad_sum = ver.compat_summary(
-        {"fw_major": 0, "fw_minor": 24, "proto_ver": 2}
-    )
+    bad_sum = ver.compat_summary({"fw_major": 0, "fw_minor": 24, "proto_ver": 2})
     expect("MISMATCH" in bad_sum, bad_sum)
 
     print(f"  HOST_APP_VERSION={ver.HOST_APP_VERSION}")
     print(f"  PROTO_VER={ver.PROTO_VER}  frames.CFG_PROTO_VERSION={frames.CFG_PROTO_VERSION}")
     print(f"  FW current={ver.FW_VERSION_MAJOR_EXPECTED}.{ver.FW_VERSION_MINOR_CURRENT}")
-    print(f"  schemas profile/macro/autoswitch=1/1/1")
+    print("  schemas profile/macro/autoswitch=1/1/1")
     print(f"  compat_summary: {summary}")
     print("smoke_version: PASS")
     return 0
@@ -96,6 +92,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"smoke_version: FAIL: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

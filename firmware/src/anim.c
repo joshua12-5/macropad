@@ -82,22 +82,6 @@ void anim_settings_defaults(void) {
     g_set.blank_timeout_s = ANIM_DEFAULT_BLANK_S;
 }
 
-void anim_settings_get(anim_settings_t *out) {
-    if (out) {
-        *out = g_set;
-    }
-}
-
-bool anim_settings_set(const anim_settings_t *in) {
-    if (in == NULL) {
-        return false;
-    }
-    g_set = *in;
-    g_set.enabled = in->enabled ? true : false;
-    anim_note_input(); /* restart the idle clock with the new timeouts */
-    return true;
-}
-
 void anim_settings_pack(uint8_t out[ANIM_SETTINGS_SIZE]) {
     memset(out, 0, ANIM_SETTINGS_SIZE);
     out[0] = g_set.enabled ? 1u : 0u;
@@ -285,10 +269,6 @@ void anim_note_input(void) {
 
 bool anim_screen_owned(void) {
     return g_state != ANIM_STATE_ACTIVE;
-}
-
-anim_state_t anim_state(void) {
-    return g_state;
 }
 
 bool anim_wake(void) {

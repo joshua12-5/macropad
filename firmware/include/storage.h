@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 /*
- * Flash-backed profile + macro bank (Step 16/17).
+ * Flash-backed profile + macro bank.
  *
  * Image lives in the last 4 KiB sector of on-chip flash:
  *   STORAGE_FLASH_OFFSET = PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE
@@ -30,15 +30,15 @@ extern "C" {
  * v1 images (profiles only) are loaded and macros stay at factory defaults;
  * the next save rewrites as v2.
  *
- * Step 24b — v3 (current): the v2 body followed by an 8-byte idle-animation
+ * v3 (current): the v2 body followed by an 8-byte idle-animation
  * settings block (anim.h: enabled u8, flags u8, idle_timeout_s u16,
  * blank_timeout_s u16, reserved u16), then the crc32. v1/v2 images still load
  * (idle settings at defaults); every save writes v3. The animation frames
  * themselves live in their own 128 KiB region below this sector (anim.h).
  *
- * Step 19: SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
+ * SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
  * CFG_CMD_SAVE_ALL forces an immediate rewrite.
- * Step 23: the debounced persist is skipped when flash already holds a v2
+ * the debounced persist is skipped when flash already holds a v2
  * image equal to RAM (last load/save succeeded) with the same active_slot.
  */
 
@@ -72,7 +72,7 @@ bool storage_macro_upload_busy(void);
 bool storage_profile_meta(uint8_t slot, uint16_t *out_len, uint32_t *out_crc);
 bool storage_macro_meta(uint8_t id, uint16_t *out_len, uint32_t *out_crc);
 
-/* Step 23 — PROFILE_READ / MACRO_READ: copy up to max_len bytes of the packed
+/* PROFILE_READ / MACRO_READ: copy up to max_len bytes of the packed
  * RAM blob starting at offset. False on bad slot/id or offset >= blob size. */
 bool storage_profile_read(uint8_t slot, uint16_t offset, uint8_t *out,
                           uint16_t max_len, uint16_t *out_len);
@@ -81,10 +81,8 @@ bool storage_macro_read(uint8_t id, uint16_t offset, uint8_t *out,
 
 void storage_init(void);
 bool storage_save_all(void);
-bool storage_save_slot(uint8_t index); /* rewrites full image (same sector) */
-bool storage_loaded_from_flash(void);
 
-/* Step 19 — debounced active_slot flash persist after SET_ACTIVE.
+/* debounced active_slot flash persist after SET_ACTIVE.
  * schedule: arm/reschedule quiet window; task: call from main loop;
  * cancel: clear pending (after SAVE_ALL / COMMIT rewrite). */
 void storage_schedule_active_persist(void);

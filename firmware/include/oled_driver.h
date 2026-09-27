@@ -17,14 +17,13 @@ void oled_driver_fill_rect(int x, int y, int w, int h, bool on);
 void oled_driver_draw_char(int x, int y, char c, bool on);
 void oled_driver_draw_string(int x, int y, const char *s, bool on);
 void oled_driver_draw_string_centered(int y, const char *s, bool on);
-void oled_driver_update(void);          /* queue framebuffer push (non-blocking, Step 24b) */
+void oled_driver_update(void);          /* queue framebuffer push (non-blocking) */
 void oled_driver_task(void);            /* stream queued frame: call every main-loop tick */
 bool oled_driver_busy(void);            /* push queued or in progress */
 void oled_driver_update_blocking(void); /* queue + drain (init only) */
 void oled_driver_load_frame(const uint8_t *frame); /* 1024 B, SSD1306 page order */
 void oled_driver_display_on(bool on);   /* 0xAF / 0xAE (blank for burn-in protection) */
 void oled_driver_last_frame_us(uint32_t *bus_us, uint32_t *wall_us);
-uint32_t oled_driver_frames_pushed(void);
 bool oled_driver_ok(void);
 uint8_t oled_driver_address(void);      /* 0x3C or 0x3D */
 
