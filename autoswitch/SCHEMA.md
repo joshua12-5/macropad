@@ -5,13 +5,16 @@ slot. The **configurator** polls the OS, matches rules, and sends USB
 `SET_ACTIVE` (`0x30`). The device cannot see host apps — auto-switch only
 works while the configurator (or another host agent) is running.
 
-`SET_ACTIVE` is **RAM + OLED only** (no flash erase/program), so frequent
-switches do not wear flash.
+`SET_ACTIVE` switches the profile in RAM and on the OLED immediately. The device
+writes the new slot to flash only once it has stayed unchanged for 4 s
+(`STORAGE_ACTIVE_DEBOUNCE_MS`), and skips the write if flash already holds it,
+so frequent switches do not wear flash.
 
 ## File
 
-Default path: repo `autoswitch/rules.json`. Override with env
-`MACROPAD_AUTOSWITCH_PATH`.
+Default path: `autoswitch/rules.json` in the repo when running from source, or in the
+per-user data folder for release builds (see [`docs/USER_GUIDE.md`](../docs/USER_GUIDE.md#where-your-data-lives)).
+Override with env `MACROPAD_AUTOSWITCH_PATH`.
 
 ## Top-level object
 

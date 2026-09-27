@@ -137,4 +137,4 @@ window command (`21 00 7F 22 00 07`) plus 64 data transactions of 18 bytes (addr
 
 ## Flash map
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md#flash-map-step-24b).
+See [`ARCHITECTURE.md`](ARCHITECTURE.md#flash-map).

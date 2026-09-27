@@ -1,7 +1,7 @@
 #include "text_table.h"
 
 /*
- * Fixed ASCII snippets for Step 8 typing / launch-string demos.
+ * Fixed ASCII snippets for TEXT / URL / APP actions and MACRO_TEXT steps.
  * Total string bytes (excluding pointers) stays well under 512.
  */
 static const char *const k_strings[TEXT_TABLE_COUNT] = {

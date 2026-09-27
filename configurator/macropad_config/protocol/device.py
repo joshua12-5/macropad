@@ -3,7 +3,7 @@
 Requires an optional hidapi binding. Both Python APIs are supported:
 
 * ``pip install hidapi`` (cython-hidapi): ``hid.device().open_path(...)`` —
-  pinned in ``requirements.txt`` since Step 24 (wheels embed native hidapi;
+  pinned in ``requirements.txt`` (wheels embed native hidapi;
   on Linux the ``hidraw`` module of the same package is preferred);
 * ``pip install hid`` (pyhidapi / ctypes): ``hid.Device(path=...)`` — needs a
   system libhidapi.
@@ -115,7 +115,7 @@ def err_name(code: int) -> str:
 def _import_hid():
     """Return the hidapi binding module.
 
-    Step 24: release builds ship cython-hidapi (``pip install hidapi``), whose
+    Release builds ship cython-hidapi (``pip install hidapi``), whose
     wheels embed the native hidapi library. On Linux that package provides two
     modules — ``hid`` (libusb backend, needs /dev/bus/usb access and detaches
     kernel drivers) and ``hidraw`` (hidraw backend, works with the shipped
@@ -164,9 +164,9 @@ def hid_binding_info(hid_module=None) -> dict:
 class _HidHandle:
     """Uniform open/read/write over cython-hidapi and pyhidapi ``hid`` modules.
 
-    Step 23 fix: ``requirements.txt`` pins ``hid`` (pyhidapi), whose API is
-    ``hid.Device(path=...)`` — the old code only knew cython-hidapi's
-    ``hid.device()`` and raised AttributeError on real hardware.
+    cython-hidapi (``pip install hidapi``, what ``requirements.txt`` pins) exposes
+    ``hid.device()``; pyhidapi (``pip install hid``) exposes ``hid.Device(path=...)``.
+    Both are accepted so either binding works on real hardware.
     """
 
     def __init__(self, hid_module) -> None:
@@ -543,7 +543,7 @@ class ConfigDevice:
         mid, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
         return {"id": mid, "len": length, "crc": crc}
 
-    # ---- Step 24b: OLED idle animation (fw 0.25+, GET_INFO flag bit3) ----
+    # ---- OLED idle animation (fw 0.25+, GET_INFO flag bit3) ----
 
     def _anim_cmd(self, cmd: int, payload: bytes, label: str, timeout_ms: Optional[int] = None) -> Frame:
         old = self._timeout_ms

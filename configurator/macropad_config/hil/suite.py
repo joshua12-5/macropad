@@ -1,5 +1,5 @@
-"""Hardware-in-the-loop test suite for the vendor config HID channel (Step 23;
-OLED idle-animation tests added in Step 24b).
+"""Hardware-in-the-loop test suite for the vendor config HID channel (fw 0.23+;
+OLED idle-animation tests need fw 0.25+).
 
 Talks to a flashed macropad (or ``hil.mock``) through the production host
 stack: ``protocol.device.ConfigDevice`` + ``protocol.frames``. No framing is
@@ -13,7 +13,7 @@ schedules a debounced flash rewrite; on fw 0.23+ that rewrite is skipped when
 the original slot is restored, so the active-slot test is flash-free there and
 needs ``allow_flash_write`` on older firmware.
 
-Step 24b animation tests: ANIM_INFO / PREVIEW / protocol error paths / EBUSY
+Animation tests (fw 0.25+): ANIM_INFO / PREVIEW / protocol error paths / EBUSY
 are flash-free (uploads are aborted before the first 4 KiB sector fills).
 ANIM_SETTINGS_SET rewrites the MPFL sector and a completed or bad-CRC
 ANIM_COMMIT programs the animation region, so the settings and round-trip
@@ -191,7 +191,7 @@ class HilContext:
         self.orig_macro_crc: dict[int, int] = {}
         self.rng = random.Random(opts.seed)
         self.notes: list[str] = []
-        # Step 24b
+        # fw 0.25+
         self.anim = False
         self.orig_anim_info: Optional[dict] = None
         self.orig_anim_settings: Optional[dict] = None

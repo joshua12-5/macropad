@@ -47,7 +47,7 @@ extern "C" {
  * (payload = id u8 + offset u16 LE + up to 48 bytes). */
 #define CFG_READ_CHUNK_MAX      48u
 
-/* host-driven active profile (RAM + OLED only) */
+/* host-driven active profile (RAM + OLED at once; debounced flash persist, storage.h) */
 #define CFG_CMD_SET_ACTIVE      0x30u  /* payload: slot u8 */
 #define CFG_CMD_GET_ACTIVE      0x31u  /* response: slot u8 */
 

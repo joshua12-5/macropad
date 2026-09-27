@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * Step 2 frozen pinout — RP2040-Zero (edge pins only).
+ * Frozen pinout — RP2040-Zero (edge pins only).
  * Do not change without revising the architecture pin table.
  */
 
@@ -22,7 +22,7 @@
 #define PIN_ENC_B   3  /* KY-040 DT  */
 #define PIN_ENC_SW 15  /* KY-040 SW  */
 
-/* OLED SSD1306 I2C0 (wired in Step 6) */
+/* OLED SSD1306 on I2C0 (address 0x3C, falls back to 0x3D) */
 #define PIN_OLED_SDA 4
 #define PIN_OLED_SCL 5
 

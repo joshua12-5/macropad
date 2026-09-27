@@ -1,9 +1,12 @@
 # Macro step schema (firmware engine + host library)
 
-Built-in macros live in `firmware/src/macros.c` as packed RAM/ROM step tables.
-The **host library** (`macros/library.json`) is the configurator source of truth for
-editing and labeling macros. Until a USB flash/sync protocol lands (Steps 15–16),
-firmware still uses the packed C tables — host JSON and firmware may diverge.
+The device holds **5 macro slots (ids 0–4)** of up to **24 steps** each (including the final
+`END`) and a 15-character name. Factory defaults live in `firmware/src/macros.c` and seed a
+blank flash; after that the slots come from the flash macro bank.
+The **host library** (`macros/library.json`) is the configurator's source of truth for
+editing and labelling macros. **Device → Upload macros to device…** packs library ids 0–4
+into [`macro_blob_v1`](../docs/MACRO_BLOB.md) and writes them to RAM and flash. Until you
+upload, the device keeps whatever it had, so the host JSON and the device can differ.
 
 ## Step struct (`macro_step_t`)
 

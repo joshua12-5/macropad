@@ -16,7 +16,7 @@
  * Last 4 KiB sector. PICO_FLASH_SIZE_BYTES is 2 MiB on RP2040-Zero
  * (PICO_BOARD=waveshare_rp2040_zero), so offset = 0x1FF000.
  * Absolute XIP address = XIP_BASE + offset.
- * Do not call erase/program from an ISR. Step 22: the erase+program runs via
+ * Do not call erase/program from an ISR. The erase+program runs via
  * flash_safe_execute() (pico_flash): on this single-core build it masks IRQs
  * exactly like the old save_and_disable_interrupts() path, and it will lock
  * out core 1 safely (or refuse) if multicore is ever linked.

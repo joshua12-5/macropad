@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 /*
- * Step 8 action engine: non-blocking dispatch for every schema action type.
+ * Action engine: non-blocking dispatch for every schema action type.
  * Held KEY/SHORTCUT for matrix still go through usb_hid_update_from_matrix().
  * TEXT/URL/APP type via HID in actions_task(); MACRO uses macros_fire().
  */

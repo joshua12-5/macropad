@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /*
- * Step 9/17 non-blocking macro engine.
+ * Non-blocking macro engine.
  * Factory defaults in flash/const; RAM working set of 5 editable slots.
  * One playback at a time.
  */

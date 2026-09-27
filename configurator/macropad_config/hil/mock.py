@@ -12,10 +12,10 @@ suite to run headless:
 * firmware blob canonicalisation (unpack → RAM → pack), so READ returns what
   real firmware would;
 * 4 KiB storage-v2 flash image with a write counter, debounced SET_ACTIVE
-  persist (4 s) incl. the Step 23 "skip if unchanged" rule;
+  persist (4 s) incl. the fw 0.23 "skip if unchanged" rule;
 * ``fw_minor < 23`` disables PROFILE_READ / MACRO_READ, the READBACK info bit
-  and the debounce skip (behaves like a Step 22 device);
-* Step 24b (``fw_minor >= 25``): OLED idle-animation commands 0x40-0x48 over a
+  and the debounce skip (behaves like a fw 0.22 device);
+* fw 0.25+ (``fw_minor >= 25``): OLED idle-animation commands 0x40-0x48 over a
   128 KiB flash region (sequential DATA, per-sector erase+program counter,
   COMMIT CRC + structural validation via ``animation.codec``, ABORT/failed
   COMMIT invalidate sector 0), idle settings persisted in an MPFL v3 image,
@@ -181,7 +181,7 @@ class MockFirmware:
         self.persist_pending = False
         self.persist_deadline = 0.0
         self.log: list[str] = []
-        # Step 24b animation model
+        # OLED idle-animation model (fw 0.25+)
         self.anim_settings = {
             "enabled": True,
             "idle_timeout_s": A.DEFAULT_IDLE_S,
@@ -254,7 +254,7 @@ class MockFirmware:
             return False
         return F.crc32(img[:body_len]) == struct.unpack_from("<I", img, body_len)[0]
 
-    # Step 23 name kept for existing smokes/tests.
+    # Older name kept for existing smokes/tests.
     flash_image_valid_v2 = flash_image_valid
 
     def flash_anim_settings(self) -> Optional[dict]:

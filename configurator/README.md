@@ -114,8 +114,8 @@ python scripts/smoke_anim_device.py   # ANIM_* protocol vs mock (+ seeded bugs),
 
 Host watches the foreground process (Windows ctypes / Linux xdotool+/proc /
 macOS osascript), matches [`../autoswitch/rules.json`](../autoswitch/rules.json),
-and sends USB `SET_ACTIVE` (`0x30`). **RAM + OLED only** on the device (no flash
-wear). The device cannot see host apps — keep the configurator running.
+and sends USB `SET_ACTIVE` (`0x30`). Switches are instant (RAM + OLED); the device
+saves the slot to flash only after it has been stable for 4 s, so rapid switching does not wear flash. The device cannot see host apps — keep the configurator running.
 Override rules path with `MACROPAD_AUTOSWITCH_PATH`.
 
 ## Layout

@@ -12,7 +12,7 @@ Configurator: release bundle (`MacropadConfigurator --hil …` runs the suite be
 
 ```bash
 cd configurator
-pip install -r requirements.txt          # includes `hid` (needs the system hidapi lib)
+pip install -r requirements.txt          # includes `hidapi` (native library bundled)
 python scripts/hil_test.py --list        # VID 0x2E8A / PID 0xC001 interfaces; CONFIG = usage page 0xFF00
 python scripts/hil_test.py               # flash-free suite (safe to run any time)
 python scripts/hil_test.py --allow-flash-write --json hil-report.json   # + COMMIT round-trips + SAVE_ALL

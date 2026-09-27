@@ -9,9 +9,9 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 | `schema_version` | number | Must be `1` |
 | `id` | string | Stable id (`coding`) |
 | `name` | string | Display name |
-| `oled` | object | `title`, `animation` |
+| `oled` | object | `title` (shown on the OLED, max 15 chars), `animation` (stored, not used by the firmware; the idle animation is global) |
 | `keys` | object | `"1"`..`"12"` → action |
-| `encoder` | object | `cw`, `ccw`, `press`, `long_press` |
+| `encoder` | object | `cw`, `ccw`, `press`, `long_press` (stored but never fired: holding the knob opens the profile menu) |
 
 ## Action object
 
@@ -24,9 +24,9 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 | `TEXT` | `text_id` | Types string from firmware `text_table` over USB HID (non-blocking) |
 | `MEDIA` | `code` or `usage` | Consumer HID pulse; OLED shows short label when known |
 | `VOLUME` | `dir`: `up` / `down` / `mute` | Consumer volume |
-| `APP` | `text_id` / `app_id` | Types launch string from text table + Enter (best-effort; true OS launch needs host helper later) |
+| `APP` | `text_id` / `app_id` | Types launch string from text table + Enter (best-effort: only works when a Run box / launcher / terminal already has focus) |
 | `URL` | `text_id` | Types URL from text table + Enter |
-| `PROFILE` | `profile_id` or slot index | Switch active profile slot |
+| `PROFILE` | `slot` (0–4), optional `profile_id` label | Switch active profile slot (RAM + OLED). Only `slot` reaches the device; an action with just `profile_id` is packed as slot 0 |
 
 ### ID fields
 
@@ -53,7 +53,7 @@ Firmware ships packed C copies of five profiles; JSON is the host/library form f
 
 | id | Name | Behavior |
 |----|------|----------|
-| 0 | hello | Types `HELLO` via key taps |
+| 0 | hello | Types `hello` via key taps (no Shift, so lower case) |
 | 1 | sel+cpy | Ctrl+A then Ctrl+C |
 | 2 | undo/redo | Ctrl+Z then Ctrl+Y |
 | 3 | git st | Types `git status` + newline from text table |

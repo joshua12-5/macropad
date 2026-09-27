@@ -13,7 +13,7 @@ extern "C" {
 #define PROFILE_SLOT_COUNT      5
 
 /*
- * Action types (schema v1). Step 8 expands the engine; Step 9 adds macros.
+ * Action types (schema v1).
  * Pack payloads small — these live in RAM on RP2040.
  *
  * aux usage by type:
@@ -66,7 +66,7 @@ typedef struct {
     action_t cw;
     action_t ccw;
     action_t press;
-    action_t long_press; /* reserved Step 14 */
+    action_t long_press; /* reserved (unused: a long press opens the profile menu) */
 } profile_encoder_t;
 
 typedef struct {

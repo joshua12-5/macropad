@@ -54,7 +54,8 @@ class AutoswitchDialog(QDialog):
 
         hint = QLabel(
             "Host watches the foreground app and sends USB SET_ACTIVE "
-            "(RAM + OLED only — no flash wear). Requires the configurator "
+            "(instant RAM + OLED switch; the device saves the slot to flash once it has been "
+            "stable for 4 s, so rapid switching does not wear flash). Requires the configurator "
             "to be running; the device cannot see host apps."
         )
         hint.setWordWrap(True)

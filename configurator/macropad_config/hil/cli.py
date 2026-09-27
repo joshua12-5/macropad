@@ -14,10 +14,11 @@ from .suite import FAIL, PASS, SKIP, TEST_IDS, HilOptions, run_suite
 EPILOG = f"""\
 tests (in order): {", ".join(TEST_IDS)}
 
-flash wear: PROFILE/MACRO COMMIT and SAVE_ALL each erase+program the 4 KiB
-storage sector, so profile_roundtrip / macro_roundtrip / save_all are SKIPPED
-unless --allow-flash-write is given (a full write run costs 5 sector writes).
-All other tests are flash-free on fw 0.23+.
+flash wear: PROFILE/MACRO COMMIT, SAVE_ALL and ANIM_SETTINGS_SET each erase+program
+the 4 KiB storage sector and an animation upload rewrites animation-region sectors, so
+profile_roundtrip / macro_roundtrip / save_all / anim_settings / anim_roundtrip are
+SKIPPED unless --allow-flash-write is given (a full write run costs 7 storage-sector
+writes plus a few animation-region sectors). All other tests are flash-free on fw 0.23+.
 
 exit codes: 0 = no FAIL, 1 = at least one FAIL, 2 = no device / cannot open.
 
