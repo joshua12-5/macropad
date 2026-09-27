@@ -97,6 +97,13 @@ def pack_macro(macro: Macro | Mapping[str, Any]) -> bytes:
     if not steps:
         raise MacroBlobError("steps must be non-empty")
 
+    # Firmware (macro_blob_unpack / macros_replace) truncates at the first END;
+    # do the same so the packed blob is canonical and reads back byte-identical.
+    for i, st in enumerate(steps):
+        if st.op == "END":
+            steps = list(steps[: i + 1])
+            break
+
     # Ensure final END; append if missing.
     if steps[-1].op != "END":
         steps = list(steps) + [MacroStep(op="END")]

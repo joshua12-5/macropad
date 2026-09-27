@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless smoke: version module imports + compat helpers (Step 22).
+"""Headless smoke: version module imports + compat helpers (Step 23).
 
 Usage:
   cd configurator
@@ -30,9 +30,9 @@ def main() -> int:
 
     print("smoke_version: imports OK")
 
-    expect(ver.HOST_APP_VERSION == "0.22.0", f"HOST_APP={ver.HOST_APP_VERSION}")
+    expect(ver.HOST_APP_VERSION == "0.23.0", f"HOST_APP={ver.HOST_APP_VERSION}")
     expect(ver.PROTO_VER == 1, f"PROTO_VER={ver.PROTO_VER}")
-    expect(ver.FW_VERSION_MINOR_CURRENT == 22, "FW minor current")
+    expect(ver.FW_VERSION_MINOR_CURRENT == 23, "FW minor current")
     expect(ver.PROTO_VER == frames.CFG_PROTO_VERSION, "PROTO vs frames")
     expect(ver.PROFILE_SCHEMA_VERSION == SCHEMA_VERSION == 1)
     expect(ver.MACRO_SCHEMA_VERSION == MACRO_SCHEMA_VERSION == 1)
@@ -44,11 +44,11 @@ def main() -> int:
     expect(not bad, "proto 99 should fail")
     expect("mismatch" in bmsg.lower() or "expects" in bmsg.lower(), bmsg)
 
-    # Feature gates: Step 22 fw unlocks all; old minors gate correctly.
-    expect(ver.fw_supports_upload(0, 22))
-    expect(ver.fw_supports_macro_upload(0, 22))
-    expect(ver.fw_supports_autoswitch(0, 22))
-    expect(ver.fw_supports_save_all(0, 22))
+    # Feature gates: Step 23 fw unlocks all; old minors gate correctly.
+    expect(ver.fw_supports_upload(0, 23))
+    expect(ver.fw_supports_macro_upload(0, 23))
+    expect(ver.fw_supports_autoswitch(0, 23))
+    expect(ver.fw_supports_save_all(0, 23))
 
     expect(ver.fw_supports_upload(0, 16))
     expect(not ver.fw_supports_upload(0, 15))
@@ -58,20 +58,23 @@ def main() -> int:
     expect(ver.fw_supports_autoswitch(0, 18))
     expect(not ver.fw_supports_save_all(0, 18))
     expect(ver.fw_supports_save_all(0, 19))
+    expect(ver.MIN_FW_MINOR_READBACK == 23)
+    expect(ver.fw_supports_readback(0, 23))
+    expect(not ver.fw_supports_readback(0, 22))
 
     # Wrong major never unlocks.
     expect(not ver.fw_supports_upload(1, 99))
-    expect(not ver.fw_supports_autoswitch(None, 22))
+    expect(not ver.fw_supports_autoswitch(None, 23))
 
     tip = ver.feature_disabled_tooltip("Upload", ver.MIN_FW_MINOR_UPLOAD)
     expect("0.16+" in tip or "0.16" in tip, tip)
 
     summary = ver.compat_summary(
-        {"fw_major": 0, "fw_minor": 22, "proto_ver": 1}
+        {"fw_major": 0, "fw_minor": 23, "proto_ver": 1}
     )
-    expect("0.22.0" in summary and "OK" in summary, summary)
+    expect("0.23.0" in summary and "OK" in summary, summary)
     bad_sum = ver.compat_summary(
-        {"fw_major": 0, "fw_minor": 22, "proto_ver": 2}
+        {"fw_major": 0, "fw_minor": 23, "proto_ver": 2}
     )
     expect("MISMATCH" in bad_sum, bad_sum)
 

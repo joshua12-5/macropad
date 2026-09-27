@@ -1,12 +1,22 @@
 # Macropad firmware (RP2040)
 
-Build target: `macropad_step22.uf2`
+Build target: `macropad_step23.uf2`
+
+## Step 23 — HIL support: blob readback + quieter debounce
+
+- `FW_VERSION_MINOR` = **23**; CMake target `macropad_step23`; USB `bcdDevice` = **0x0117** (1.23).
+- `CFG_CMD_PROFILE_READ` (`0x15`) / `CFG_CMD_MACRO_READ` (`0x25`): chunked readback (≤ 48 B per
+  response) of the packed RAM blobs; GET_INFO flags **bit2** (`CFG_INFO_FLAG_READBACK`).
+- Debounced `SET_ACTIVE` persist is skipped when flash already holds a v2 image matching RAM with
+  the same `active_slot` (UART `stor debounce skip (unchanged)`).
+- Size: text 56908 (+400 B vs Step 22), bss 11160 (unchanged), UF2 114176 B (+1024).
+- Host HIL suite: `configurator/scripts/hil_test.py` (see [`../docs/HARDWARE_TEST.md`](../docs/HARDWARE_TEST.md)).
 
 ## Step 22 — Verified firmware build + CI UF2 artifact
 
 - First real compile: Pico SDK **2.1.1**, `PICO_BOARD=waveshare_rp2040_zero`,
   `arm-none-eabi-gcc` 14.2, CMake + Ninja. Zero warnings with `-Wall -Wextra`.
-- `FW_VERSION_MINOR` = **22**; CMake target `macropad_step22`; USB `bcdDevice` = **0x0116** (1.22).
+- `FW_VERSION_MINOR` was **22**; CMake target `macropad_step22`; USB `bcdDevice` **0x0116** (1.22).
 - Storage erase/program runs through `flash_safe_execute()` (single-core: IRQs masked, same as
   before); the flash image is staged in the static 4 KiB sector buffer instead of the stack.
 - Size (text/data/bss): **56508 / 0 / 11160**; UF2 113152 B (≈ 110.5 KiB); image ends at `0x1000DCC0`
@@ -14,7 +24,7 @@ Build target: `macropad_step22.uf2`
   (Local gcc 14.2 numbers; CI's Ubuntu gcc 13.2 gives ~55.4 KB text, UF2 ≈ 108.5 KiB.)
 - CI: [`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) → artifact `macropad-firmware-uf2`.
 
-**Next: Step 23** — more polish/testing in the 18–24 block.
+**Next: Step 24** — last polish/testing step of the 18–24 block.
 
 ## Step 21 — Changelog / CI smokes / release polish
 
@@ -68,7 +78,7 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware   # this directory
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step22.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad_step23.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 Notes:
@@ -85,5 +95,5 @@ Notes:
 ## UART debug
 
 `stor load v2|v1 (macros factory)|default`, `stor save ok|fail`,
-`stor debounce save`, `cfg macro …`, `cfg set_active N`, `cfg save_all ok`,
+`stor debounce save`, `cfg macro …`, `cfg set_active N`, `cfg save_all ok`, `stor debounce skip (unchanged)`,
 `macro save ok`, `profile save ok`.

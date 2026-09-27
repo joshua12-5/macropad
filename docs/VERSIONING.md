@@ -1,19 +1,19 @@
-# Versioning matrix (Step 22)
+# Versioning matrix (Step 23)
 
 How firmware, wire protocol, and host JSON schemas relate — and what must match.
 
-## Matrix (shipping Step 22)
+## Matrix (shipping Step 23)
 
 | Axis | Constant / field | Current | Where |
 |------|------------------|---------|--------|
-| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.22** | `firmware/include/config_protocol.h` → GET_INFO |
+| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.23** | `firmware/include/config_protocol.h` → GET_INFO |
 | Wire protocol | `CFG_PROTO_VERSION` / `proto_ver` | **1** | frame byte + GET_INFO; host `macropad_config/version.py` `PROTO_VER` |
-| Host app | `HOST_APP_VERSION` | **0.22.0** | `configurator/macropad_config/version.py` (+ About) |
+| Host app | `HOST_APP_VERSION` | **0.23.0** | `configurator/macropad_config/version.py` (+ About) |
 | Profile JSON / blob | `schema_version` | **1** | `profiles/*.json`, `PROFILE_BLOB`, host `SCHEMA_VERSION` |
 | Macro library / blob | `schema_version` | **1** | `macros/library.json`, `MACRO_BLOB`, `MACRO_SCHEMA_VERSION` |
 | Autoswitch rules | `schema_version` | **1** | `autoswitch/rules.json`, host `rules.SCHEMA_VERSION` |
-| USB `bcdDevice` | `USB_BCD` | **0x0116** (1.22) | `firmware/src/usb_descriptors.c` |
-| CMake / UF2 | target name | `macropad_step22` | `firmware/CMakeLists.txt` |
+| USB `bcdDevice` | `USB_BCD` | **0x0117** (1.23) | `firmware/src/usb_descriptors.c` |
+| CMake / UF2 | target name | `macropad_step23` | `firmware/CMakeLists.txt` |
 | Pico SDK | git tag | **2.1.1** (+ submodules) | `firmware/README.md`, `.github/workflows/firmware.yml` `PICO_SDK_TAG` |
 | Board | `PICO_BOARD` | **waveshare_rp2040_zero** | `firmware/CMakeLists.txt` default, CI env |
 
@@ -54,6 +54,7 @@ minimum `FW_VERSION_MINOR` (major must match expected **0**):
 | Macro upload | **17** | macro bank + MACRO_* cmds |
 | Autoswitch (`SET_ACTIVE`) | **18** | host-driven active slot |
 | Save device state (`SAVE_ALL`) | **19** | immediate flash rewrite |
+| Blob readback (`PROFILE_READ` / `MACRO_READ`) | **23** | also GET_INFO flags bit2; HIL backup/byte-compare |
 
 If firmware is too old, the configurator **disables** those actions and sets a
 tooltip explaining the required version (Connect still works for info).
@@ -75,7 +76,9 @@ Release process: [`RELEASE.md`](RELEASE.md). Changelog: [`../CHANGELOG.md`](../C
 
 ## Smoke / hardware / CI
 
-- Headless: `configurator/scripts/smoke_version.py` (via `run_all_smokes.py`).
+- Headless: `configurator/scripts/smoke_version.py` and `smoke_hil_mock.py` (via `run_all_smokes.py`).
+- HIL: `configurator/scripts/hil_test.py` checks the proto handshake and warns (or
+  `--strict-version` fails) when fw minor ≠ `FW_VERSION_MINOR_CURRENT`.
 - CI: [`.github/workflows/smokes.yml`](../.github/workflows/smokes.yml) runs host smokes;
   [`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) builds the firmware with Pico SDK
   **2.1.1** / `PICO_BOARD=waveshare_rp2040_zero` and uploads the UF2 artifact (`macropad-firmware-uf2`).

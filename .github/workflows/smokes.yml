@@ -1,4 +1,6 @@
 # Host-only smokes — no Pico SDK / firmware build required.
+# Step 23: run_all_smokes includes smoke_hil_mock.py; the full HIL suite also
+# runs against the mock device and its JSON report is kept as an artifact.
 name: Host smokes
 
 on:
@@ -29,3 +31,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/run_all_smokes.py
+
+      - name: HIL suite (mock device, flash writes enabled)
+        run: python scripts/hil_test.py --mock --allow-flash-write --no-color --json hil-mock-report.json
+
+      - name: Upload HIL mock report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-mock-report
+          path: configurator/hil-mock-report.json
+          if-no-files-found: warn

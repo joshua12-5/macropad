@@ -40,13 +40,26 @@ OLED                         ENCODER
 | 20 | Testing / versioning polish | Done |
 | 21 | Changelog / CI smokes / release polish | Done |
 | 22 | Verified firmware build + CI UF2 artifact | Done |
+| 23 | Hardware-in-the-loop test tooling | Done |
 
-**Step 22** is the first real firmware compile: Pico SDK **2.1.1**,
+**Step 23** adds hardware-in-the-loop tooling:
+[`configurator/scripts/hil_test.py`](configurator/scripts/hil_test.py) runs an
+ordered suite over the vendor config HID interface (PING latency, GET_INFO
+version handshake, ECHO + CRC injection, malformed-frame NAKs, profile / macro
+upload protocol + backup → upload → byte-compare → restore, SET_ACTIVE cycle,
+SAVE_ALL, guided key checklist) with PASS/FAIL/SKIP output, `--json`, and a
+non-zero exit on failure. Flash-writing steps need `--allow-flash-write`.
+`--mock` runs the same suite against an in-process firmware model — that is
+`smoke_hil_mock.py` in CI (10 host smokes). Firmware 0.23 adds `PROFILE_READ` /
+`MACRO_READ` readback. Versions: firmware **0.23**, host **0.23.0**, UF2
+`macropad_step23`, `bcdDevice` 0x0117. How to run it on hardware:
+[`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md). **Next: Step 24.**
+
+**Step 22** (kept) is the first real firmware compile: Pico SDK **2.1.1**,
 `PICO_BOARD=waveshare_rp2040_zero`, zero warnings under `-Wall -Wextra`, and a
 new GitHub Actions [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)
 that builds the firmware and uploads `macropad_step22.uf2` as the
-`macropad-firmware-uf2` artifact. Versions: firmware **0.22**, host **0.22.0**,
-UF2 `macropad_step22`, `bcdDevice` 0x0116. **Next: Step 23.**
+`macropad-firmware-uf2` artifact.
 
 **Step 21** (kept) adds release polish: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog,
 Steps 14–21), GitHub Actions [`.github/workflows/smokes.yml`](.github/workflows/smokes.yml)
@@ -129,6 +142,7 @@ python scripts/smoke_protocol.py
 python scripts/smoke_storage.py
 python scripts/smoke_macros_blob.py
 python scripts/smoke_autoswitch.py
+python scripts/smoke_hil_mock.py      # HIL suite vs mock device
 ```
 
 ## Firmware
@@ -137,7 +151,7 @@ See [`firmware/README.md`](firmware/README.md).
 
 Verified with [Pico SDK](https://github.com/raspberrypi/pico-sdk) tag **2.1.1** and
 `PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Flash target:
-`macropad_step22.uf2` — or grab the `macropad-firmware-uf2` artifact from the latest
+`macropad_step23.uf2` — or grab the `macropad-firmware-uf2` artifact from the latest
 `Firmware build` Actions run.
 
 ```bash
@@ -153,7 +167,7 @@ export PICO_SDK_PATH=$PWD/pico-sdk
 cd firmware
 cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
 ninja -C build
-# → build/macropad_step22.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+# → build/macropad_step23.uf2 (hold BOOT, plug in, copy to RPI-RP2)
 ```
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.

@@ -1,4 +1,4 @@
-"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15–20)."""
+"""64-byte config protocol frames — pack/unpack + CRC32 (Step 15–23)."""
 
 from __future__ import annotations
 
@@ -23,11 +23,13 @@ CFG_CMD_PROFILE_DATA = 0x11
 CFG_CMD_PROFILE_COMMIT = 0x12
 CFG_CMD_PROFILE_ABORT = 0x13
 CFG_CMD_PROFILE_GET = 0x14
+CFG_CMD_PROFILE_READ = 0x15  # Step 23: slot,offset → slot,offset,bytes
 CFG_CMD_MACRO_BEGIN = 0x20
 CFG_CMD_MACRO_DATA = 0x21
 CFG_CMD_MACRO_COMMIT = 0x22
 CFG_CMD_MACRO_ABORT = 0x23
 CFG_CMD_MACRO_GET = 0x24
+CFG_CMD_MACRO_READ = 0x25  # Step 23: id,offset → id,offset,bytes
 CFG_CMD_SET_ACTIVE = 0x30
 CFG_CMD_GET_ACTIVE = 0x31
 CFG_CMD_SAVE_ALL = 0x32
@@ -35,6 +37,10 @@ CFG_CMD_NAK = 0x7F
 
 CFG_INFO_FLAG_STORAGE = 0x01
 CFG_INFO_FLAG_MACRO_BANK = 0x02
+CFG_INFO_FLAG_READBACK = 0x04  # Step 23: PROFILE_READ / MACRO_READ
+
+# Step 23: max blob bytes per READ response (payload = id + offset u16 + data).
+CFG_READ_CHUNK_MAX = 48
 
 CFG_ERR_OK = 0
 CFG_ERR_EINVAL = 1

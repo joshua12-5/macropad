@@ -11,7 +11,7 @@ Per [`VERSIONING.md`](VERSIONING.md):
 | `FW_VERSION_MINOR` | *N* (`firmware/include/config_protocol.h`) |
 | Host `HOST_APP_VERSION` | `0.N.0` (`configurator/macropad_config/version.py`, `__init__.py`) |
 | CMake / UF2 target | `macropad_stepN` (`firmware/CMakeLists.txt`) |
-| USB `bcdDevice` | BCD `1.N` (e.g. Step 22 → `0x0116`) in `usb_descriptors.c` |
+| USB `bcdDevice` | BCD `1.N` (e.g. Step 23 → `0x0117`) in `usb_descriptors.c` |
 | Docs / smokes | Matrix, READMEs, `smoke_version.py` expects |
 
 Keep `CFG_PROTO_VERSION` / JSON `schema_version` at **1** unless intentionally breaking.
@@ -47,7 +47,9 @@ ninja -C build
 #   build/macropad_stepN.uf2
 ```
 
-Copy the UF2 to the Pico USB mass-storage bootloader. Confirm Connect shows fw `0.N` / proto v1.
+Copy the UF2 to the Pico USB mass-storage bootloader. Confirm Connect shows fw `0.N` / proto v1,
+then run `python configurator/scripts/hil_test.py --allow-flash-write --json hil.json`
+and the manual part of [`HARDWARE_TEST.md`](HARDWARE_TEST.md).
 
 ## 5. Tag and push
 

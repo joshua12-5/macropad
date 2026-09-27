@@ -111,4 +111,15 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
 - `FW_VERSION_MINOR = 22`, target `macropad_step22`, `bcdDevice` 0x0116; host **0.22.0**
 - Storage erase/program via `flash_safe_execute()`; image staged in static sector buffer (stack fix)
 - CI [`firmware.yml`](../.github/workflows/firmware.yml) builds + uploads the UF2 artifact
-- Next: **Step 23** more polish/testing in the 18–24 block
+
+## Step 23 HIL tooling
+
+- `configurator/scripts/hil_test.py` → `macropad_config/hil/` (suite, CLI, mock); reuses
+  `ConfigDevice` + `frames` (no duplicate framing); PASS/FAIL/SKIP + `--json`; exit 1 on FAIL
+- `hil/mock.py`: fake `hid` module + Python port of `config_protocol.c` / `storage.c` /
+  blob canonicalisation; `--mock` runs the whole suite headless (`smoke_hil_mock.py`, CI)
+- Firmware 0.23: `PROFILE_READ` 0x15 / `MACRO_READ` 0x25 readback (GET_INFO flags bit2),
+  debounced active persist skipped when flash already matches
+- Host fixes: `ConfigDevice` supports both `hid` (pyhidapi, pinned) and `hidapi` (cython) APIs;
+  `pack_macro` truncates after the first `END` like firmware
+- Next: **Step 24** — last polish/testing step of the 18–24 block

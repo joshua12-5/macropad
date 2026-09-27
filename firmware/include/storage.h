@@ -32,6 +32,8 @@ extern "C" {
  *
  * Step 19: SET_ACTIVE schedules a debounced active_slot persist (~4 s quiet);
  * CFG_CMD_SAVE_ALL forces an immediate rewrite.
+ * Step 23: the debounced persist is skipped when flash already holds a v2
+ * image equal to RAM (last load/save succeeded) with the same active_slot.
  */
 
 #define STORAGE_MAGIC           0x4C46504Du  /* 'MPFL' LE */
@@ -62,6 +64,13 @@ bool storage_macro_upload_busy(void);
 /* Slot metadata for PROFILE_GET / MACRO_GET (no full download). */
 bool storage_profile_meta(uint8_t slot, uint16_t *out_len, uint32_t *out_crc);
 bool storage_macro_meta(uint8_t id, uint16_t *out_len, uint32_t *out_crc);
+
+/* Step 23 — PROFILE_READ / MACRO_READ: copy up to max_len bytes of the packed
+ * RAM blob starting at offset. False on bad slot/id or offset >= blob size. */
+bool storage_profile_read(uint8_t slot, uint16_t offset, uint8_t *out,
+                          uint16_t max_len, uint16_t *out_len);
+bool storage_macro_read(uint8_t id, uint16_t offset, uint8_t *out,
+                        uint16_t max_len, uint16_t *out_len);
 
 void storage_init(void);
 bool storage_save_all(void);

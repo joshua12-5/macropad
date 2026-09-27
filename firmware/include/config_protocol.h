@@ -8,13 +8,13 @@
 extern "C" {
 #endif
 
-/* Step 15–22 — USB vendor-HID config channel (v1 framing). */
+/* Step 15–23 — USB vendor-HID config channel (v1 framing). */
 
 #define CFG_PROTO_MAGIC         0x4D50u   /* 'MP' little-endian */
 #define CFG_PROTO_VERSION       1u
 
 #define FW_VERSION_MAJOR        0u
-#define FW_VERSION_MINOR        22u
+#define FW_VERSION_MINOR        23u
 
 #define CFG_REPORT_SIZE         64u
 #define CFG_HEADER_SIZE         8u
@@ -33,6 +33,7 @@ extern "C" {
 #define CFG_CMD_PROFILE_COMMIT  0x12u
 #define CFG_CMD_PROFILE_ABORT   0x13u
 #define CFG_CMD_PROFILE_GET     0x14u  /* metadata only: slot,len,crc */
+#define CFG_CMD_PROFILE_READ    0x15u  /* Step 23: slot,offset → slot,offset,bytes */
 
 /* Step 17 — macro bank sync */
 #define CFG_CMD_MACRO_BEGIN     0x20u
@@ -40,6 +41,11 @@ extern "C" {
 #define CFG_CMD_MACRO_COMMIT    0x22u
 #define CFG_CMD_MACRO_ABORT     0x23u
 #define CFG_CMD_MACRO_GET       0x24u  /* metadata only: id,len,crc */
+#define CFG_CMD_MACRO_READ      0x25u  /* Step 23: id,offset → id,offset,bytes */
+
+/* Step 23 — max blob bytes per PROFILE_READ / MACRO_READ response
+ * (payload = id u8 + offset u16 LE + up to 48 bytes). */
+#define CFG_READ_CHUNK_MAX      48u
 
 /* Step 18 — host-driven active profile (RAM + OLED only) */
 #define CFG_CMD_SET_ACTIVE      0x30u  /* payload: slot u8 */
@@ -59,6 +65,7 @@ extern "C" {
 
 #define CFG_INFO_FLAG_STORAGE   0x01u  /* bit0: flash profile storage present */
 #define CFG_INFO_FLAG_MACRO_BANK 0x02u /* bit1: flash macro bank present */
+#define CFG_INFO_FLAG_READBACK  0x04u  /* bit2: PROFILE_READ / MACRO_READ (Step 23) */
 
 #define CFG_PRODUCT_TAG         "MACROPAD"  /* exactly 8 chars on the wire */
 #define CFG_PRODUCT_TAG_LEN     8u

@@ -5,7 +5,7 @@ Step 16 — flash-backed profile slots + chunked **profile upload**.
 Step 17 — flash-backed **macro bank** sync + light protocol polish.
 Step 18 — host **auto app-switch** via `SET_ACTIVE`.
 Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
-Step 22 — verified firmware build + CI UF2 (`FW_VERSION` 0.22, host 0.22.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
+Step 23 — HIL test tooling + `PROFILE_READ` / `MACRO_READ` readback (`FW_VERSION` 0.23, host 0.23.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 **Steps 14–20 are complete.**
 
 ## USB topology
@@ -60,11 +60,13 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | `0x12` | PROFILE_COMMIT | empty | empty OK (after CRC + unpack + flash) |
 | `0x13` | PROFILE_ABORT | empty | empty OK |
 | `0x14` | PROFILE_GET | `slot u8` | `slot`, `len u16 LE`, `crc32 u32 LE` (metadata only) |
+| `0x15` | PROFILE_READ | `slot u8`, `offset u16 LE` | `slot`, `offset u16 LE`, up to **48** blob bytes (fw 0.23+) |
 | `0x20` | MACRO_BEGIN | `id u8`, `total_len u16 LE`, `blob_crc32 u32 LE` | empty OK |
 | `0x21` | MACRO_DATA | `offset u16 LE` + raw bytes (≤50) | empty OK |
 | `0x22` | MACRO_COMMIT | empty | empty OK (after CRC + replace RAM + flash) |
 | `0x23` | MACRO_ABORT | empty | empty OK |
 | `0x24` | MACRO_GET | `id u8` | `id`, `len u16 LE`, `crc32 u32 LE` (metadata only) |
+| `0x25` | MACRO_READ | `id u8`, `offset u16 LE` | `id`, `offset u16 LE`, up to **48** blob bytes (fw 0.23+) |
 | `0x30` | SET_ACTIVE | `slot u8` | empty OK (RAM + OLED; **debounced** flash persist) |
 | `0x31` | GET_ACTIVE | empty | `slot u8` (optional; GET_INFO also reports it) |
 | `0x32` | SAVE_ALL | empty | empty OK (immediate full storage rewrite) |
@@ -75,11 +77,11 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
 | Off | Type | Field |
 |-----|------|-------|
 | 0 | u8 | `fw_major` (`0`) |
-| 1 | u8 | `fw_minor` (Step 19 → `19`) |
+| 1 | u8 | `fw_minor` (Step *N* → *N*, e.g. `23`) |
 | 2 | u8 | `proto_ver` (`1`) |
 | 3 | u8 | `active_slot` |
 | 4 | u8 | `slot_count` |
-| 5 | u8 | `flags` — **bit0** flash storage, **bit1** macro bank present |
+| 5 | u8 | `flags` — **bit0** flash storage, **bit1** macro bank present, **bit2** readback (`PROFILE_READ`/`MACRO_READ`, fw 0.23+) |
 | 6..13 | 8 bytes | product tag ASCII, e.g. `MACROPAD` (no NUL required) |
 
 ### Profile upload (Step 16)
@@ -93,8 +95,24 @@ Covers the first **60** bytes only; result stored little-endian at offset 60.
    refreshes if the active slot changed in RAM.
 5. `PROFILE_ABORT` discards the staging buffer at any time before COMMIT.
 
-`PROFILE_GET` returns metadata only (`slot`, `len`, `crc`) — full download is
-deferred.
+`PROFILE_GET` returns metadata only (`slot`, `len`, `crc`).
+
+### Readback (Step 23)
+
+`PROFILE_READ` (`0x15`) / `MACRO_READ` (`0x25`) return the **packed RAM blob**
+(the same bytes `PROFILE_GET` / `MACRO_GET` CRC over) in windows of up to
+`CFG_READ_CHUNK_MAX = 48` bytes: request `id u8, offset u16 LE`; response
+`id, offset, data[min(48, size - offset)]`. `offset >= size`, bad id, or a
+payload shorter than 3 bytes → NAK `EINVAL`. No flash I/O; allowed while an
+upload is staged. Host: `ConfigDevice.profile_read()` / `macro_read()`
+(3 / 4 requests per blob). Older firmware answers `EINVAL` (unknown cmd) —
+gate on GET_INFO flags bit2 or `version.fw_supports_readback()`.
+
+The blob read back is the firmware's canonical form (unpack → RAM → pack):
+names get a NUL forced at byte 15, profile pad byte = 0, macro steps are
+truncated after the first `END` (or `END` appended), step pad bytes = 0.
+Host packers emit the same canonical form, so an uploaded blob reads back
+byte-identical.
 
 ### Macro upload (Step 17)
 
@@ -131,6 +149,11 @@ immediately. The device schedules a debounced rewrite of the full storage image
 arrives for ~4 seconds (`STORAGE_ACTIVE_DEBOUNCE_MS`), one sector rewrite runs.
 Repeated switches cancel and reschedule the quiet window. UART:
 `stor debounce save` then `stor save ok|fail`.
+
+**Step 23:** when the quiet window expires and flash already holds a valid v2
+image that matches RAM (last load/save succeeded) with the same `active_slot`,
+the rewrite is skipped (`stor debounce skip (unchanged)`). Switching away and
+back — as autoswitch and the HIL suite do — no longer costs a sector write.
 
 `GET_ACTIVE` returns the current RAM slot as a single `u8` (optional convenience;
 `GET_INFO.active_slot` is equivalent).
@@ -173,10 +196,19 @@ next save upgrades the sector to v2.
 |------|------|---------|
 | 1 | `EINVAL` | bad version/length/unknown cmd / bad slot / incomplete upload |
 | 2 | `EBADMSG` | bad magic or CRC (frame or blob) |
-| 3 | `ENOSYS` | unimplemented cmd |
+| 3 | `ENOSYS` | reserved — **not emitted** by v1 firmware (unknown cmds get `EINVAL`) |
 | 4 | `EBUSY` | upload already in progress (profile **or** macro) / flash program failed / SAVE_ALL while busy |
 
 Unknown `cmd` → NAK `EINVAL`. Bad magic/CRC → NAK `EBADMSG` when possible.
+
+Validation order: magic (`EBADMSG`) → version (`EINVAL`) → length > 52
+(`EINVAL`) → CRC (`EBADMSG`). NAKs echo the request `seq`. A host frame with
+the **response** flag set is silently ignored (no reply). An OUT report shorter
+than 64 bytes (but ≥ 6) → NAK `EBADMSG`.
+
+**seq** is echo-only: the device never validates or tracks it, so there is no
+"bad seq" NAK. The host (`ConfigDevice.transact`) rejects replies whose `seq`
+differs from the request.
 
 ## Firmware hooks
 
@@ -203,10 +235,12 @@ UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 - `autoswitch/rules.json` + `configurator/macropad_config/autoswitch/` — host matcher
 - `docs/ARCHITECTURE.md` — layers, data flows, flash vs RAM
 - `configurator/scripts/run_all_smokes.py` — aggregate smoke runner
+- `configurator/scripts/hil_test.py` + `macropad_config/hil/` — hardware-in-the-loop
+  suite; `--mock` runs it against an in-process firmware model (`hil/mock.py`)
 
 ## Deferred (later)
 
-- Full profile/macro download streaming
 - Step 20 testing / versioning polish
 - Step 21 changelog, host-smokes CI, release polish
 - Step 22 verified firmware build (SDK 2.1.1) + CI UF2 artifact
+- Step 23 HIL tooling + PROFILE_READ / MACRO_READ (was: "full download streaming")

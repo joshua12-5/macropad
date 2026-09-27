@@ -12,6 +12,48 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 - Further polish in the Steps 18–24 block (packaging, more hardware coverage).
 
+## [0.23.0] — 2026-09-27
+
+### Added
+
+- **Hardware-in-the-loop suite** `configurator/scripts/hil_test.py` (package `macropad_config/hil/`,
+  also `python -m macropad_config.hil`). Ordered tests over the vendor config HID interface using the
+  production `ConfigDevice` / `frames` code: enumerate (+ `--list`), PING latency min/avg/max,
+  GET_INFO + `version.py` handshake, ECHO random payloads + CRC injection, malformed frames
+  (unknown cmd / bad magic / bad version / length / seq echo / response-flag / short report),
+  profile + macro upload protocol (ABORT mid-upload, EBUSY mutex, bad COMMITs), profile + macro
+  backup → upload → byte-compare → restore, SET_ACTIVE / GET_ACTIVE cycle, SAVE_ALL, guided
+  `--interactive` key/encoder checklist, final restore check. PASS/FAIL/SKIP report, `--json`,
+  exit 1 on FAIL / 2 on no device. Flash-writing steps require `--allow-flash-write`.
+- **Mock device** `macropad_config/hil/mock.py`: fake `hid` module (pyhidapi and cython-hidapi
+  flavours) + Python model of `config_protocol.c` / `storage.c` / blob canonicalisation, incl.
+  NAK codes, upload staging, EBUSY, 5 slots, 4 KiB flash image with write counter, debounced persist;
+  `--mock` / `--mock-fw-minor N`.
+- `smoke_hil_mock.py` (runs the suite vs the mock, checks flash-write counts, fw 0.22 compat paths,
+  interactive answers, and that seeded firmware bugs are caught). `run_all_smokes.py` → **10** scripts.
+  CI smokes workflow also runs `hil_test.py --mock --allow-flash-write` and uploads the JSON report.
+- Firmware: `CFG_CMD_PROFILE_READ` (`0x15`) / `CFG_CMD_MACRO_READ` (`0x25`) chunked readback of the
+  packed RAM blobs (≤ 48 B per response), GET_INFO flags bit2 `CFG_INFO_FLAG_READBACK`; host
+  `ConfigDevice.profile_read()` / `macro_read()` / `echo()` / `exchange_raw()` / `request()`,
+  `version.fw_supports_readback()` (min fw 0.23).
+
+### Changed
+
+- Firmware `FW_VERSION_MINOR` **23**, target `macropad_step23`, `bcdDevice` **0x0117** (1.23);
+  host **0.23.0**. Firmware size +400 B text (56508 → 56908), bss unchanged, UF2 113152 → 114176 B.
+- Firmware: debounced SET_ACTIVE persist is skipped when flash already holds a matching v2 image with
+  the same `active_slot` (`stor debounce skip (unchanged)`) — cycling slots and returning is free.
+- `PROTOCOL.md`: documents validation order, seq echo-only semantics, `ENOSYS` as reserved/not emitted,
+  readback commands and canonical blob form.
+
+### Fixed
+
+- Host: `ConfigDevice` only spoke cython-hidapi (`hid.device()`), but `requirements.txt` pins the
+  pyhidapi `hid` package (`hid.Device(path=...)`) → `AttributeError` on real hardware. Both APIs now
+  work; open/read/write errors surface as `DeviceError`. NAKs raise `NakError` (subclass, has `.code`).
+- Host: `pack_macro` kept steps after the first `END`, while firmware truncates there, so such blobs
+  read back differently (CRC mismatch after upload). Now truncates like firmware.
+
 ## [0.22.0] — 2026-09-27
 
 ### Added
@@ -117,7 +159,8 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 - On-device profile select UI: long-press encoder → OLED menu; rotate / short-press to confirm.
 
-[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/joshua12-5/macropad/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/joshua12-5/macropad/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.21.0
 [0.20.0]: https://github.com/joshua12-5/macropad/compare/v0.19.0...v0.20.0

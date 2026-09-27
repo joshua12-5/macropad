@@ -11,6 +11,8 @@
 #include <string.h>
 
 /* Pending response when tud_hid_n_ready(1) was false. */
+_Static_assert(3u + CFG_READ_CHUNK_MAX <= CFG_PAYLOAD_MAX, "READ chunk exceeds payload");
+
 static uint8_t pending_resp[CFG_REPORT_SIZE];
 static bool pending_valid;
 
@@ -135,7 +137,8 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         pl[2] = CFG_PROTO_VERSION;
         pl[3] = profiles_active_index();
         pl[4] = profiles_count();
-        pl[5] = (uint8_t)(CFG_INFO_FLAG_STORAGE | CFG_INFO_FLAG_MACRO_BANK);
+        pl[5] = (uint8_t)(CFG_INFO_FLAG_STORAGE | CFG_INFO_FLAG_MACRO_BANK |
+                          CFG_INFO_FLAG_READBACK);
         memcpy(&pl[6], CFG_PRODUCT_TAG, CFG_PRODUCT_TAG_LEN);
         cfg_frame_build(resp, CFG_CMD_GET_INFO, seq, pl, (uint16_t)sizeof(pl));
         printf("cfg info seq=%u\n", seq);
@@ -228,6 +231,30 @@ bool config_protocol_handle(const uint8_t *req, uint8_t *resp) {
         wr_u32_le(&pl[3], bcrc);
         cfg_frame_build(resp, CFG_CMD_PROFILE_GET, seq, pl, 7);
         printf("cfg profile get slot=%u\n", slot);
+        return true;
+    }
+
+    case CFG_CMD_PROFILE_READ:
+    case CFG_CMD_MACRO_READ: {
+        /* Step 23: chunked readback of the packed RAM blob (no flash I/O). */
+        if (length < 3) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        uint8_t id = payload[0];
+        uint16_t offset = rd_u16_le(&payload[1]);
+        uint8_t pl[3 + CFG_READ_CHUNK_MAX];
+        uint16_t n = 0;
+        bool ok = (cmd == CFG_CMD_PROFILE_READ)
+            ? storage_profile_read(id, offset, &pl[3], CFG_READ_CHUNK_MAX, &n)
+            : storage_macro_read(id, offset, &pl[3], CFG_READ_CHUNK_MAX, &n);
+        if (!ok) {
+            nak(resp, seq, CFG_ERR_EINVAL);
+            return true;
+        }
+        pl[0] = id;
+        wr_u16_le(&pl[1], offset);
+        cfg_frame_build(resp, cmd, seq, pl, (uint16_t)(3u + n));
         return true;
     }
 

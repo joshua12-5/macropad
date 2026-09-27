@@ -25,6 +25,7 @@ SMOKES = [
     "smoke_edit.py",
     "smoke_profile_mgr.py",
     "smoke_macros.py",
+    "smoke_hil_mock.py",
 ]
 
 

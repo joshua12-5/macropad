@@ -1,7 +1,14 @@
 """Open the vendor-config HID interface and exchange framed packets.
 
-Requires the optional ``hid`` package (cython-hidapi). Without hardware or
-without the module, callers get a clear DeviceError — GUI stays usable.
+Requires an optional hidapi binding. Both Python APIs are supported (Step 23):
+
+* ``pip install hid`` (pyhidapi / ctypes): ``hid.Device(path=...)`` — the one
+  pinned in ``requirements.txt``;
+* ``pip install hidapi`` (cython-hidapi): ``hid.device().open_path(...)``.
+
+Without hardware or without the module, callers get a clear DeviceError — GUI
+stays usable. Tests can inject any object exposing ``enumerate`` plus either
+``device`` or ``Device`` via ``hid_module=`` (see ``macropad_config.hil.mock``).
 """
 
 from __future__ import annotations
@@ -17,8 +24,10 @@ from .frames import (
     CFG_CMD_MACRO_COMMIT,
     CFG_CMD_MACRO_DATA,
     CFG_CMD_MACRO_GET,
+    CFG_CMD_MACRO_READ,
     CFG_CMD_NAK,
     CFG_CMD_GET_ACTIVE,
+    CFG_CMD_ECHO,
     CFG_CMD_PING,
     CFG_CMD_PROFILE_ABORT,
     CFG_CMD_SAVE_ALL,
@@ -27,11 +36,13 @@ from .frames import (
     CFG_CMD_PROFILE_COMMIT,
     CFG_CMD_PROFILE_DATA,
     CFG_CMD_PROFILE_GET,
+    CFG_CMD_PROFILE_READ,
     CFG_ERR_EBADMSG,
     CFG_ERR_EBUSY,
     CFG_ERR_EINVAL,
     CFG_ERR_ENOSYS,
     CFG_FLAG_RESPONSE,
+    CFG_READ_CHUNK_MAX,
     CFG_REPORT_SIZE,
     Frame,
     FrameError,
@@ -71,22 +82,95 @@ class DeviceError(RuntimeError):
     """No device, missing hid module, I/O failure, or protocol error."""
 
 
+class NakError(DeviceError):
+    """Device answered with NAK; ``code`` is the CFG_ERR_* value."""
+
+    def __init__(self, message: str, code: int):
+        super().__init__(message)
+        self.code = int(code)
+
+
+def err_name(code: int) -> str:
+    return _ERR_NAMES.get(int(code), f"UNKNOWN({code})")
+
+
 def _import_hid():
     try:
         import hid  # type: ignore
     except ImportError as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
         raise DeviceError(
-            "Python module 'hid' (hidapi) is not installed. "
-            "pip install hid  (or hidapi)"
+            "Python module 'hid' (hidapi) is not available: "
+            f"{detail}. pip install hid (needs the system hidapi library, "
+            "e.g. apt install libhidapi-hidraw0 / brew install hidapi) "
+            "or pip install hidapi"
         ) from exc
     return hid
 
 
+class _HidHandle:
+    """Uniform open/read/write over cython-hidapi and pyhidapi ``hid`` modules.
+
+    Step 23 fix: ``requirements.txt`` pins ``hid`` (pyhidapi), whose API is
+    ``hid.Device(path=...)`` — the old code only knew cython-hidapi's
+    ``hid.device()`` and raised AttributeError on real hardware.
+    """
+
+    def __init__(self, hid_module) -> None:
+        self._mod = hid_module
+        self._dev = None
+
+    def open_path(self, path: bytes) -> None:
+        try:
+            if hasattr(self._mod, "device"):
+                dev = self._mod.device()
+                dev.open_path(path)
+            elif hasattr(self._mod, "Device"):
+                dev = self._mod.Device(path=path)
+            else:
+                raise DeviceError("hid module has neither device() nor Device()")
+        except DeviceError:
+            raise
+        except Exception as exc:  # OSError / HIDException / IOError
+            raise DeviceError(f"cannot open HID path {path!r}: {exc}") from exc
+        self._dev = dev
+        try:
+            if hasattr(dev, "set_nonblocking"):
+                dev.set_nonblocking(False)
+            elif hasattr(dev, "nonblocking"):
+                dev.nonblocking = False
+        except Exception:
+            pass
+
+    def write(self, data: bytes) -> int:
+        try:
+            return int(self._dev.write(data))
+        except Exception as exc:
+            raise DeviceError(f"hid write failed: {exc}") from exc
+
+    def read(self, size: int, timeout_ms: int) -> bytes:
+        try:
+            if hasattr(self._dev, "set_nonblocking"):  # cython-hidapi
+                data = self._dev.read(size, timeout_ms)
+            else:  # pyhidapi
+                data = self._dev.read(size, timeout=timeout_ms)
+        except Exception as exc:
+            raise DeviceError(f"hid read failed: {exc}") from exc
+        return bytes(data or b"")
+
+    def close(self) -> None:
+        if self._dev is not None:
+            try:
+                self._dev.close()
+            finally:
+                self._dev = None
+
+
 def list_config_devices(
-    vid: int = USB_VID, pid: int = USB_PID
+    vid: int = USB_VID, pid: int = USB_PID, *, hid_module=None
 ) -> list[dict]:
     """Enumerate matching HID interfaces (usage page 0xFF00 preferred)."""
-    hid = _import_hid()
+    hid = hid_module if hid_module is not None else _import_hid()
     found: list[dict] = []
     for info in hid.enumerate(vid, pid):
         up = int(info.get("usage_page") or 0)
@@ -114,9 +198,15 @@ def iter_blob_data_chunks(
 class ConfigDevice:
     """Thin hidapi wrapper around the vendor config channel."""
 
-    def __init__(self, path: Optional[bytes] = None, *, timeout_ms: int = DEFAULT_TIMEOUT_MS):
-        self._hid = _import_hid()
-        self._dev = self._hid.device()
+    def __init__(
+        self,
+        path: Optional[bytes] = None,
+        *,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        hid_module=None,
+    ):
+        self._hid = hid_module if hid_module is not None else _import_hid()
+        self._dev = _HidHandle(self._hid)
         self._timeout_ms = timeout_ms
         self._path = path
         self._opened = False
@@ -135,10 +225,6 @@ class ConfigDevice:
                     f"PID={USB_PID:#06x} usage_page={CFG_USAGE_PAGE:#06x})"
                 )
             self._dev.open_path(path)
-        try:
-            self._dev.set_nonblocking(False)
-        except Exception:
-            pass
         self._opened = True
 
     def close(self) -> None:
@@ -155,8 +241,16 @@ class ConfigDevice:
     def __exit__(self, *exc) -> None:
         self.close()
 
+    @property
+    def timeout_ms(self) -> int:
+        return self._timeout_ms
+
+    @timeout_ms.setter
+    def timeout_ms(self, value: int) -> None:
+        self._timeout_ms = int(value)
+
     def _find_config_path(self) -> Optional[bytes]:
-        devices = list_config_devices()
+        devices = list_config_devices(hid_module=self._hid)
         for d in devices:
             if d.get("_match_config"):
                 return d["path"]
@@ -209,17 +303,43 @@ class ConfigDevice:
             raise DeviceError(f"seq mismatch: sent {seq & 0xFF} got {resp.seq}")
         return resp
 
+    def exchange_raw(self, frame_bytes: bytes, *, timeout_ms: Optional[int] = None) -> Frame:
+        """Send an arbitrary (possibly malformed) 64-byte frame, parse the reply.
+
+        Used by HIL tests for CRC / magic / version injection. The reply is
+        still validated with ``unpack_frame``.
+        """
+        self.write_frame(frame_bytes)
+        raw = self.read_frame(timeout_ms)
+        try:
+            return unpack_frame(raw)
+        except FrameError as exc:
+            raise DeviceError(f"bad response frame: {exc}") from exc
+
+    def request(self, cmd: int, payload: bytes = b"") -> Frame:
+        """``transact`` with an auto-incremented seq (NAKs returned, not raised)."""
+        return self.transact(cmd, self._next_seq(), payload)
+
     def _raise_if_nak(self, resp: Frame, what: str) -> None:
         if resp.cmd == CFG_CMD_NAK:
             err = resp.payload[0] if resp.payload else 0
-            name = _ERR_NAMES.get(err, f"UNKNOWN({err})")
-            raise DeviceError(
+            name = err_name(err)
+            raise NakError(
                 f"{what} failed: device NAK {name} (code {err}). "
-                f"See protocol/PROTOCOL.md error table."
+                f"See protocol/PROTOCOL.md error table.",
+                err,
             )
 
     def ping(self, seq: int = 1) -> Frame:
         return self.transact(CFG_CMD_PING, seq)
+
+    def echo(self, payload: bytes) -> bytes:
+        """ECHO (0x03) → returns the echoed payload."""
+        resp = self.request(CFG_CMD_ECHO, bytes(payload))
+        self._raise_if_nak(resp, "ECHO")
+        if resp.cmd != CFG_CMD_ECHO:
+            raise DeviceError(f"ECHO unexpected cmd 0x{resp.cmd:02X}")
+        return resp.payload
 
     def get_info(self, seq: int = 2) -> dict:
         resp = self.transact(CFG_CMD_GET_INFO, seq)
@@ -365,6 +485,33 @@ class ConfigDevice:
         s, length, crc = struct.unpack_from("<BHI", resp.payload, 0)
         return {"slot": s, "len": length, "crc": crc}
 
+    def _read_blob(self, cmd: int, label: str, slot_or_id: int, size: int) -> bytes:
+        out = bytearray()
+        while len(out) < size:
+            offset = len(out)
+            resp = self.request(cmd, struct.pack("<BH", int(slot_or_id) & 0xFF, offset))
+            self._raise_if_nak(resp, f"{label}@{offset}")
+            if resp.cmd != cmd or len(resp.payload) < 4:
+                raise DeviceError(f"bad {label} response")
+            rid, roff = struct.unpack_from("<BH", resp.payload, 0)
+            chunk = resp.payload[3:]
+            if rid != (int(slot_or_id) & 0xFF) or roff != offset:
+                raise DeviceError(f"{label} echoed id/offset {rid}/{roff}, want {slot_or_id}/{offset}")
+            if len(chunk) > CFG_READ_CHUNK_MAX:
+                raise DeviceError(f"{label} chunk too long ({len(chunk)})")
+            out += chunk
+        if len(out) != size:
+            raise DeviceError(f"{label} returned {len(out)} bytes, want {size}")
+        return bytes(out)
+
+    def profile_read(self, slot: int) -> bytes:
+        """PROFILE_READ (0x15, fw 0.23+) → packed 148-byte profile blob from RAM."""
+        return self._read_blob(CFG_CMD_PROFILE_READ, "PROFILE_READ", slot, PROFILE_BLOB_V1_SIZE)
+
+    def macro_read(self, macro_id: int) -> bytes:
+        """MACRO_READ (0x25, fw 0.23+) → packed 162-byte macro blob from RAM."""
+        return self._read_blob(CFG_CMD_MACRO_READ, "MACRO_READ", macro_id, MACRO_BLOB_V1_SIZE)
+
     def macro_get_meta(self, macro_id: int) -> dict:
         """MACRO_GET → {id, len, crc}."""
         resp = self.transact(
@@ -377,9 +524,9 @@ class ConfigDevice:
         return {"id": mid, "len": length, "crc": crc}
 
 
-def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:
+def connect_and_info(timeout_ms: int = DEFAULT_TIMEOUT_MS, *, hid_module=None) -> dict:
     """Open device, PING, GET_INFO. Raises DeviceError on failure."""
-    with ConfigDevice(timeout_ms=timeout_ms) as dev:
+    with ConfigDevice(timeout_ms=timeout_ms, hid_module=hid_module) as dev:
         pong = dev.ping(seq=1)
         if pong.payload not in (b"PONG", b""):
             if pong.cmd != CFG_CMD_PING:

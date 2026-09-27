@@ -49,6 +49,9 @@ enum {
 };
 
 static bool g_loaded_from_flash;
+/* Step 23: true while the flash v2 image matches RAM profiles+macros
+ * (after a v2 load or a successful save); false after a failed save. */
+static bool g_flash_in_sync;
 static uint8_t g_upload_kind;
 static uint8_t g_upload_slot;
 static uint16_t g_upload_len;
@@ -211,6 +214,7 @@ static bool program_image(uint8_t *sector) {
 
 void storage_init(void) {
     g_loaded_from_flash = false;
+    g_flash_in_sync = false;
     g_upload_kind = UPLOAD_NONE;
     g_active_persist_pending = false;
 
@@ -223,6 +227,7 @@ void storage_init(void) {
             return;
         }
         g_loaded_from_flash = true;
+        g_flash_in_sync = true;
         printf("stor load v2\n");
         return;
     }
@@ -255,10 +260,12 @@ bool storage_save_all(void) {
         return false;
     }
     if (!program_image(image)) {
+        g_flash_in_sync = false;
         printf("stor save fail\n");
         return false;
     }
     g_loaded_from_flash = true;
+    g_flash_in_sync = true;
     printf("stor save ok\n");
     return true;
 }
@@ -284,6 +291,14 @@ void storage_persist_task(void) {
     if (storage_upload_busy() || storage_macro_upload_busy()) {
         /* Defer until upload finishes — re-arm quiet window. */
         storage_schedule_active_persist();
+        return;
+    }
+    /* Step 23: nothing to do if flash already matches RAM incl. active_slot
+     * (e.g. host cycled SET_ACTIVE and restored the original slot). */
+    const uint8_t *img = flash_image();
+    if (g_flash_in_sync && image_valid_v2(img) &&
+        img[6] == profiles_active_index()) {
+        printf("stor debounce skip (unchanged)\n");
         return;
     }
     printf("stor debounce save\n");
@@ -484,4 +499,43 @@ bool storage_macro_meta(uint8_t id, uint16_t *out_len, uint32_t *out_crc) {
     *out_len = MACRO_BLOB_V1_SIZE;
     *out_crc = cfg_crc32(blob, MACRO_BLOB_V1_SIZE);
     return true;
+}
+
+static bool read_window(const uint8_t *blob, uint16_t blob_len, uint16_t offset,
+                        uint8_t *out, uint16_t max_len, uint16_t *out_len) {
+    if (out == NULL || out_len == NULL || offset >= blob_len) {
+        return false;
+    }
+    uint16_t n = (uint16_t)(blob_len - offset);
+    if (n > max_len) {
+        n = max_len;
+    }
+    memcpy(out, &blob[offset], n);
+    *out_len = n;
+    return true;
+}
+
+bool storage_profile_read(uint8_t slot, uint16_t offset, uint8_t *out,
+                          uint16_t max_len, uint16_t *out_len) {
+    if (slot >= PROFILE_SLOT_COUNT) {
+        return false;
+    }
+    uint8_t blob[PROFILE_BLOB_V1_SIZE];
+    const profile_t *p = profiles_get(slot);
+    if (p == NULL || !profile_blob_pack(p, blob, sizeof(blob))) {
+        return false;
+    }
+    return read_window(blob, PROFILE_BLOB_V1_SIZE, offset, out, max_len, out_len);
+}
+
+bool storage_macro_read(uint8_t id, uint16_t offset, uint8_t *out,
+                        uint16_t max_len, uint16_t *out_len) {
+    if (id >= MACRO_BUILTIN_COUNT) {
+        return false;
+    }
+    uint8_t blob[MACRO_BLOB_V1_SIZE];
+    if (!macros_pack_slot(id, blob, sizeof(blob))) {
+        return false;
+    }
+    return read_window(blob, MACRO_BLOB_V1_SIZE, offset, out, max_len, out_len);
 }
