@@ -1,88 +1,113 @@
-# RP2040 Programmable Macropad
+# RP2040 Macropad
 
 [![Host smokes](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml/badge.svg)](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml)
 [![Firmware build](https://github.com/joshua12-5/macropad/actions/workflows/firmware.yml/badge.svg)](https://github.com/joshua12-5/macropad/actions/workflows/firmware.yml)
+[![Latest release](https://img.shields.io/github/v/release/joshua12-5/macropad?include_prereleases&label=release)](https://github.com/joshua12-5/macropad/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator.
+A 12-key programmable macropad with a rotary encoder and an OLED, built on the tiny
+**Waveshare RP2040-Zero**, with a desktop app to configure it. No drivers needed: the
+macropad is a standard USB keyboard and keeps its configuration in its own flash, so the app is
+only needed for setup (and for optional automatic profile switching).
+
+![Macropad Configurator main window](docs/images/main-window.png)
 
 ## Features
 
-- 12 keys + encoder, 5 on-device profiles (keys, shortcuts, media, macros), on-device profile menu
-- Macro library with flash-backed bank; host-driven app auto-switch
-- **OLED idle animations** (fw 0.25+): after a configurable idle time the OLED plays your own
-  animation (or a built-in starfield), any key/encoder input wakes it without being sent to the
-  PC, and a second timeout blanks the panel for burn-in protection. Draw frames pixel by pixel,
-  import GIF / PNG sequences with dithering, or start from presets in the configurator's
-  **Tools → Idle animation…** editor — see [`docs/ANIMATION.md`](docs/ANIMATION.md)
-- Desktop configurator (Windows / macOS / Linux), headless smokes + hardware-in-the-loop test suite
+- **12 keys + push-button encoder**, each with its own action: single keys, shortcuts
+  (Ctrl / Shift / Alt / GUI), macros, typed text, media keys, volume and profile switching.
+- **5 on-device profiles**, switched from the knob (hold to open the OLED menu), from a key, or
+  automatically by the app you are using.
+- **Macro library:** up to 5 macros of 24 steps (key down / up / tap, delays, typed text, media
+  keys), stored in the macropad's flash.
+- **OLED idle animations:** draw frames pixel by pixel, import GIFs or image sequences with
+  dithering, or start from presets. The macropad plays the animation when idle, turns the
+  screen off later for burn-in protection, and swallows the key press that wakes it.
+- **Auto-switch:** the desktop app watches the foreground app and switches profiles to match
+  (Windows, macOS, Linux/X11).
+- **Cross-platform configurator** for Windows, macOS (Apple Silicon and Intel) and Linux, with
+  `--self-test` and a built-in hardware test tool (`--hil`).
+- **Non-blocking firmware** (Pico SDK + TinyUSB): 1 kHz scan with 5 ms debounce, 6-key
+  rollover, and OLED updates streamed in the background.
 
-## Layout
+## Gallery
+
+| | |
+|:-:|:-:|
+| ![Action editor](docs/images/action-editor.png) | ![Macro library](docs/images/macro-library.png) |
+| **Action editor:** only the fields the chosen action uses | **Macro library:** steps, ops, delays |
+| ![Idle animation editor](docs/images/anim-editor.png) | ![GIF import](docs/images/anim-import.png) |
+| **Idle animation editor:** frames, canvas, presets, device upload | **GIF / image import** with dithering preview |
+| ![Profiles](docs/images/profile-manager.png) | ![Auto-switch rules](docs/images/autoswitch-rules.png) |
+| **Profiles:** create, duplicate, upload to a slot | **Auto-switch rules:** app → profile |
+| ![Device info](docs/images/device-info.png) | ![About](docs/images/about.png) |
+| **Device → Connect:** version handshake | **Help → About** |
+
+## Quick start
+
+1. **Build the hardware:** RP2040-Zero, 12 switches with diodes in a 3 × 4 matrix, a KY-040
+   encoder and an SSD1306 128 × 64 I2C OLED. The wiring and pin map are in the
+   [user guide](docs/USER_GUIDE.md#wiring).
+2. **Download** the [latest release](https://github.com/joshua12-5/macropad/releases): the
+   firmware `macropad-fw-X.Y.Z.uf2` and the configurator for your OS.
+3. **Flash:** hold **BOOT** on the RP2040-Zero while plugging it in, then copy the `.uf2` onto
+   the `RPI-RP2` drive. The board reboots as a keyboard.
+4. **Run the configurator:**
+
+   | OS | Download | Run |
+   |----|----------|-----|
+   | Windows 10/11 x64 | `MacropadConfigurator-X.Y.Z-windows-x64.zip` | Extract, run `MacropadConfigurator\MacropadConfigurator.exe` (SmartScreen: *More info → Run anyway*) |
+   | macOS 12+ (Apple Silicon / Intel) | `MacropadConfigurator-X.Y.Z-macos-arm64.zip` / `-macos-x86_64.zip` | Move the `.app` to Applications; allow it once under *Privacy & Security* (unsigned) |
+   | Linux x86_64 (glibc ≥ 2.35) | `macropad-configurator-X.Y.Z-linux-x86_64.tar.gz` | Extract, `./install.sh` (udev rule), run `MacropadConfigurator/MacropadConfigurator` |
+
+5. **Connect and configure:** use **Device → Connect / Get device info**, edit keys, then
+   **Device → Upload profile to device…**.
+
+Check downloads against `SHA256SUMS.txt`. Firmware `0.N` goes with configurator `0.N.x`.
+
+## Documentation
+
+- **[User guide](docs/USER_GUIDE.md):** hardware, flashing, installing, every feature, backups
+  and updates.
+- **[Troubleshooting](docs/TROUBLESHOOTING.md):** detection, permissions, OLED, encoder, ghosting,
+  uploads, and bug reports.
+- **[Documentation index](docs/README.md):** architecture, USB protocol, file formats,
+  versioning and releases.
+- **[Changelog](CHANGELOG.md)**
+
+## Hardware at a glance
+
+| Function | RP2040-Zero pins |
+|----------|------------------|
+| Matrix rows 1–3 | GP8, GP9, GP10 |
+| Matrix columns 1–4 | GP11, GP12, GP13, GP14 |
+| Encoder A (CLK) / B (DT) / switch | GP2 / GP3 / GP15 |
+| OLED SDA / SCL (I2C0, 0x3C) | GP4 / GP5 |
+| Debug UART TX / RX (115200) | GP0 / GP1 |
 
 ```
-OLED                         ENCODER
-1   2   3   4
-5   6   7   8
-9  10  11  12
+OLED                ENCODER
+ 1   2   3   4
+ 5   6   7   8
+ 9  10  11  12
 ```
 
-## Status
+The PCB and enclosure are not part of the project yet; the current build is hand-wired.
 
-Firmware **0.25** / configurator **0.25.0** (protocol v1). Feature-complete for the
-current hardware revision; the PCB and enclosure are not in this repo yet. Release history:
-[`CHANGELOG.md`](CHANGELOG.md).
+## Building from source
 
-## Download
+**Firmware** (Pico SDK 2.1.1, Arm GCC, CMake, Ninja). See [firmware/README.md](firmware/README.md):
 
-Prebuilt binaries are on the **[Releases page](https://github.com/joshua12-5/macropad/releases)**
-(latest: [v0.25.0](https://github.com/joshua12-5/macropad/releases/tag/v0.25.0), prerelease):
+```bash
+git clone --depth 1 --branch 2.1.1 https://github.com/raspberrypi/pico-sdk.git
+git -C pico-sdk submodule update --init --depth 1
+export PICO_SDK_PATH=$PWD/pico-sdk
+cd firmware
+cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
+ninja -C build                      # → build/macropad.uf2
+```
 
-| You have | Download | Then |
-|----------|----------|------|
-| The macropad (RP2040-Zero) | `macropad-fw-X.Y.Z.uf2` | Hold BOOT, plug in, copy the UF2 to the `RPI-RP2` drive |
-| Windows 10/11 x64 | `MacropadConfigurator-X.Y.Z-windows-x64.zip` | Extract, run `MacropadConfigurator\MacropadConfigurator.exe` (SmartScreen: *More info → Run anyway*) |
-| macOS 12+ Apple Silicon | `MacropadConfigurator-X.Y.Z-macos-arm64.zip` | Unzip, move the `.app` to Applications, first launch via right-click → *Open* (unsigned) |
-| Linux x86_64 (glibc ≥ 2.35) | `macropad-configurator-X.Y.Z-linux-x86_64.tar.gz` | Extract, `./install.sh` (udev rule), run `MacropadConfigurator/MacropadConfigurator` |
-
-Verify downloads with `SHA256SUMS.txt`. The apps are **unsigned** — see
-[`docs/RELEASE.md`](docs/RELEASE.md#unsigned-builds--what-users-will-see) for the Windows
-SmartScreen / macOS Gatekeeper workarounds. `MacropadConfigurator --self-test` checks an install
-headlessly; `--version` prints the version. Host and firmware minor versions should match
-(Help → About / Device → Get info).
-
-## Architecture
-
-Stack layers, data flows, flash vs RAM: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-Version matrix / compat: [`docs/VERSIONING.md`](docs/VERSIONING.md).
-Changelog: [`CHANGELOG.md`](CHANGELOG.md). Cut a release: [`docs/RELEASE.md`](docs/RELEASE.md).
-Manual hardware checklist: [`docs/HARDWARE_TEST.md`](docs/HARDWARE_TEST.md).
-CI runs host configurator smokes (`smokes.yml`) and the firmware build + size / flash-map check (`firmware.yml`).
-
-## Protocol
-
-Wire format and commands: [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
-Profile binary packing: [`docs/PROFILE_BLOB.md`](docs/PROFILE_BLOB.md).
-Macro binary packing: [`docs/MACRO_BLOB.md`](docs/MACRO_BLOB.md).
-
-## Profiles
-
-Host-side JSON (schema v1): [`profiles/`](profiles/) + [`profiles/SCHEMA.md`](profiles/SCHEMA.md).
-
-## Macros
-
-Host library (configurator source of truth): [`macros/library.json`](macros/library.json) + [`macros/SCHEMA.md`](macros/SCHEMA.md).
-
-Device → Upload macros writes the library into the firmware RAM working set + flash bank.
-Factory defaults in `macros.c` seed empty flash / v1 images.
-
-## Auto-switch
-
-Rules: [`autoswitch/rules.json`](autoswitch/rules.json) + [`autoswitch/SCHEMA.md`](autoswitch/SCHEMA.md).
-Override path with `MACROPAD_AUTOSWITCH_PATH`. Matching is case-insensitive
-substring on process basename; optional `title_regex`; first rule wins.
-
-## Configurator
-
-Desktop app: [`configurator/`](configurator/).
+**Configurator** (Python 3.10+, PySide6). See [configurator/README.md](configurator/README.md):
 
 ```bash
 cd configurator
@@ -91,86 +116,16 @@ pip install -r requirements.txt
 python -m macropad_config
 ```
 
-Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/library.json` (`MACROPAD_MACROS_PATH`). Edit key/encoder actions and profile name/OLED title; **File → Save** (`Ctrl+S`) writes JSON. **Profile → New / Duplicate / Delete** manage profiles. **Profile → Macro library…** edits the host macro library. **Device → Connect / Get device info** runs PING + GET_INFO (shows `active_slot`).
-**Device → Upload profile / macros** sync flash banks;
-**Device → Save device state** sends `SAVE_ALL` (`0x32`).
-**Tools → Idle animation…** draws / imports OLED idle animations and uploads them (fw 0.25+).
-**Tools → Auto-switch…** edits rules; **Device → Auto-switch enabled** polls the
-foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
+Checks, style rules and the release process are in [CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/RELEASE.md](docs/RELEASE.md).
 
-Headless checks (or all at once). The same suite runs in CI on push/PR to
-`main` (`.github/workflows/smokes.yml`); firmware is built separately by
-`.github/workflows/firmware.yml`:
+## Project status
 
-```bash
-python scripts/run_all_smokes.py
-# individual:
-python scripts/smoke_version.py
-python scripts/smoke_load.py
-python scripts/smoke_edit.py
-python scripts/smoke_profile_mgr.py
-python scripts/smoke_macros.py
-python scripts/smoke_editor_forms.py # form rows per action / step type, macro dialog dirty tracking
-python scripts/smoke_protocol.py
-python scripts/smoke_storage.py
-python scripts/smoke_macros_blob.py
-python scripts/smoke_autoswitch.py
-python scripts/smoke_hil_mock.py      # HIL suite vs mock device
-python scripts/smoke_packaging.py     # release tooling + --version
-python scripts/smoke_anim_codec.py    # animation codec (host + compiled firmware C decoder), presets, GIF
-python scripts/smoke_anim_device.py   # animation protocol vs mock + editor GUI
-python -m macropad_config --self-test # full headless self-test (Qt offscreen)
-```
-
-## Firmware
-
-See [`firmware/README.md`](firmware/README.md).
-
-Verified with [Pico SDK](https://github.com/raspberrypi/pico-sdk) tag **2.1.1** and
-`PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Local build output:
-`firmware/build/macropad.uf2` — or download `macropad-fw-X.Y.Z.uf2` from the
-[Releases page](https://github.com/joshua12-5/macropad/releases) (or the `macropad-firmware-uf2`
-artifact of the latest `Firmware build` Actions run).
-
-```bash
-# Toolchain (Debian/Ubuntu):
-sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi \
-    libstdc++-arm-none-eabi-newlib cmake ninja-build build-essential python3
-
-# Pico SDK — pinned tag 2.1.1 (TinyUSB submodule required):
-git clone --depth 1 --branch 2.1.1 https://github.com/raspberrypi/pico-sdk.git
-git -C pico-sdk submodule update --init --depth 1
-export PICO_SDK_PATH=$PWD/pico-sdk
-
-cd firmware
-cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
-ninja -C build
-# → build/macropad.uf2 (hold BOOT, plug in, copy to RPI-RP2)
-```
-
-**On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
-
-**USB:** IF0 keyboard+consumer; IF1 vendor config HID (usage page `0xFF00`), 64-byte framed protocol with profile upload.
-
-**Flash:** last 4 KiB sector holds magic/`MPFL` image with 5 packed profile blobs + CRC
-(v3 adds the idle-animation settings); the 128 KiB just below it (`0x1DF000`–`0x1FEFFF`) holds
-the uploaded idle animation. Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#flash-map).
-
-## Pinout (locked)
-
-| Function | GPIO |
-|----------|------|
-| Rows 1–3 | GP8, GP9, GP10 |
-| Cols 1–4 | GP11–GP14 |
-| Encoder A/B/SW | GP2, GP3, GP15 |
-| OLED SDA/SCL | GP4, GP5 (I2C0) |
-| NeoPixel (onboard) | GP16 |
-| Debug UART | GP0 TX, GP1 RX |
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) (dev setup, checks to run, commit style).
+Firmware **0.25** and configurator **0.25.0** (USB protocol v1) are feature-complete for the
+current hand-wired hardware. The builds are tested in CI (host smokes, a hardware test suite
+against a simulated device, and a firmware build with size and flash-map checks). Releases are
+still marked as prereleases, and the apps are not code-signed yet.
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2026 Joshua Zamora.
+[MIT](LICENSE). Copyright (c) 2026 Joshua Zamora.

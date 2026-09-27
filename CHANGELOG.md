@@ -4,9 +4,37 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs/VERSIONING.md)
-(firmware `0.N` / host `0.N.0` track Step *N*).
+(firmware `0.N` and host `0.N.0` share the minor number *N*).
 
 ## [Unreleased]
+
+### Added
+
+- **User documentation**: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) (parts and wiring, flashing,
+  installing the configurator on Windows / macOS / Linux, every action type, profiles, macros,
+  idle animations, auto-switch, backups, firmware updates, command-line flags),
+  [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) and a docs index
+  [`docs/README.md`](docs/README.md).
+- Screenshot set under `docs/images/` used by the README and the user guide.
+
+### Changed
+
+- Top-level `README.md` rewritten as a product page (features, gallery, quick start, links).
+- Changelog entries describe the changes themselves instead of internal milestone numbers;
+  link references now exist only for tagged releases (v0.24.0 and later).
+- Comments and docstrings no longer cite internal milestones.
+
+### Fixed
+
+- Auto-switch docs and the Auto-switch dialog said `SET_ACTIVE` never writes flash. The switch is
+  instant in RAM, and the device then saves the slot once it has been stable for 4 s (skipped when
+  flash already holds it).
+- `macros/SCHEMA.md` still said macros could not be synced to the device; it now describes the
+  5 × 24-step macro bank and **Upload macros to device…**.
+- `--hil --help` understated flash wear: the animation settings / round-trip tests also need
+  `--allow-flash-write` (7 storage-sector writes plus a few animation-region sectors per full run).
+- `docs/ANIMATION.md` linked to a flash-map anchor that no longer existed.
+- The 0.25.0 entry below gave the animation frame cap as 255; the format allows 1024 frames.
 
 ### Planned
 
@@ -15,9 +43,10 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 ## [0.25.0] — 2026-09-27
 
-OLED idle animations (Step 24b) plus repo cleanup and configurator fixes (Step 27; Steps 25–26,
-PCB and enclosure, are deferred). Firmware **0.25**, host **0.25.0**, USB `bcdDevice` **0x0119**,
-release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/build/macropad.uf2`).
+OLED idle animations, plus a repository cleanup and two configurator editor fixes. The PCB and
+enclosure are not part of this release. Firmware **0.25**, host **0.25.0**, USB `bcdDevice`
+**0x0119**, release asset `macropad-fw-0.25.0.uf2` (local build output is now
+`firmware/build/macropad.uf2`).
 
 ### Added
 
@@ -30,7 +59,8 @@ release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/buil
 - **Animation flash region**: 128 KiB at `0x1DF000`–`0x1FEFFF`, directly below the MPFL sector,
   static-asserted and boot-checked against the image end; `MPAN` v1 blob (32-byte header with
   magic, version, frame count, fps, loop flag, CRC32, name + RAW / PackBits-RLE / XOR-delta-RLE
-  frames in SSD1306 page order). Up to 127 frames worst case (uncompressed), 255 max.
+  frames in SSD1306 page order). At least 127 frames fit in the worst case (all uncompressed);
+  the format allows up to 1024.
 - **Protocol `0x40`–`0x48`**: `ANIM_BEGIN` / `ANIM_DATA` / `ANIM_COMMIT` / `ANIM_ABORT` /
   `ANIM_INFO` / `ANIM_READ` / `ANIM_SETTINGS_GET` / `ANIM_SETTINGS_SET` / `ANIM_PREVIEW`;
   GET_INFO flags **bit3** (`CFG_INFO_FLAG_ANIM`). Same 48-byte chunk / CRC32 / `EBUSY` rules as
@@ -70,12 +100,12 @@ release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/buil
 - Firmware size (gcc 14.2): text 65364 B (+8448 vs 0.24.0), bss 18688 B (+7528), UF2 131072 B (+16896).
 - **Firmware build target renamed** `macropad_stepNN` → `macropad` (local `build/macropad.uf2`);
   CI / release workflows follow. Release asset names are unchanged (`macropad-fw-<ver>.uf2`).
-- User-facing strings no longer mention internal milestones: UART boot banner is now
-  `=== Macropad firmware 0.25 ===`, the About box shows the version + copyright, status hints and
-  the old-firmware message dropped "(Step N)" / `macropad_step24b.uf2`.
+- User-facing strings no longer mention internal milestone numbers: the UART boot banner is now
+  `=== Macropad firmware 0.25 ===`, the About box shows the version and copyright, and the
+  status hints and old-firmware message name the release asset instead of a build target.
 - Docs consolidated under `docs/`: `protocol/PROTOCOL.md`, `PROFILE_BLOB.md`, `MACRO_BLOB.md`
   moved to `docs/` (`protocol/README.md` points there); READMEs and `ARCHITECTURE.md` describe the
-  current state instead of per-step history (history stays in this changelog).
+  current state instead of a development log (history stays in this changelog).
 - Python code linted and formatted with ruff (pyupgrade typing, import order, unused imports /
   variables, strict `zip`); dead code removed (unused firmware functions `profiles_next/prev`,
   `storage_save_slot`, `storage_loaded_from_flash`, `macros_name`, `text_table_count`,
@@ -202,7 +232,7 @@ release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/buil
   `save_and_disable_interrupts()` + `flash_range_*` block. Identical on this single-core build (IRQs
   masked for erase+program); fails safely instead of corrupting XIP if core 1 is ever started.
 - Dropped unused `tinyusb_board` link dependency (TinyUSB BSP; no `board_*` calls in the firmware).
-- UART boot banner reads "Step 22" (was stale "Step 19").
+- UART boot banner updated to the current firmware version (it still showed an older one).
 - `main.c`: initialise `enc_press_at` (gcc 13.2 on ubuntu-latest flagged `-Wmaybe-uninitialized`;
   false positive — only read after a press sets it — but keeps CI at zero warnings).
 
@@ -288,13 +318,5 @@ release asset `macropad-fw-0.25.0.uf2` (local build output is now `firmware/buil
 [Unreleased]: https://github.com/joshua12-5/macropad/compare/v0.25.0...HEAD
 [0.25.0]: https://github.com/joshua12-5/macropad/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.24.0
-[0.23.0]: https://github.com/joshua12-5/macropad/compare/v0.22.0...v0.23.0
-[0.22.0]: https://github.com/joshua12-5/macropad/compare/v0.21.0...v0.22.0
-[0.21.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.21.0
-[0.20.0]: https://github.com/joshua12-5/macropad/compare/v0.19.0...v0.20.0
-[0.19.0]: https://github.com/joshua12-5/macropad/compare/v0.18.0...v0.19.0
-[0.18.0]: https://github.com/joshua12-5/macropad/compare/v0.17.0...v0.18.0
-[0.17.0]: https://github.com/joshua12-5/macropad/compare/v0.16.0...v0.17.0
-[0.16.0]: https://github.com/joshua12-5/macropad/compare/v0.15.0...v0.16.0
-[0.15.0]: https://github.com/joshua12-5/macropad/compare/v0.14.0...v0.15.0
-[0.14.0]: https://github.com/joshua12-5/macropad/releases/tag/v0.14.0
+
+<!-- Versions before 0.24.0 were not tagged, so they have no link references. -->
