@@ -21,7 +21,7 @@ Constants are mirrored in:
 | 2 | 16 | `id` — ASCII, NUL-padded |
 | 18 | 16 | `name` — ASCII, NUL-padded |
 | 34 | 72 | `keys[12]` — 12 × action (6 bytes each) |
-| 106 | 24 | `encoder` — cw, ccw, press, long_press (4 × action) |
+| 106 | 24 | `encoder` — cw, ccw, press, long_press (4 × action). `long_press` is **reserved** (never fired; holding the knob opens the menu); hosts keep and round-trip whatever value it has |
 | 130 | 16 | `oled.title` — ASCII, NUL-padded |
 | 146 | 1 | `oled.animation` (`0` static, `1` scroll, `2` matrix) |
 | 147 | 1 | `pad` — always `0` |

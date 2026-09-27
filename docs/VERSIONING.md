@@ -6,20 +6,20 @@ How firmware, wire protocol, and host JSON schemas relate — and what must matc
 
 | Axis | Constant / field | Current | Where |
 |------|------------------|---------|--------|
-| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.25** | `firmware/include/config_protocol.h` → GET_INFO |
+| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.26** | `firmware/include/config_protocol.h` → GET_INFO |
 | Wire protocol | `CFG_PROTO_VERSION` / `proto_ver` | **1** | frame byte + GET_INFO; host `macropad_config/version.py` `PROTO_VER` |
-| Host app | `HOST_APP_VERSION` | **0.25.0** | `configurator/macropad_config/version.py` (+ About) |
+| Host app | `HOST_APP_VERSION` | **0.26.0** | `configurator/macropad_config/version.py` (+ About) |
 | Profile JSON / blob | `schema_version` | **1** | `profiles/*.json`, `PROFILE_BLOB`, host `SCHEMA_VERSION` |
 | Macro library / blob | `schema_version` | **1** | `macros/library.json`, `MACRO_BLOB`, `MACRO_SCHEMA_VERSION` |
 | Autoswitch rules | `schema_version` | **1** | `autoswitch/rules.json`, host `rules.SCHEMA_VERSION` |
 | Animation blob | header `version` | **1** | `firmware/include/anim_format.h`, host `animation/codec.py` ([`ANIMATION.md`](ANIMATION.md)) |
 | Animation project | `schema_version` | **1** | `*.mpanim.json`, host `animation/project.py` |
 | Flash storage image | MPFL `version` | **3** | `firmware/src/storage.c` (v1/v2 still load) |
-| USB `bcdDevice` | `USB_BCD` | **0x0119** (1.25) | `firmware/src/usb_descriptors.c` |
+| USB `bcdDevice` | `USB_BCD` | **0x011A** (1.26) | `firmware/src/usb_descriptors.c` |
 | CMake / UF2 | target name | `macropad` (→ `build/macropad.uf2`; released as `macropad-fw-X.Y.Z.uf2`) | `firmware/CMakeLists.txt` |
 | Pico SDK | git tag | **2.1.1** (+ submodules) | `firmware/README.md`, `.github/workflows/firmware.yml` `PICO_SDK_TAG` |
 | Board | `PICO_BOARD` | **waveshare_rp2040_zero** | `firmware/CMakeLists.txt` default, CI env |
-| Release tag | `vMAJOR.MINOR.PATCH` | **v0.25.0** | must equal host version and `FW_VERSION` major.minor; checked by `packaging/release_tools.py check` in `release.yml` |
+| Release tag | `vMAJOR.MINOR.PATCH` | **v0.26.0** when released (latest tag: v0.25.0) | must equal host version and `FW_VERSION` major.minor; checked by `packaging/release_tools.py check` in `release.yml` |
 
 Firmware **major.minor** is a product revision (shown in Connect / GET_INFO).
 It is **not** the same number as `proto_ver` or JSON `schema_version`.
@@ -58,7 +58,7 @@ minimum `FW_VERSION_MINOR` (major must match expected **0**):
 | Macro upload | **17** | macro bank + MACRO_* cmds |
 | Autoswitch (`SET_ACTIVE`) | **18** | host-driven active slot |
 | Save device state (`SAVE_ALL`) | **19** | immediate flash rewrite |
-| Blob readback (`PROFILE_READ` / `MACRO_READ`) | **23** | also GET_INFO flags bit2; HIL backup/byte-compare |
+| Blob readback (`PROFILE_READ` / `MACRO_READ`) | **23** | also GET_INFO flags bit2; HIL backup/byte-compare; configurator **Back up device / Restore backup** (idle settings in the backup need 25) |
 | OLED idle animation (`0x40`–`0x48`) | **25** | also GET_INFO flags bit3; editor authoring works offline, device actions explain the update |
 
 If firmware is too old, the configurator **disables** those actions and sets a
@@ -74,7 +74,7 @@ tooltip explaining the required version (Connect still works for info).
 | Breaking firmware API without proto bump | raise `FW_VERSION_MAJOR` | Document min host; rare |
 
 **Practice for this repo:** release `0.N.0` → `FW_VERSION_MINOR = N`, host
-`HOST_APP_VERSION = "0.N.0"`, `bcdDevice` `0x01NN` (BCD 1.N, e.g. 0.25 → `0x0119`), tag `v0.N.0`;
+`HOST_APP_VERSION = "0.N.0"`, `bcdDevice` `0x01NN` (BCD 1.N, e.g. 0.26 → `0x011A`), tag `v0.N.0`;
 keep `proto_ver` and JSON schemas at **1** until an intentional incompatibility. The CMake
 target is always `macropad` (it carried the step number, `macropad_stepNN`, up to 0.25.0
 development builds). New commands in the existing

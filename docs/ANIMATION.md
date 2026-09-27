@@ -2,7 +2,7 @@
 
 The macropad can play a custom 128×64 animation on its SSD1306 when nobody is using it, and
 switch the display off later for burn-in protection. Animations are authored in the
-configurator (**Tools → Idle animation…**) and stored in a dedicated flash region on the device.
+configurator (**Idle** page, `Ctrl+3`) and stored in a dedicated flash region on the device.
 
 ## Behaviour on the device
 
@@ -16,7 +16,7 @@ configurator (**Tools → Idle animation…**) and stored in a dedicated flash r
   loop flag is off). With no animation uploaded the firmware plays a **built-in procedural
   starfield** (48 stars, 20 fps).
 * **Any** key press, encoder turn or encoder press wakes the normal UI. The waking input is
-  swallowed: no HID report, no action, no long-press — the key reports again only after it is
+  swallowed: no HID report, no action, no menu — the key reports again only after it is
   released and pressed again.
 * Settings persist in the MPFL storage sector (v3) and survive power cycles.
 * Frame pushes never block the main loop: the framebuffer is streamed over I2C in 16-byte
@@ -24,7 +24,7 @@ configurator (**Tools → Idle animation…**) and stored in a dedicated flash r
 
 ## Authoring (configurator)
 
-**Tools → Idle animation…** works offline; device actions need firmware 0.25+.
+The **Idle** page works offline; device actions need firmware 0.25+.
 
 * **Frames** strip with thumbnails — add, duplicate (Ctrl+D), delete, move earlier/later or drag
   to reorder.
@@ -114,7 +114,7 @@ At 20 fps, 127 frames is 6.4 s of arbitrary content; typical line-art loops fit 
   "frame_encoding": "ssd1306-pages-base64",
   "frames": ["<base64 of 1024 bytes>", "..."],
   "idle": {"enabled": true, "idle_timeout_s": 60, "blank_timeout_s": 600},
-  "generator": "macropad-configurator 0.25.0"
+  "generator": "macropad-configurator 0.26.0"
 }
 ```
 

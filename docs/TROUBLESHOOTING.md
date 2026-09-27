@@ -16,7 +16,7 @@ Start with the quick checks, then find your symptom below. Setup steps are in th
 - List what the hardware test tool can see: `MacropadConfigurator --hil --list`. A working
   macropad shows VID `0x2e8a`, PID `0xc001` and a **CONFIG** interface (usage page `0xff00`).
 - **Debug UART** (optional): connect a 3.3 V USB-serial adapter to GP0 (TX) and GND at
-  **115200 baud**. At boot the firmware prints `=== Macropad firmware 0.25 ===`, the profile
+  **115200 baud**. At boot the firmware prints `=== Macropad firmware 0.26 ===`, the profile
   slots, and either `OLED OK at I2C 0x3C` or `OLED NOT FOUND`. After that it logs every key,
   profile, macro and upload event.
 
@@ -100,8 +100,8 @@ in root's home folder.
 
 1. **The display may be off on purpose.** With the default idle settings, the screen switches
    off after 600 s without input. Press a key or turn the knob; the waking input is not sent to
-   the computer. You can change or disable the timer (0 = never) in **Tools → Idle animation… →
-   Screen off after**.
+   the computer. You can change or disable the timer (0 = never) on the configurator's **Idle** page
+   (**Screen off after**), or on the macropad: hold the knob → **Idle animation → Screen off**.
 2. **Read the UART log.** `OLED NOT FOUND` means neither I2C address answered.
    - Check the wiring: **SDA → GP4**, **SCL → GP5** (swapping them is the most common mistake),
      **VCC → 3V3**, **GND → GND**.
@@ -132,10 +132,19 @@ in root's home folder.
   - If the contacts are noisy, add 10–100 nF capacitors from CLK and DT to GND.
   - Also check that the steps are not coming from the OS: one `VOLUME` step moves the system
     volume by whatever step size the OS uses.
-- **A press opens the profile menu, or does nothing:**
-  - Holding the knob for about **0.8 s** opens the profile menu, and in that case the Press
-    action does not fire. Release sooner for a normal press.
+- **A press opens the menu, or does nothing:**
+  - Holding the knob for about **0.8 s** opens the [on-device menu](USER_GUIDE.md#the-on-device-menu),
+    and in that case the Press action does not fire. Release sooner for a normal press.
+  - The Press action fires when you **release** the knob (since firmware 0.26), not when you
+    push it down.
   - A press that wakes the idle animation is swallowed.
+  - While the menu is open, a short press selects a menu item instead of firing the action.
+    Hold the knob (or wait 9 s) to leave the menu.
+- **The menu does not react / the macropad seems stuck on a menu:** turn the knob; the menu
+  closes by itself after 9 s without input. Keys are ignored while it is open.
+- **After a power cycle the macropad is on the wrong profile:** the chosen profile is saved
+  after it has stayed selected for about 4 s. If you unplugged sooner, pick it again and wait a
+  moment, or use **Save device state** (on-device menu or configurator).
 
 ## Ghost key presses
 

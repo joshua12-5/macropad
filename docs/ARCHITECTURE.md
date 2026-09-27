@@ -1,6 +1,6 @@
 # Macropad architecture
 
-Overview of the shipping stack (firmware 0.25, configurator 0.25.0): firmware, host app,
+Overview of the shipping stack (firmware 0.26, configurator 0.26.0): firmware, host app,
 protocol, storage, testing and release tooling. The PCB / enclosure are not in this repo yet.
 
 ## Layers
@@ -38,14 +38,15 @@ protocol, storage, testing and release tooling. The PCB / enclosure are not in t
 | Profiles / actions | `profiles.c`, `actions.c`, `macros.c` | RAM slots; TEXT/URL/APP/MACRO/KEY/… |
 | USB + protocol | `usb_*.c`, `config_protocol.c` | TinyUSB; `tud_task` via `usb_hid_task` unchanged |
 | Flash | `storage.c`, `anim.c` | MPFL v3 image; upload staging; debounced active persist; animation region |
-| Host | `configurator/macropad_config/` | Editors, animation editor, Device menu, autoswitch, HIL suite |
+| OLED menu | `menu.c`, `device_menu.c`, `oled_gfx.c`, `oled_ui.c` | Generic table-driven menu engine; the device's menu tree; SDK-free framebuffer drawing; pages + toasts |
+| Host | `configurator/macropad_config/` | Page-based configurator (`pages/`), editors, animation editor, device backup, autoswitch, HIL suite |
 
 ## Data flows
 
 ### Key press (device)
 
 1. `matrix_task` → press event for key 1–12.
-2. If profile-select menu is open → event muted.
+2. If the on-device menu is open → event muted (keys do nothing).
 3. OLED toast; for non-KEY/SHORTCUT types → `actions_fire`.
 4. KEY/SHORTCUT holds feed `usb_hid_update_from_matrix` when idle (not busy / not in menu).
 5. Action engine may queue TEXT/URL/APP or start `macros` playback → HID reports on IF0.
@@ -72,20 +73,37 @@ protocol, storage, testing and release tooling. The PCB / enclosure are not in t
 4. Schedules a **debounced** flash rewrite (~4 s quiet). Repeated switches cancel/reschedule. UART: `stor debounce save` then `stor save ok|fail`.
 5. Immediate rewrite: `SAVE_ALL` (`0x32`) from Device → Save device state.
 
+### On-device menu (fw 0.26+)
+
+1. `main.c` tracks the encoder button: held ≥ 800 ms → `device_menu_open()` (or `MENU_IN_BACK`
+   when it is already open); released sooner → short press (`MENU_IN_SELECT` in the menu, the
+   profile's Press action otherwise). Turns map to `MENU_IN_NEXT` / `MENU_IN_PREV`.
+2. `menu.c` is a generic engine: pages are tables of items (`ACTION`, `SUBMENU`, `TOGGLE`,
+   `RADIO`, `INFO`, `BACK`), static or generated per index (the profile list), with a 4-deep
+   stack, wrapping cursor, scroll offset and breadcrumb. `menu_render()` draws title bar, rule,
+   four 13 px rows, inverse highlight, scroll bar and `n/N` into the framebuffer.
+3. `device_menu.c` holds the tree (Profiles, Idle animation, Device info, Save device state,
+   Exit) and the 9 s timeout. `device_select_profile()` is the one path for a profile switch
+   (menu, `PROFILE` key, `SET_ACTIVE`): RAM + OLED title + *Switched to* toast +
+   `storage_schedule_persist()`.
+4. `oled_ui.c` shows `OLED_PAGE_MENU`; drawing is in `oled_gfx.c` (no SDK), so
+   `firmware/tests/host/` builds the same menu code on the PC (`smoke_oled_menu.py`) and dumps
+   frames.
+
 ## Flash vs RAM
 
 | What | Where | Lifetime |
 |------|--------|----------|
-| Active profile index | RAM (`profiles`) + flash header `active_slot` | Boot loads flash; SET_ACTIVE updates RAM then debounced flash |
+| Active profile index | RAM (`profiles`) + flash header `active_slot` | Boot loads flash; menu / PROFILE key / SET_ACTIVE update RAM, then debounced flash (fw 0.26+; SET_ACTIVE only before) |
 | Profile blobs (5) | RAM + flash | Upload COMMIT / SAVE_ALL / debounce rewrite |
-| Idle settings (enabled, timeouts) | RAM + flash (MPFL v3) | ANIM_SETTINGS_SET / any storage rewrite |
+| Idle settings (enabled, timeouts) | RAM + flash (MPFL v3) | ANIM_SETTINGS_SET (immediate) / on-device menu (debounced) / any storage rewrite |
 | Idle animation blob | flash region `0x1DF000` only | ANIM_COMMIT; decoded frame-by-frame into RAM |
 | Macro bank (5) | RAM + flash (v2+) | Same; v1 flash keeps factory macros until next save |
 | Upload staging buffer | RAM only | Cleared on COMMIT/ABORT |
 | Matrix / encoder / OLED / HID state | RAM | Ephemeral |
 | Host JSON / rules | Host disk | Source of truth for editors; device holds packed copies |
 
-Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `SET_ACTIVE`; uploads and `SAVE_ALL` rewrite once intentionally.
+Flash wear policy: never erase on every switch. The debounce (`storage_schedule_persist`, ~4 s quiet) coalesces rapid switches and menu setting changes, defers while an upload is running, and skips the write when the built image equals flash; uploads and `SAVE_ALL` rewrite once intentionally.
 
 ## Protocol references
 
@@ -97,8 +115,9 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
 ## Idle animation
 
 - `anim.c`: ACTIVE → PLAYING (after `idle_timeout_s`) → BLANK (after `blank_timeout_s`); any
-  key / encoder input wakes and is swallowed (`usb_hid_suppress_key`; a waking encoder press marks
-  the long-press as consumed). Built-in starfield when nothing is stored.
+  key / encoder input wakes and is swallowed (`usb_hid_suppress_key`; a waking encoder press is
+  ignored until release, so it neither fires Press nor opens the menu). Built-in starfield when
+  nothing is stored.
 - `oled_driver.c` streams the framebuffer non-blockingly (`oled_driver_task()`, ≤ 2 × 16-byte
   I2C chunks per 1 ms tick ≈ 0.81 ms; a full 1 KiB frame ≈ 26 ms bus time over ~33 ticks).
 - Protocol `0x40`–`0x48`, GET_INFO flags bit3; blob format + authoring in

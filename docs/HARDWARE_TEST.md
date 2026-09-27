@@ -62,7 +62,7 @@ interfaces), hence the guided checklist.
 
 - [ ] UF2 copies cleanly; device reboots as HID (keyboard + config IF1)
 - [ ] UART (if wired): boot / `stor load …` lines look healthy
-- [ ] *(HIL `info`)* Connect / Get device info: fw **0.25** (or expected), flags `0x0F`, **proto v1**, product `MACROPAD`
+- [ ] *(HIL `info`)* Connect / Get device info: fw **0.26** (or expected), flags `0x0F`, **proto v1**, product `MACROPAD`
 - [ ] Proto mismatch warning appears if testing against a deliberately wrong host `PROTO_VER` (optional)
 
 ## Keys (matrix)
@@ -74,18 +74,18 @@ interfaces), hence the guided checklist.
 ## Encoder
 
 - [ ] CW / CCW change volume (or profile encoder actions)
-- [ ] Short press fires press action (e.g. mute)
-- [ ] Long press (~800 ms) opens on-device profile menu
+- [ ] Short press fires the press action (e.g. mute) on **release** (fw 0.26+)
+- [ ] Hold (~800 ms) opens the on-device menu and does **not** fire the press action
 
 ## OLED
 
 - [ ] Idle title matches active profile OLED title
 - [ ] Key toast appears briefly on press
-- [ ] Profile-select menu draws; highlight moves with encoder
+- [ ] Menu draws with title bar, highlight bar, `n/N` position and scroll bar
 
 ## OLED idle animation (fw 0.25+)
 
-Use **Tools → Idle animation…** in the configurator. Tip: set *Start after* to 10 s and
+Use the **Idle** page (`Ctrl+3`) in the configurator. Tip: set *Start after* to 10 s and
 *Screen off after* to 30 s, **Push idle settings**, then restore 60 s / 600 s at the end.
 
 - [ ] Fresh device (no animation uploaded): after the idle timeout the **built-in starfield**
@@ -94,7 +94,7 @@ Use **Tools → Idle animation…** in the configurator. Tip: set *Start after* 
       character is typed** / no action fires (check a text editor + media keys); the next press
       of the same key works normally
 - [ ] **Wake by encoder**: turning the knob wakes without changing volume; pressing it wakes
-      without firing the press action and without opening the profile menu even if held > 800 ms
+      without firing the press action and without opening the menu even if held > 800 ms
 - [ ] While the animation plays, keys pressed *after* waking type normally (matrix scan not
       stalled: fast typing on a KEY-bound profile does not drop characters during frame pushes)
 - [ ] Upload the *Bouncing text* preset → *Preview on device* plays it at the set fps;
@@ -116,15 +116,31 @@ Use **Tools → Idle animation…** in the configurator. Tip: set *Start after* 
 - [ ] Configurator 0.25 against fw 0.24: device actions in the editor show "firmware 0.24 has no
       OLED idle-animation support … flash 0.25+" and nothing is sent
 
-## Profile menu (on-device)
+## On-device menu (fw 0.26+)
 
-- [ ] Rotate highlights slots; short-press confirms switch
-- [ ] Long-press or ~9 s idle cancels without change
-- [ ] Confirmed switch updates OLED title + active slot (GET_INFO)
+- [ ] Hold → **Menu** (Profiles / Idle animation / Device info / Save device state / Exit);
+      turning wraps at both ends; keys do nothing while it is open
+- [ ] Hold inside a submenu goes back one level; hold on the top level (or **Exit**) closes it
+- [ ] ~9 s without input closes the menu from any level
+- [ ] **Profiles**: highlight starts on the active slot (●); short press switches, closes the menu
+      and shows *Switched to …*; GET_INFO reports the new active slot
+- [ ] Power-cycle **≥ 5 s** after a menu switch → boots on that slot (UART `stor debounce save`);
+      switch A → B → A within 4 s → `stor debounce skip (unchanged)`
+- [ ] Same for a `PROFILE` key: switch, wait 5 s, power-cycle → new slot kept
+- [ ] **Idle animation**: *Preview now* plays the animation, the next input returns (swallowed);
+      *Play when idle* toggles; *Start after* / *Screen off* presets apply at once and survive a
+      power cycle after 4 s (configurator Idle page → Read from device shows them)
+- [ ] **Device info**: firmware 0.26, protocol v1, slot, animation, free KiB; uptime ticks
+- [ ] **Save device state** → *Saved* toast (UART `stor save ok`); during an animation upload → *Busy*
+- [ ] Menu open while auto-switch sends `SET_ACTIVE` → menu closes, new profile toast
+- [ ] Idle animation does not start while the menu is open (input keeps it awake) and the menu
+      is still usable right after waking the display
 
 ## Upload profile / macro
 
 - [ ] Device → Upload profile: selected JSON → chosen slot 0–4; OLED/title updates if active
+- [ ] Device page → **Back up device…** writes a `.mpbackup.json`; change a slot; **Restore
+      backup…** puts it back (profiles, macros, active slot, idle settings)
 - [ ] Device → Upload macros: library ids 0–4 sync; MACRO actions play new bank
 - [ ] *(HIL `macro`)* Overlapping upload rejected (`EBUSY`)
 - [ ] If fw minor < 16/17: upload actions disabled with tooltip (compat path)

@@ -1,6 +1,6 @@
 # Macropad USB Config Protocol (v1)
 
-Current: firmware **0.25**, host **0.25.0**, `proto_ver` **1**. Versioning rules:
+Current: firmware **0.26**, host **0.26.0**, `proto_ver` **1**. Versioning rules:
 [`VERSIONING.md`](VERSIONING.md); animation format: [`ANIMATION.md`](ANIMATION.md).
 
 | Since fw | Added |
@@ -12,6 +12,7 @@ Current: firmware **0.25**, host **0.25.0**, `proto_ver` **1**. Versioning rules
 | 0.19 | debounced active-slot persist + `SAVE_ALL` |
 | 0.23 | `PROFILE_READ` / `MACRO_READ` readback (GET_INFO flags bit2) |
 | 0.25 | **OLED idle animation** commands `0x40`–`0x48`, GET_INFO flags bit3, storage v3 |
+| 0.26 | no wire change. On-device menu; menu / `PROFILE`-key switches and menu idle-setting changes use the same debounced persist as `SET_ACTIVE` |
 
 ## USB topology
 
@@ -152,8 +153,9 @@ Host-driven profile switch for auto app-switch:
 1. Host matches foreground process → profile / slot (see [`../autoswitch/SCHEMA.md`](../autoswitch/SCHEMA.md)).
 2. `SET_ACTIVE` with `slot` `0..4`.
 3. Device calls `profiles_set_active(slot)`, updates OLED idle title + toast,
-   prints UART `cfg set_active N`. If the on-device profile menu is open, the
-   menu is exited to idle after applying.
+   prints UART `cfg set_active N`. If the on-device menu is open, it is closed
+   after applying (fw 0.26+: the same `device_select_profile()` path as the menu
+   and `PROFILE` keys).
 4. Empty OK response. Bad slot → NAK `EINVAL`.
 5. **Upload busy:** `SET_ACTIVE` remains OK (RAM only); staging is not disturbed.
 
@@ -163,6 +165,11 @@ immediately. The device schedules a debounced rewrite of the full storage image
 arrives for ~4 seconds (`STORAGE_ACTIVE_DEBOUNCE_MS`), one sector rewrite runs.
 Repeated switches cancel and reschedule the quiet window. UART:
 `stor debounce save` then `stor save ok|fail`.
+
+**fw 0.26+:** the same debounce also covers a profile picked in the on-device
+menu or by a `PROFILE` key, and idle settings changed in the menu. It is deferred
+while any upload is in progress, and the skip check compares the whole built
+storage image with flash (`memcmp`), not just `active_slot`.
 
 **fw 0.23+:** when the quiet window expires and flash already holds a valid v2
 image that matches RAM (last load/save succeeded) with the same `active_slot`,
@@ -184,7 +191,8 @@ the device cannot observe host applications.
 3. Calls `storage_save_all()` (full v2 image: profiles + macros + `active_slot`).
 4. Empty OK on success; NAK `EBUSY` if the flash program fails.
 
-Host Device menu **Save device state** uses this for an explicit save without
+The configurator's **Save device state** (Device menu / Device page) and the
+on-device menu's **Save device state** (which calls `storage_save_all()` directly) use this for an explicit save without
 waiting for the debounce timer.
 
 ### OLED idle animation (fw 0.25+)

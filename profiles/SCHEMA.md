@@ -11,7 +11,7 @@ Matches firmware `PROFILE_SCHEMA_VERSION` in `firmware/include/profile_schema.h`
 | `name` | string | Display name |
 | `oled` | object | `title` (shown on the OLED, max 15 chars), `animation` (stored, not used by the firmware; the idle animation is global) |
 | `keys` | object | `"1"`..`"12"` → action |
-| `encoder` | object | `cw`, `ccw`, `press`, `long_press` (stored but never fired: holding the knob opens the profile menu) |
+| `encoder` | object | `cw`, `ccw`, `press`, `long_press`. **`long_press` is reserved**: it is kept in files and blobs for compatibility but never fires, because holding the knob opens the on-device menu. The configurator no longer shows it and keeps whatever value the file has. |
 
 ## Action object
 

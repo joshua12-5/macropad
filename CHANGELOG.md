@@ -8,7 +8,45 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 
 ## [Unreleased]
 
+Easier navigation on the macropad and in the configurator. Firmware **0.26**, host **0.26.0**,
+USB `bcdDevice` **0x011A**; protocol v1, profile / macro / storage formats unchanged (not
+tagged yet).
+
 ### Added
+
+- **On-device OLED menu** (firmware 0.26). Holding the knob ~0.8 s opens **Menu** with
+  *Profiles* (● on the active slot), *Idle animation* (*Preview now*, *Play when idle*, *Start
+  after* and *Screen off* presets), *Device info* (firmware, protocol, slot, animation, free
+  animation space, uptime), *Save device state* and *Exit*. The same controls work everywhere:
+  turn = move (wraps), short press = open / confirm, hold = back one level (closes at the top),
+  9 s without input = back to the home screen. Title bar with breadcrumb, inverse highlight
+  bar, scroll bar and `n/N` position, and confirmation toasts (*Switched to CODING*, *Saved*).
+  Keys are ignored while it is open; the input that wakes the idle animation is still
+  swallowed.
+- Firmware `menu.c`: a small table-driven menu engine (list / info pages, action, submenu,
+  toggle, radio, back items, generated rows); `device_menu.c` holds the tree; drawing moved to
+  the SDK-free `oled_gfx.c`, so `firmware/tests/host/` builds the menu on the PC.
+- `scripts/smoke_oled_menu.py`: compiles the firmware menu with the host C compiler, runs 47
+  navigation / timeout / toast / persist checks and can write 4× PNG renders (`--out DIR`).
+- **Configurator navigation rail** with six pages: **Keys**, **Macros**, **Idle**,
+  **Auto-switch**, **Device** and **Settings** (`Ctrl+1`…`Ctrl+6`). The macro library,
+  auto-switch rules and idle animation editor are pages instead of pop-up windows, and the
+  device info / About boxes became the Device and Settings pages. Old menu entries switch
+  pages (**View → Go to** lists them all).
+- **Command palette** (`Ctrl+K`, or the header search box): fuzzy search over pages, profiles,
+  keys (`k6`), encoder slots and every menu command; unavailable commands are listed with the
+  reason.
+- Page header with title and **breadcrumb** (`CODING › Key 6`), a **• Unsaved** badge, unsaved
+  dots on the rail and after each changed profile, and a page-aware **File → Save** (`Ctrl+S`).
+  Quitting lists every page with unsaved changes.
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle profiles; shortcuts appear in tooltips and menus, and
+  the Settings page lists them all.
+- **Device backup / restore** on the Device page: one `*.mpbackup.json` with all profile and
+  macro slots, the active slot and idle settings (readback, firmware 0.23+); restore validates
+  the file, asks, uploads and saves to flash.
+- Empty states for Keys (no profiles), Macros (no macros), Auto-switch (no rules) and Device
+  (not connected).
+- `scripts/smoke_nav.py` and `scripts/smoke_palette.py` (18 smokes now).
 
 - **User documentation**: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) (parts and wiring, flashing,
   installing the configurator on Windows / macOS / Linux, every action type, profiles, macros,
@@ -28,11 +66,28 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 - `scripts/smoke_theme.py` (15th smoke): loads the theme in both modes, checks palette parity
   and text contrast, that every QSS token and icon resolves, and that the main window and every
   dialog render. `--self-test` also checks the theme and icons.
-- **Device info** and **About** dialogs with a status pill and a key / value layout (they were
-  plain message boxes).
+- **Device info** and **About** views with a status pill and a key / value layout (they were
+  plain message boxes; now shown on the Device and Settings pages).
 
 ### Changed
 
+- **Profile choice is saved to flash.** A profile picked in the on-device menu or by a
+  `PROFILE` key, and idle settings changed in the menu, now use the same debounce as
+  `SET_ACTIVE`: saved once stable for ~4 s, deferred during uploads, and skipped when the new
+  image equals flash. Before, only `SET_ACTIVE` was persisted.
+- The encoder's **Press action fires on release** (the firmware has to tell a press from a
+  hold).
+- The encoder **`long_press` slot is reserved**: holding the knob always opens the menu. The
+  configurator no longer shows a Hold slot but keeps the field in files and blobs.
+- The idle animation does not start while the on-device menu is open.
+- Success messages from the configurator (connect, upload, save device state) go to the status
+  bar instead of message boxes.
+- Idle animation editor: compact icon tool buttons, the side panel scrolls, and the zoom fits
+  the window until you choose one.
+- Version bump to firmware 0.26 / host 0.26.0 / `bcdDevice` 0x011A.
+- User guide, troubleshooting, hardware checklist, architecture, protocol, schema and README
+  docs describe the menu, persistence and the page layout; screenshots refreshed (pages,
+  command palette, OLED menu renders).
 - Top-level `README.md` rewritten as a product page (features, gallery, quick start, links).
 - Changelog entries describe the changes themselves instead of internal milestone numbers;
   link references now exist only for tagged releases (v0.24.0 and later).
@@ -40,11 +95,11 @@ and this project adheres to the versioning matrix in [`docs/VERSIONING.md`](docs
 - **Configurator UI polish** (visual only; profiles, protocol and behaviour are unchanged):
   - Main window: the centre is now a drawing of the macropad (OLED idle-screen preview, knob,
     3 × 4 keycaps with action legends) with the encoder slots shown as *Turn left / Turn right /
-    Press / Hold* chips; click or use the arrow keys to select. The action editor moved into a
+    Press* chips; click or use the arrow keys to select. The action editor moved into a
     right-hand inspector under the profile's *Name* / *OLED title*. The profile list shows
-    name + id, a *Slot N* badge and the active device slot. A toolbar holds Save, Macros, Idle
-    animation, Auto-switch rules, the theme toggle, **Connect** and a primary **Upload**
-    button. The status bar shows a connection pill, firmware and protocol version.
+    name + id, a *Slot N* badge and the active device slot. The page header holds Save,
+    **Connect** and a primary **Upload** button (the earlier toolbar was replaced by the
+    navigation rail). The status bar shows a connection pill, firmware and protocol version.
   - Action editor: modifiers are toggle chips (Ctrl / Shift / Alt / Win·Cmd·Super).
   - Macro library, auto-switch rules, profile and import dialogs: consistent margins, form
     layout and section headers; tables without grid lines and with 32 px rows; icon buttons

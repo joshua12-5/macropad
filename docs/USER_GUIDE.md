@@ -1,7 +1,7 @@
 # User guide
 
 This guide takes you from a bag of parts and a release download to a working, configured
-macropad. It covers firmware **0.25** and Macropad Configurator **0.25.0**. Every number here
+macropad. It covers firmware **0.26** and Macropad Configurator **0.26.0**. Every number here
 comes from the firmware and configurator source; if you find one that does not match, please
 open an issue.
 
@@ -15,15 +15,16 @@ Something not working? See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 4. [Install the configurator](#install-the-configurator)
 5. [First connection](#first-connection)
 6. [Using the macropad](#using-the-macropad)
-7. [Editing key and encoder actions](#editing-key-and-encoder-actions)
-8. [Profiles](#profiles)
-9. [Macro library](#macro-library)
-10. [Idle animations](#idle-animations)
-11. [Auto-switch rules](#auto-switch-rules)
-12. [Where your data lives](#where-your-data-lives)
-13. [Backing up and restoring](#backing-up-and-restoring)
-14. [Updating the firmware](#updating-the-firmware)
-15. [Command-line options](#command-line-options)
+7. [Getting around the configurator](#getting-around-the-configurator)
+8. [Editing key and encoder actions](#editing-key-and-encoder-actions)
+9. [Profiles](#profiles)
+10. [Macro library](#macro-library)
+11. [Idle animations](#idle-animations)
+12. [Auto-switch rules](#auto-switch-rules)
+13. [Where your data lives](#where-your-data-lives)
+14. [Backing up and restoring](#backing-up-and-restoring)
+15. [Updating the firmware](#updating-the-firmware)
+16. [Command-line options](#command-line-options)
 
 ---
 
@@ -99,9 +100,9 @@ without resistors (wire its common pin `C` to GND). Power the KY-040 from **3V3,
 
 1. **Check the download** (optional, recommended). Run the command from the folder that
    holds the `.uf2` and its `.sha256` file:
-   - Linux: `sha256sum -c macropad-fw-0.25.0.uf2.sha256`
-   - macOS: `shasum -a 256 -c macropad-fw-0.25.0.uf2.sha256`
-   - Windows (PowerShell): `Get-FileHash .\macropad-fw-0.25.0.uf2 -Algorithm SHA256`, then
+   - Linux: `sha256sum -c macropad-fw-0.26.0.uf2.sha256`
+   - macOS: `shasum -a 256 -c macropad-fw-0.26.0.uf2.sha256`
+   - Windows (PowerShell): `Get-FileHash .\macropad-fw-0.26.0.uf2 -Algorithm SHA256`, then
      compare the hash with the first word of the `.sha256` file.
 
    `SHA256SUMS.txt` works the same way for every release file:
@@ -147,8 +148,8 @@ The configurator builds are **not code-signed**, so each OS shows a warning the 
 ### Linux
 
 ```bash
-tar xzf macropad-configurator-0.25.0-linux-x86_64.tar.gz
-cd macropad-configurator-0.25.0-linux-x86_64
+tar xzf macropad-configurator-0.26.0-linux-x86_64.tar.gz
+cd macropad-configurator-0.26.0-linux-x86_64
 ./install.sh            # installs the udev rule (asks for sudo) + a desktop launcher
 # unplug and replug the macropad
 ./MacropadConfigurator/MacropadConfigurator
@@ -187,26 +188,28 @@ From source, the app edits the repo's `profiles/`, `macros/library.json` and
 
 ## First connection
 
-![Device info dialog](images/device-info.png)
+![Device page after connecting](images/device-page.png)
 
 1. Plug in the macropad and start the configurator.
-2. Choose **Device → Connect / Get device info** (`Ctrl+Shift+I`). The app opens the macropad's
-   configuration interface (a separate HID interface with usage page `0xFF00`, next to the
-   keyboard) and shows:
-   - **Host app** and **Firmware** versions. The minor numbers should match: host `0.25.0` goes
-     with firmware `0.25`.
+2. Click **Connect** in the header, or choose **Device → Connect / Get device info**
+   (`Ctrl+Shift+I`). The app opens the macropad's configuration interface (a separate HID
+   interface with usage page `0xFF00`, next to the keyboard), switches to the **Device** page
+   (`Ctrl+5`) and shows:
+   - **Host app** and **Firmware** versions. The minor numbers should match: host `0.26.0` goes
+     with firmware `0.26`.
    - **Protocol** version. It must be equal on both sides (currently **1**). If it differs, the
      app shows a warning and keeps the upload, save and auto-switch actions disabled until you
      update one side.
    - **Active slot** (0–4) and **slot count** (5).
-3. The right end of the status bar keeps a quiet summary: a **Connected** pill, the firmware
-   version and the protocol version. Features that need newer firmware than you
-   have are greyed out with a tooltip. For example, idle animations need firmware 0.25.
 
-**Help → About** shows the configurator version, the protocol and firmware versions it expects,
-and the schema versions.
+   If no macropad answers, the page says so and offers **Connect** again; nothing pops up.
+3. The right end of the status bar keeps a quiet summary: a **Connected** pill (click it to open
+   the Device page), the firmware version and the protocol version. Features that need newer
+   firmware than you have are greyed out with a tooltip. For example, idle animations need
+   firmware 0.25 and device backup needs 0.23.
 
-![About box](images/about.png)
+The **Settings** page (`Ctrl+6`, or **Help → About**) shows the configurator version, the
+protocol and firmware versions it expects, and the schema versions.
 
 ## Using the macropad
 
@@ -214,52 +217,139 @@ and the schema versions.
   hold the key, so the OS's own key repeat works. Up to 6 held keys are reported at once, and
   their modifiers combine.
 - **Encoder:** each detent fires the Turn right (clockwise) or Turn left (counter-clockwise)
-  action once, and a short press fires the Press
-  action.
+  action once. A short press fires the Press action **when you let go** of the knob (the
+  firmware has to wait to tell a press from a hold).
 - **OLED:** shows the active profile's title, plus short pop-ups for key presses ("Key 6"),
   volume ("VOL UP", with an estimated level; the macropad cannot read your real system volume),
   mute, media and profile changes.
-- **On-device profile menu:**
-  - **Hold the knob for about 0.8 s** to open the menu. The OLED lists the five slots (four
-    rows visible at a time).
-  - **Turn** to move the highlight; it wraps around.
-  - **Short-press** to switch to the highlighted profile.
-  - **Hold again**, or wait **9 s** without turning, to cancel. The profile stays unchanged.
-  - Keys are ignored while the menu is open.
 
-> A profile picked on the device, or by a PROFILE key, is active straight away but is **not
-> saved to flash by itself**. After a power cycle the macropad starts on the last *saved* slot.
-> To keep your choice, use **Device → Save device state**. Any profile or macro upload,
-> **Push idle settings**, or a slot change from auto-switch also saves the current slot.
+### The on-device menu
+
+![OLED menu: main menu, profile list, device info and a confirmation](images/oled-menu.png)
+
+**Hold the knob for about 0.8 s** to open the menu. The same four controls work on every screen:
+
+| Control | What it does |
+|---------|--------------|
+| **Turn** | Move the highlight. The list wraps around at both ends. |
+| **Short press** (release) | Open the highlighted submenu, run the action, or pick the option. |
+| **Hold ~0.8 s** | Back one level. On the top level it closes the menu. |
+| **9 s** without input | Close the menu and return to the normal screen. |
+
+The title bar shows where you are (`Menu > Profiles`) and, when a list has more rows than fit,
+the position (`3/6`) plus a scroll bar on the right. Keys are ignored while the menu is open,
+and the knob's own actions (volume etc.) do not fire.
+
+```
+Menu
+├── Profiles ›            one row per slot (title + slot number, ● = active), then Back
+├── Idle animation ›
+│   ├── Preview now        plays the idle animation now; any input returns
+│   ├── Play when idle     [x] on / [ ] off
+│   ├── Start after ›      Never · 30 s · 1 min · 2 min · 5 min · 10 min
+│   ├── Screen off ›       Never · 2 min · 5 min · 10 min · 30 min · 1 h
+│   └── Back
+├── Device info ›          firmware, protocol, active slot, animation, free animation space, uptime
+├── Save device state      writes everything to flash now; shows "Saved"
+└── Exit
+```
+
+- **Profiles:** the highlight starts on the active profile. Picking one switches straight away,
+  closes the menu and shows *Switched to CODING* for about a second.
+- **Start after / Screen off:** the current value has a dot. If you set a value in the
+  configurator that is not one of the presets, the list simply has no dot until you pick one.
+- **Save device state** does the same as the configurator's command. It answers *Busy* while
+  an upload from the computer is running.
+
+**What is saved to flash.** A profile picked in the menu, by a `PROFILE` key or by
+[auto-switch](#auto-switch-rules), and the idle settings changed in the menu, are saved
+automatically once nothing has changed for **about 4 s**. The macropad compares the new state
+with what is already in flash and skips the write when they match, so switching back and forth
+does not wear out the flash. After a power cycle the macropad starts on the last profile you
+picked, as long as it stayed selected for those 4 s.
+
+## Getting around the configurator
+
+![Configurator main window](images/main-window.png)
+
+The window has a **navigation rail** on the left with six pages. Each page has a title and a
+**breadcrumb** in the header that says what you are looking at, for example `CODING › Key 6`.
+
+| Page | Shortcut | What it is for |
+|------|----------|----------------|
+| **Keys** | `Ctrl+1` | The profile list, the macropad drawing and the inspector for keys and encoder actions. |
+| **Macros** | `Ctrl+2` | The [macro library](#macro-library). |
+| **Idle** | `Ctrl+3` | The [idle animation](#idle-animations) editor and upload. |
+| **Auto-switch** | `Ctrl+4` | [Auto-switch rules](#auto-switch-rules). |
+| **Device** | `Ctrl+5` | Connect, device info, uploads, [backup and restore](#backing-up-and-restoring), firmware update help. |
+| **Settings** | `Ctrl+6` | Theme, data folders, a list of every shortcut, and About. |
+
+The old menu commands still work and now open the matching page: **Profile → Macro library**,
+**Tools → Idle animation** and **Tools → Auto-switch rules**, **Help → About**, and
+**View → Go to**. Pop-up windows are kept for things that need an answer: confirmations
+(delete, discard, restore), file pickers, the new-profile name, the upload slot, the GIF import
+options and error messages. Success messages go to the status bar.
+
+**Unsaved changes** show up in three places: a dot on the page's rail button, a **• Unsaved**
+badge next to the breadcrumb, and a dot after each changed profile in the profile list. The
+window title also gets a `*`. **File → Save** (`Ctrl+S`) saves whatever the current page edits:
+the profile on Keys, the library on Macros, the rules on Auto-switch, the project on Idle.
+When you quit with unsaved changes, the app lists every page that has them.
+
+**Command palette.** Press `Ctrl+K` (or click the search box in the header) and type a few
+letters to jump anywhere: a page (`dev`), a profile (`cod`), a key (`k6` or `key 6`), an encoder
+slot, or any menu command (`upload`, `backup`, `theme`). The search is forgiving: letters only
+have to appear in order. `↑` / `↓` move, `Enter` runs, `Esc` closes. Commands that are not
+available right now (for example Upload while no macropad is connected) are listed greyed out
+with the reason.
+
+![Command palette](images/command-palette.png)
+
+**Other keyboard shortcuts:**
+
+| Keys | Does |
+|------|------|
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous profile (wraps; opens the Keys page) |
+| Arrow keys | Move between keycaps and encoder slots on the macropad drawing |
+| `Ctrl+S` / `Ctrl+Shift+S` | Save the current page / save all profiles |
+| `Ctrl+N` / `Ctrl+D` | New / duplicate profile (on the Idle page, `Ctrl+D` duplicates a frame instead) |
+| `Ctrl+O` / `Ctrl+R` | Open another profiles folder / reload profiles |
+| `Ctrl+Shift+I` | Connect / refresh device info |
+| `Ctrl+Shift+U` / `Ctrl+Shift+M` | Upload the selected profile / upload the macros |
+| `Ctrl+Shift+L` | Toggle dark / light theme |
+| `F1` | Open this guide |
+
+Tooltips and menus show each command's shortcut, and the Settings page lists them all.
 
 ## Editing key and encoder actions
 
-![Main window](images/main-window.png)
-
-The main window has three columns:
+The **Keys** page has three columns:
 
 - **Left:** the profile list. Each row shows the profile name and id, plus a **Slot N** badge
   when the configurator knows which device slot holds it; the active slot has an accent dot.
-  The **+**, copy and trash icons above the list create, duplicate and delete profiles.
+  A dot after the name means the profile has unsaved changes. The **+**, copy and trash icons
+  above the list create, duplicate and delete profiles. With no profiles at all, the page
+  shows a **New profile** button instead of the drawing.
 - **Middle:** a drawing of the macropad: the OLED (showing the profile's idle title), the knob
-  and the 12 keycaps, each labelled with its action. Below it are the four encoder slots
-  **Turn left**, **Turn right**, **Press** and **Hold** (hold = long press).
+  and the 12 keycaps, each labelled with its action. Below it are the three encoder slots
+  **Turn left**, **Turn right** and **Press**.
 - **Right:** the inspector: the profile's **Name** and **OLED title**, the selected key or slot
   with its **action editor**, and a read-only JSON view of the action.
 
 Click a keycap, the knob or an encoder slot (or move between keys with the arrow keys), then
 pick a **Type**. Only the fields that type uses are shown.
-Changes apply to the profile in memory straight away and the status bar says *Modified*.
-**File → Save** (`Ctrl+S`) writes the current profile to disk and **File → Save All**
-(`Ctrl+Shift+S`) writes every changed profile. To put changes on the macropad, use
-**Device → Upload profile to device…** or the **Upload** button in the toolbar (see
+Changes apply to the profile in memory straight away and the unsaved markers appear.
+**File → Save** (`Ctrl+S`, or **Save** in the header) writes the current profile to disk and
+**File → Save all profiles** (`Ctrl+Shift+S`) writes every changed profile. To put changes on
+the macropad, use **Upload** in the header or **Device → Upload profile to device…** (see
 [Profiles](#profiles)).
 
-The toolbar also has Save, the macro library, the idle animation editor, auto-switch rules,
-**Connect**, and a sun / moon button that flips between the dark and light theme.
-**View → Theme** chooses **Match system** (the default), **Dark** or **Light**; the choice is
-remembered. **View → Toggle dark / light** (`Ctrl+Shift+L`) does the same as the toolbar
-button.
+The sun / moon button near the bottom of the rail flips between the dark and light theme.
+**View → Theme** or the **Settings** page chooses **Match system** (the default), **Dark** or
+**Light**; the choice is remembered. **View → Toggle dark / light** (`Ctrl+Shift+L`) does the
+same as the rail button.
+
+![The Keys page in the light theme](images/main-window-light.png)
 
 ![Action editor: SHORTCUT, MACRO and MEDIA](images/action-editor.png)
 
@@ -305,8 +395,9 @@ How typing behaves:
   wait their turn; further ones are dropped.
 - While a string or macro is being typed, held KEY / SHORTCUT keys are not reported.
 
-**The encoder's Long slot** is saved in the profile but never fires, because holding the knob
-opens the profile menu.
+**Holding the knob is reserved for the [on-device menu](#the-on-device-menu)**, so the
+configurator has no Hold slot. Profile files and device blobs still carry a `long_press` field
+for compatibility; the app keeps whatever is in it, and the firmware never fires it.
 
 ## Profiles
 
@@ -323,27 +414,28 @@ profiles on your computer (one JSON file each) and you choose which five go onto
 | Rename / OLED title | The **Name** and **OLED title** fields on the right. The device stores up to **15 characters** of each. The OLED title is what the macropad shows. |
 | Open another folder | **File → Open profiles folder…** (`Ctrl+O`); **File → Reload** (`Ctrl+R`). |
 | Send to the macropad | **Device → Upload profile to device…** (`Ctrl+Shift+U`) uploads the **selected** profile into the slot (0–4) you pick, and saves it to flash immediately. The suggested slot is the device's active slot, or 0–4 for the bundled ids `default`, `gaming`, `coding`, `browser`, `photoshop`. |
-| Switch profiles | On the device: hold the knob (see [Using the macropad](#using-the-macropad)). From a key: a `PROFILE` action. From the computer: [auto-switch](#auto-switch-rules), which sends `SET_ACTIVE`. |
-| Save the active slot now | **Device → Save device state** writes profiles, macros, the active slot and idle settings to flash at once (`SAVE_ALL`). |
+| Switch profiles | On the device: hold the knob → **Profiles** (see [The on-device menu](#the-on-device-menu)). From a key: a `PROFILE` action. From the computer: [auto-switch](#auto-switch-rules), which sends `SET_ACTIVE`. In the configurator: `Ctrl+Tab` / `Ctrl+Shift+Tab` only changes which profile you are editing. |
+| Save the active slot now | **Device → Save device state**, or **Save device state** in the on-device menu, writes profiles, macros, the active slot and idle settings to flash at once (`SAVE_ALL`). Normally you do not need it: slot changes are saved by themselves after 4 s. |
 
 A fresh board starts with five factory profiles: DEFAULT, GAMING, CODING, BROWSER and PHOTOSHOP
 (slots 0–4). The bundled JSON files in `profiles/` use the same five ids.
 
-`SET_ACTIVE` (used by auto-switch) changes the profile in RAM and on the OLED at once. The
-device then writes the new slot to flash only after it has stayed unchanged for **4 s**, and it
-skips the write when flash already holds that slot. Frequent switching therefore does not wear
-out the flash.
+Every way of switching (the on-device menu, a `PROFILE` key, and `SET_ACTIVE` from
+auto-switch) changes the profile in RAM and on the OLED at once. The device then writes the new
+slot to flash only after it has stayed unchanged for **4 s**, and it skips the write when flash
+already holds that slot. Frequent switching therefore does not wear out the flash.
 
 ## Macro library
 
-![Macro library](images/macro-library.png)
+![Macros page](images/macros-page.png)
 
-**Profile → Macro library…** edits the macro library file (`macros/library.json`). Each macro
-has an **id**, a **name** and a list of **steps**. On the left: the macro list with
-new / duplicate / delete icons. On the right: the Name, the steps table (**Add step**,
-**Remove step**, and up / down arrows to reorder) and a **Selected step** editor that shows only
-the fields the selected op uses. **Save** writes the file; **Cancel**
-asks before discarding changes.
+The **Macros** page (`Ctrl+2`, or **Profile → Macro library**) edits the macro library file
+(`macros/library.json`). Each macro has an **id**, a **name** and a list of **steps**. On the
+left: the macro list with new / duplicate / delete icons. On the right: the Name, the steps
+table (**Add step**, **Remove step**, and up / down arrows to reorder) and a **Selected step**
+editor that shows only the fields the selected op uses. **Save** (or `Ctrl+S`) writes the file;
+**Revert** asks before discarding changes. With an empty library the page shows a
+**New macro** button.
 
 | Op | Fields | Effect |
 |----|--------|--------|
@@ -363,17 +455,19 @@ Device limits and behaviour:
 - Names: **15 characters**.
 - Only **one macro plays at a time**. Triggering another while one is running is ignored.
 
-**Device → Upload macros to device…** (`Ctrl+Shift+M`) uploads ids 0–4 to RAM and flash in one
-go and reports how many were sent. Until you upload, the macropad keeps the macros it already
+**Upload macros** in the page header, or **Device → Upload macros to device…**
+(`Ctrl+Shift+M`), uploads ids 0–4 to RAM and flash in one go and reports in the status bar how
+many were sent. If the library has unsaved changes, the app offers to save them first. Until you upload, the macropad keeps the macros it already
 had; a fresh board has the five factory macros (`hello`, `sel+cpy`, `undo/redo`, `git st`,
 `alt-tab`). A key uses a macro through a `MACRO` action with that id.
 
 ## Idle animations
 
-![Idle animation editor](images/anim-editor.png)
+![Idle animation page](images/idle-animation-page.png)
 
 After a period with no input, the OLED can play your own 128 × 64 animation, and later switch
-the panel off to protect it from burn-in. Open the editor with **Tools → Idle animation…**.
+the panel off to protect it from burn-in. Open the editor on the **Idle** page (`Ctrl+3`, or
+**Tools → Idle animation**).
 Editing works offline; the device buttons need **firmware 0.25 or newer**. With older firmware
 the editor tells you which firmware to flash and sends nothing.
 
@@ -389,10 +483,11 @@ the editor tells you which firmware to flash and sends nothing.
 - **The input that wakes the display is swallowed.** A key press, encoder turn or encoder press
   only brings back the normal screen: nothing is sent to the computer and no action fires. A
   waking key starts working again once you release it and press it again. A waking knob press
-  does not open the profile menu either.
+  does not open the menu either.
 - The animation plays at its own speed (**1–30 fps**) and either loops or stops on its last
   frame.
-- Settings and the animation survive power cycles.
+- Settings and the animation survive power cycles. The three settings can also be changed on
+  the macropad itself (hold the knob → **Idle animation**), using a list of preset times.
 
 ### Making an animation
 
@@ -401,12 +496,13 @@ the editor tells you which firmware to flash and sends nothing.
   `[` and `]` step through frames.
 - **Canvas:** Pen (`P`) and Eraser (`E`); the right mouse button does the opposite. Brush size
   1–8 px, Invert (`I`), Clear, Shift left / right / up / down (wraps around), onion skin of the previous frame,
-  grid, zoom 2–12×, Undo / Redo (`Ctrl+Z` / `Ctrl+Y`).
+  grid, zoom 2–12× (it fits the window until you pick a zoom yourself), Undo / Redo
+  (`Ctrl+Z` / `Ctrl+Y`). Hover over the toolbar icons for their names and shortcuts.
 - **Preview:** **Play** / **Pause** (`Space`) at the chosen speed.
 - **Presets:** *Starfield (warp)*, *Bouncing text* (default text `MACROPAD`), *Scrolling text*
   (your own text) and *Pulse / breathing*. Pick one, then **Load preset**.
 - **Name:** up to **8 characters**. That is all the device stores.
-- **Files:** **Save / Save as… / Open…** store projects as `*.mpanim.json` in the `animations`
+- **Files:** **Save** (`Ctrl+S`) **/ Save as… / Open…** store projects as `*.mpanim.json` in the `animations`
   folder of your [data folder](#where-your-data-lives). **Export GIF…** writes a preview GIF and
   **Export .mpan…** writes the exact file the device stores.
 - The stats line shows the encoded size against the device's **128 KiB** animation space. At
@@ -432,8 +528,8 @@ the editor tells you which firmware to flash and sends nothing.
 
 ### Sending it to the macropad
 
-Connect first (**Device → Connect / Get device info**), then use the **Device** section in the
-editor:
+Connect first (**Connect** in the header), then use the **Device** section on the right of the
+page:
 
 - **Upload to device:** shows a progress bar (you can cancel) and verifies the upload by
   reading it back. With **Also push idle settings on upload** ticked (the default), the three
@@ -455,14 +551,15 @@ Details of the file format and timing: [ANIMATION.md](ANIMATION.md).
 
 ## Auto-switch rules
 
-![Auto-switch rules](images/autoswitch-rules.png)
+![Auto-switch page](images/autoswitch-page.png)
 
 Auto-switch changes the macropad's profile to match the app you are using. The macropad cannot
 see your apps, so the **configurator does the watching**: it has to be running, connected, and
 have auto-switch turned on.
 
-1. Open **Tools → Auto-switch…**.
-2. Add rules. Each rule has:
+1. Open the **Auto-switch** page (`Ctrl+4`, or **Tools → Auto-switch rules**).
+2. Add rules (**Add rule**; with no rules yet the page shows the same button in the middle).
+   Each rule has:
    - **profile_id:** the profile to switch to;
    - **process:** comma-separated names, matched **case-insensitively as substrings** of the
      program's file name, e.g. `code` matches `Code.exe`;
@@ -473,8 +570,9 @@ have auto-switch turned on.
 3. Set the **Poll interval** (default 750 ms; it is limited to about 100–10000 ms) and an
    optional **Fallback profile** for when no rule matches. Without a fallback, the macropad
    stays on its current profile.
-4. **Save**, then connect (**Device → Connect / Get device info**) and tick **Device →
-   Auto-switch enabled**. The status bar shows, for example, `Auto-switch: coding (Code)`.
+4. **Save** (or `Ctrl+S`), then connect and turn auto-switch on with **Device → Auto-switch
+   enabled** or the **Auto-switch** button on the Device page. The status bar shows, for
+   example, `Auto-switch: coding (Code)`, and the breadcrumb says whether it is on.
 
 Rules are checked **top to bottom, and the first match wins**.
 
@@ -506,23 +604,33 @@ folder, release builds), `MACROPAD_PROFILES_DIR`, `MACROPAD_MACROS_PATH`,
 
 ## Backing up and restoring
 
-Your files on the computer are the master copy. The configurator has no "download all profiles
-from the device" command, so back up the **data folder** above.
+There are two kinds of backup, and you probably want both.
 
-**Back up:** close the configurator and copy the whole data folder (profiles, macros,
-auto-switch rules, animation projects) somewhere safe. To also capture the animation that is
-on the device, open **Tools → Idle animation… → Read from device** and **Save as…**.
+**Device backup (what is on the macropad).** On the **Device** page, **Back up device…** (also
+in the **Device** menu and the command palette) reads all five profile slots, the five macro
+slots, the active slot and the idle settings from the macropad and writes them to one
+`*.mpbackup.json` file. It needs firmware 0.23 or newer (idle settings: 0.25).
+**Restore backup…** checks the file first, asks for confirmation, then uploads everything back
+to the same or another macropad, sets the active slot and saves it all to flash. The animation
+frames are not part of this file; keep your `.mpanim.json` project, or use **Read from device**
+and **Save as…** on the Idle page.
 
-**Restore onto the same or a new macropad:**
+![Device page](images/device-page.png)
 
-1. Copy the folder back and start the configurator.
-2. **Device → Connect / Get device info**.
-3. For each profile you want on the device: select it, then **Device → Upload profile to
-   device…** into its slot (0–4).
-4. **Device → Upload macros to device…**.
-5. **Tools → Idle animation…**: **Open…** your project, then **Upload to device** (with idle
-   settings).
-6. Optionally, **Device → Save device state** so the current active slot is saved as well.
+**Your files (what you edit).** The files on your computer are the master copy for editing.
+Close the configurator and copy the whole [data folder](#where-your-data-lives) (profiles,
+macros, auto-switch rules, animation projects) somewhere safe. **Settings** shows the exact
+paths, with a button to open each folder.
+
+**Rebuilding a macropad from your files** (when you have no device backup):
+
+1. Copy the folder back and start the configurator, then **Connect**.
+2. For each profile you want on the device: select it on the Keys page, then **Upload** into
+   its slot (0–4).
+3. **Upload macros** on the Macros page.
+4. On the Idle page: **Open…** your project, then **Upload to device** (with idle settings).
+5. Optionally, **Device → Save device state**. The active slot is also saved by itself once it
+   has been stable for 4 s.
 
 **Factory reset:** the firmware has no reset command. To wipe everything, erase the flash with
 Raspberry Pi's `flash_nuke.uf2` (copy it to `RPI-RP2` like any UF2), then flash the macropad UF2
@@ -535,7 +643,11 @@ the built-in starfield.
 2. Hold **BOOT** while plugging in (or hold **BOOT**, tap **RESET**), then copy the UF2 to
    `RPI-RP2`.
 3. Update the configurator to the matching version (same minor number: firmware `0.N` ↔
-   configurator `0.N.x`), then confirm with **Device → Connect / Get device info**.
+   configurator `0.N.x`), then confirm with **Connect**. The **Firmware update** section of the
+   Device page says whether the connected firmware matches and links to the releases.
+
+Taking a **device backup** first (see [Backing up and restoring](#backing-up-and-restoring)) is
+cheap insurance, although a firmware update keeps your data.
 
 Profiles, macros, idle settings and the uploaded animation are kept across firmware updates. A
 UF2 only rewrites the program area, and the data sits at the end of the 2 MiB flash
@@ -549,8 +661,8 @@ The release app (`MacropadConfigurator`, `MacropadConfigurator.exe`, or the bina
 
 | Option | What it does |
 |--------|--------------|
-| `--version` | Prints e.g. `Macropad Configurator 0.25.0 (frozen; expects firmware 0.25, protocol v1)` and exits. |
-| `--self-test [--report FILE]` | Headless check of the installation: imports, protocol framing, bundled data, the hidapi binding, the test suite against a simulated device, and the main window and animation editor on Qt's offscreen platform. Exits 0 when everything passes (`SELF-TEST OK: 8/8 checks passed`), 1 otherwise. With `--report`, the output is also written to FILE. |
+| `--version` | Prints e.g. `Macropad Configurator 0.26.0 (frozen; expects firmware 0.26, protocol v1)` and exits. |
+| `--self-test [--report FILE]` | Headless check of the installation: imports, protocol framing, bundled data, the hidapi binding, the test suite against a simulated device, and the main window with every page on Qt's offscreen platform. Exits 0 when everything passes (`SELF-TEST OK: 8/8 checks passed`), 1 otherwise. With `--report`, the output is also written to FILE. |
 | `--hil ARGS` | Runs the hardware test tool with ARGS (see `--hil --help`). This is the same as `configurator/scripts/hil_test.py`. |
 
 Useful hardware test commands:
