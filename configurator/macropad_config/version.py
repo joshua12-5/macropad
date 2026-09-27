@@ -1,4 +1,4 @@
-"""Shared host version and compatibility helpers (Step 21).
+"""Shared host version and compatibility helpers (Step 22).
 
 Keep in sync with firmware ``FW_VERSION_*`` / ``CFG_PROTO_VERSION`` and the
 matrix in ``docs/VERSIONING.md``.
@@ -9,14 +9,14 @@ from __future__ import annotations
 from typing import Optional, Tuple
 
 # Host configurator semver (About / Connect display).
-HOST_APP_VERSION = "0.21.0"
+HOST_APP_VERSION = "0.22.0"
 
 # Must match firmware CFG_PROTO_VERSION and frames.CFG_PROTO_VERSION.
 PROTO_VER = 1
 
 # Expected firmware product revision (informational + feature gates).
 FW_VERSION_MAJOR_EXPECTED = 0
-FW_VERSION_MINOR_CURRENT = 21
+FW_VERSION_MINOR_CURRENT = 22
 
 # Minimum FW_VERSION_MINOR (same major) for Device menu features.
 MIN_FW_MINOR_UPLOAD = 16          # profile BEGIN/DATA/COMMIT

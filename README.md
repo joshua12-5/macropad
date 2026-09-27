@@ -1,6 +1,7 @@
 # RP2040 Programmable Macropad
 
 [![Host smokes](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml/badge.svg)](https://github.com/joshua12-5/macropad/actions/workflows/smokes.yml)
+[![Firmware build](https://github.com/joshua12-5/macropad/actions/workflows/firmware.yml/badge.svg)](https://github.com/joshua12-5/macropad/actions/workflows/firmware.yml)
 
 Commercial-style 12-key macropad on **Waveshare RP2040-Zero**: matrix + EC11 encoder + SSD1306 OLED, Pico SDK / TinyUSB firmware, and a Python/PySide6 desktop configurator.
 
@@ -38,13 +39,18 @@ OLED                         ENCODER
 | 19 | Architecture hardening / polish | Done |
 | 20 | Testing / versioning polish | Done |
 | 21 | Changelog / CI smokes / release polish | Done |
+| 22 | Verified firmware build + CI UF2 artifact | Done |
 
-**Step 21** adds release polish: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog,
+**Step 22** is the first real firmware compile: Pico SDK **2.1.1**,
+`PICO_BOARD=waveshare_rp2040_zero`, zero warnings under `-Wall -Wextra`, and a
+new GitHub Actions [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)
+that builds the firmware and uploads `macropad_step22.uf2` as the
+`macropad-firmware-uf2` artifact. Versions: firmware **0.22**, host **0.22.0**,
+UF2 `macropad_step22`, `bcdDevice` 0x0116. **Next: Step 23.**
+
+**Step 21** (kept) adds release polish: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog,
 Steps 14–21), GitHub Actions [`.github/workflows/smokes.yml`](.github/workflows/smokes.yml)
-(**host smokes only** — no Pico SDK / firmware build), and
-[`docs/RELEASE.md`](docs/RELEASE.md). Versions: firmware **0.21**, host
-**0.21.0**, UF2 `macropad_step21`, `bcdDevice` 0x0115. Steps **14–21** are
-complete. **Next: Step 22** more polish/testing in the 18–24 block.
+(host smokes), and [`docs/RELEASE.md`](docs/RELEASE.md).
 
 **Step 20** (kept): [`docs/VERSIONING.md`](docs/VERSIONING.md)
 (fw major.minor vs `proto_ver` vs JSON schemas), host
@@ -108,7 +114,8 @@ Loads `profiles/*.json` (override with `MACROPAD_PROFILES_DIR`) and `macros/libr
 foreground app (needs a prior Connect). Status bar: `Auto-switch: coding (Code)`.
 
 Headless checks (or all at once). The same suite runs in CI on push/PR to
-`main` (`.github/workflows/smokes.yml`) — **host smokes only**, no Pico SDK:
+`main` (`.github/workflows/smokes.yml`); firmware is built separately by
+`.github/workflows/firmware.yml`:
 
 ```bash
 python scripts/run_all_smokes.py
@@ -128,7 +135,26 @@ python scripts/smoke_autoswitch.py
 
 See [`firmware/README.md`](firmware/README.md).
 
-Build requires [Pico SDK](https://github.com/raspberrypi/pico-sdk). Use `PICO_BOARD=pico` for RP2040-Zero bring-up (same GPIO numbers). Flash target: `macropad_step21.uf2`.
+Verified with [Pico SDK](https://github.com/raspberrypi/pico-sdk) tag **2.1.1** and
+`PICO_BOARD=waveshare_rp2040_zero` (`PICO_BOARD=pico` also builds). Flash target:
+`macropad_step22.uf2` — or grab the `macropad-firmware-uf2` artifact from the latest
+`Firmware build` Actions run.
+
+```bash
+# Toolchain (Debian/Ubuntu):
+sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi \
+    libstdc++-arm-none-eabi-newlib cmake ninja-build build-essential python3
+
+# Pico SDK — pinned tag 2.1.1 (TinyUSB submodule required):
+git clone --depth 1 --branch 2.1.1 https://github.com/raspberrypi/pico-sdk.git
+git -C pico-sdk submodule update --init --depth 1
+export PICO_SDK_PATH=$PWD/pico-sdk
+
+cd firmware
+cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
+ninja -C build
+# → build/macropad_step22.uf2 (hold BOOT, plug in, copy to RPI-RP2)
+```
 
 **On-device profile select:** long-press encoder (~800 ms) → OLED menu; rotate to highlight; short-press to confirm; long-press or ~9 s idle to cancel.
 

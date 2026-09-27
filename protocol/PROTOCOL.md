@@ -5,7 +5,7 @@ Step 16 — flash-backed profile slots + chunked **profile upload**.
 Step 17 — flash-backed **macro bank** sync + light protocol polish.
 Step 18 — host **auto app-switch** via `SET_ACTIVE`.
 Step 19 — architecture hardening: debounced active persist + `SAVE_ALL`.
-Step 21 — release notes + CI (`FW_VERSION` 0.21, host 0.21.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
+Step 22 — verified firmware build + CI UF2 (`FW_VERSION` 0.22, host 0.22.0). See [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 **Steps 14–20 are complete.**
 
 ## USB topology
@@ -209,3 +209,4 @@ UART: `cfg ping`, `cfg info`, `cfg echo`, `cfg nak`, `cfg profile …`,
 - Full profile/macro download streaming
 - Step 20 testing / versioning polish
 - Step 21 changelog, host-smokes CI, release polish
+- Step 22 verified firmware build (SDK 2.1.1) + CI UF2 artifact

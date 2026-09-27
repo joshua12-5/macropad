@@ -1,17 +1,24 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(PICO_BOARD pico CACHE STRING "Board type")
+# Step 22: verified with Pico SDK 2.1.1 + PICO_BOARD=waveshare_rp2040_zero
+# (2 MiB flash, W25Q080 boot2 @ clkdiv 4). PICO_BOARD=pico also builds.
+set(PICO_BOARD waveshare_rp2040_zero CACHE STRING "Board type")
 
 include(pico_sdk_import.cmake)
 
-project(macropad_step21 C CXX ASM)
+project(macropad_step22 C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
-add_executable(macropad_step21
+set(MACROPAD_TESTED_SDK "2.1.1")
+if (NOT PICO_SDK_VERSION_STRING VERSION_EQUAL MACROPAD_TESTED_SDK)
+    message(WARNING "Pico SDK ${PICO_SDK_VERSION_STRING}; firmware verified with ${MACROPAD_TESTED_SDK}")
+endif()
+
+add_executable(macropad_step22
     src/main.c
     src/matrix.c
     src/encoder.c
@@ -30,21 +37,24 @@ add_executable(macropad_step21
     src/macros.c
 )
 
-target_include_directories(macropad_step21 PRIVATE
+# Step 22: warnings on for our sources (SDK/TinyUSB sources keep their own flags).
+target_compile_options(macropad_step22 PRIVATE -Wall -Wextra)
+
+target_include_directories(macropad_step22 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
-target_link_libraries(macropad_step21
+target_link_libraries(macropad_step22
     pico_stdlib
     hardware_gpio
     hardware_flash
     hardware_sync
     hardware_i2c
+    pico_flash
     tinyusb_device
-    tinyusb_board
 )
 
-pico_enable_stdio_uart(macropad_step21 1)
-pico_enable_stdio_usb(macropad_step21 0)
+pico_enable_stdio_uart(macropad_step22 1)
+pico_enable_stdio_usb(macropad_step22 0)
 
-pico_add_extra_outputs(macropad_step21)
+pico_add_extra_outputs(macropad_step22)

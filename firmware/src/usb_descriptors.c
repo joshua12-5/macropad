@@ -6,7 +6,7 @@
 
 #define USB_VID   0x2E8Au
 #define USB_PID   0xC001u
-#define USB_BCD   0x0115u  /* bcdDevice 1.21 (Step 21) */
+#define USB_BCD   0x0116u  /* bcdDevice 1.22 (Step 22) */
 
 tusb_desc_device_t const desc_device = {
     .bLength            = sizeof(tusb_desc_device_t),

@@ -1,19 +1,21 @@
-# Versioning matrix (Step 21)
+# Versioning matrix (Step 22)
 
 How firmware, wire protocol, and host JSON schemas relate — and what must match.
 
-## Matrix (shipping Step 21)
+## Matrix (shipping Step 22)
 
 | Axis | Constant / field | Current | Where |
 |------|------------------|---------|--------|
-| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.21** | `firmware/include/config_protocol.h` → GET_INFO |
+| Firmware | `FW_VERSION_MAJOR`.`FW_VERSION_MINOR` | **0.22** | `firmware/include/config_protocol.h` → GET_INFO |
 | Wire protocol | `CFG_PROTO_VERSION` / `proto_ver` | **1** | frame byte + GET_INFO; host `macropad_config/version.py` `PROTO_VER` |
-| Host app | `HOST_APP_VERSION` | **0.21.0** | `configurator/macropad_config/version.py` (+ About) |
+| Host app | `HOST_APP_VERSION` | **0.22.0** | `configurator/macropad_config/version.py` (+ About) |
 | Profile JSON / blob | `schema_version` | **1** | `profiles/*.json`, `PROFILE_BLOB`, host `SCHEMA_VERSION` |
 | Macro library / blob | `schema_version` | **1** | `macros/library.json`, `MACRO_BLOB`, `MACRO_SCHEMA_VERSION` |
 | Autoswitch rules | `schema_version` | **1** | `autoswitch/rules.json`, host `rules.SCHEMA_VERSION` |
-| USB `bcdDevice` | `USB_BCD` | **0x0115** (1.21) | `firmware/src/usb_descriptors.c` |
-| CMake / UF2 | target name | `macropad_step21` | `firmware/CMakeLists.txt` |
+| USB `bcdDevice` | `USB_BCD` | **0x0116** (1.22) | `firmware/src/usb_descriptors.c` |
+| CMake / UF2 | target name | `macropad_step22` | `firmware/CMakeLists.txt` |
+| Pico SDK | git tag | **2.1.1** (+ submodules) | `firmware/README.md`, `.github/workflows/firmware.yml` `PICO_SDK_TAG` |
+| Board | `PICO_BOARD` | **waveshare_rp2040_zero** | `firmware/CMakeLists.txt` default, CI env |
 
 Firmware **major.minor** is a product revision (shown in Connect / GET_INFO).
 It is **not** the same number as `proto_ver` or JSON `schema_version`.
@@ -74,5 +76,9 @@ Release process: [`RELEASE.md`](RELEASE.md). Changelog: [`../CHANGELOG.md`](../C
 ## Smoke / hardware / CI
 
 - Headless: `configurator/scripts/smoke_version.py` (via `run_all_smokes.py`).
-- CI: [`.github/workflows/smokes.yml`](../.github/workflows/smokes.yml) runs **host smokes only** (no Pico SDK).
+- CI: [`.github/workflows/smokes.yml`](../.github/workflows/smokes.yml) runs host smokes;
+  [`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) builds the firmware with Pico SDK
+  **2.1.1** / `PICO_BOARD=waveshare_rp2040_zero` and uploads the UF2 artifact (`macropad-firmware-uf2`).
+- Bumping the SDK: change `PICO_SDK_TAG` in `firmware.yml` (the cache key follows it),
+  `MACROPAD_TESTED_SDK` in `firmware/CMakeLists.txt`, and `firmware/README.md` together.
 - On device: [`HARDWARE_TEST.md`](HARDWARE_TEST.md).

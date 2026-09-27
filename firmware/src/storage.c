@@ -5,16 +5,20 @@
 #include "profiles.h"
 
 #include "hardware/flash.h"
-#include "hardware/sync.h"
+#include "pico/flash.h"
 #include "pico/stdlib.h"
 
 #include <stdio.h>
 #include <string.h>
 
 /*
- * Last 4 KiB sector. PICO_FLASH_SIZE_BYTES is typically 2 MiB on RP2040-Zero
- * (Waveshare), so offset = 0x1FF000. Absolute XIP address = XIP_BASE + offset.
- * Do not call erase/program from an ISR; interrupts are masked for the write.
+ * Last 4 KiB sector. PICO_FLASH_SIZE_BYTES is 2 MiB on RP2040-Zero
+ * (PICO_BOARD=waveshare_rp2040_zero), so offset = 0x1FF000.
+ * Absolute XIP address = XIP_BASE + offset.
+ * Do not call erase/program from an ISR. Step 22: the erase+program runs via
+ * flash_safe_execute() (pico_flash): on this single-core build it masks IRQs
+ * exactly like the old save_and_disable_interrupts() path, and it will lock
+ * out core 1 safely (or refuse) if multicore is ever linked.
  */
 #ifndef PICO_FLASH_SIZE_BYTES
 #define PICO_FLASH_SIZE_BYTES (2u * 1024u * 1024u)
@@ -179,15 +183,28 @@ static bool build_image(uint8_t *out, uint8_t active_slot) {
     return true;
 }
 
-static bool program_image(const uint8_t *image) {
-    static uint8_t sector[FLASH_SECTOR_SIZE];
-    memset(sector, 0xFF, sizeof(sector));
-    memcpy(sector, image, STORAGE_IMAGE_SIZE);
+/*
+ * Step 22: one static sector buffer holds the image being written (image at
+ * the front, 0xFF padding after). This used to be a 1.5 KiB stack array in
+ * storage_save_all(), which pushed the USB-callback → COMMIT → save path past
+ * the 2 KiB core-0 stack budget.
+ */
+static uint8_t g_sector_buf[FLASH_SECTOR_SIZE];
 
-    uint32_t ints = save_and_disable_interrupts();
+static void flash_write_sector_cb(void *param) {
+    const uint8_t *sector = (const uint8_t *)param;
     flash_range_erase(STORAGE_FLASH_OFFSET, FLASH_SECTOR_SIZE);
     flash_range_program(STORAGE_FLASH_OFFSET, sector, FLASH_SECTOR_SIZE);
-    restore_interrupts(ints);
+}
+
+static bool program_image(uint8_t *sector) {
+    memset(&sector[STORAGE_IMAGE_SIZE], 0xFF, FLASH_SECTOR_SIZE - STORAGE_IMAGE_SIZE);
+
+    int rc = flash_safe_execute(flash_write_sector_cb, sector, 100u);
+    if (rc != PICO_OK) {
+        printf("stor flash_safe_execute rc=%d\n", rc);
+        return false;
+    }
 
     return image_valid_v2(flash_image());
 }
@@ -232,7 +249,7 @@ bool storage_save_all(void) {
     /* Any explicit rewrite supersedes a pending debounced active persist. */
     g_active_persist_pending = false;
 
-    uint8_t image[STORAGE_IMAGE_SIZE];
+    uint8_t *image = g_sector_buf;
     if (!build_image(image, profiles_active_index())) {
         printf("stor save fail\n");
         return false;

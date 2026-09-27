@@ -11,7 +11,7 @@ Per [`VERSIONING.md`](VERSIONING.md):
 | `FW_VERSION_MINOR` | *N* (`firmware/include/config_protocol.h`) |
 | Host `HOST_APP_VERSION` | `0.N.0` (`configurator/macropad_config/version.py`, `__init__.py`) |
 | CMake / UF2 target | `macropad_stepN` (`firmware/CMakeLists.txt`) |
-| USB `bcdDevice` | BCD `1.N` (e.g. Step 21 → `0x0115`) in `usb_descriptors.c` |
+| USB `bcdDevice` | BCD `1.N` (e.g. Step 22 → `0x0116`) in `usb_descriptors.c` |
 | Docs / smokes | Matrix, READMEs, `smoke_version.py` expects |
 
 Keep `CFG_PROTO_VERSION` / JSON `schema_version` at **1** unless intentionally breaking.
@@ -30,18 +30,21 @@ QT_QPA_PLATFORM=offscreen python scripts/run_all_smokes.py
 ```
 
 CI (`.github/workflows/smokes.yml`) runs the same on push/PR to `main`.
-**CI does not build firmware** (Pico SDK not required).
+Since Step 22, `.github/workflows/firmware.yml` also builds the firmware (Pico SDK 2.1.1,
+`PICO_BOARD=waveshare_rp2040_zero`) and uploads the UF2 as the `macropad-firmware-uf2` artifact.
 
-## 4. Optional firmware build + flash
+## 4. Firmware build + flash
 
-If `PICO_SDK_PATH` is set:
+Local build (see [`../firmware/README.md`](../firmware/README.md)), or download the UF2 artifact
+from the green `Firmware build` run for the release commit:
 
 ```bash
-cd firmware && mkdir -p build && cd build
-cmake -DPICO_BOARD=pico ..
-make -j$(nproc)
+export PICO_SDK_PATH=/path/to/pico-sdk   # tag 2.1.1, submodules initialised
+cd firmware
+cmake -B build -G Ninja -DPICO_BOARD=waveshare_rp2040_zero
+ninja -C build
 # Flash target UF2 name:
-#   macropad_stepN.uf2
+#   build/macropad_stepN.uf2
 ```
 
 Copy the UF2 to the Pico USB mass-storage bootloader. Confirm Connect shows fw `0.N` / proto v1.

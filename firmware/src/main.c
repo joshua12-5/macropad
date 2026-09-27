@@ -25,7 +25,7 @@ int main(void) {
     stdio_uart_init_full(UART_ID, DEBUG_UART_BAUD, PIN_UART_TX, PIN_UART_RX);
     sleep_ms(50);
 
-    printf("\n=== Macropad Step 19: Architecture Hardening ===\n");
+    printf("\n=== Macropad Step 22: verified firmware build ===\n");
 
     profiles_init();
     macros_init();   /* factory defaults into RAM before flash may override */

@@ -1,0 +1,77 @@
+# Firmware build (Step 22): RP2040-Zero UF2 via Pico SDK + TinyUSB.
+# Pinned SDK tag / board must match firmware/README.md and docs/VERSIONING.md.
+name: Firmware build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PICO_SDK_TAG: "2.1.1"
+  PICO_BOARD: waveshare_rp2040_zero
+  PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: macropad
+
+      - name: Install Arm toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            cmake ninja-build build-essential python3
+          arm-none-eabi-gcc --version | head -1
+
+      - name: Cache Pico SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: pico-sdk
+          key: pico-sdk-${{ env.PICO_SDK_TAG }}-submodules-v1
+
+      - name: Checkout Pico SDK ${{ env.PICO_SDK_TAG }} (+ submodules)
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$PICO_SDK_TAG" \
+            https://github.com/raspberrypi/pico-sdk.git pico-sdk
+          git -C pico-sdk submodule update --init --depth 1
+
+      - name: Configure
+        working-directory: macropad/firmware
+        run: cmake -B build -G Ninja -DPICO_BOARD="$PICO_BOARD"
+
+      - name: Build
+        working-directory: macropad/firmware
+        run: ninja -C build
+
+      - name: Size + storage-offset check
+        working-directory: macropad/firmware
+        run: |
+          set -euo pipefail
+          elf=$(ls build/macropad_step*.elf)
+          uf2=$(ls build/macropad_step*.uf2)
+          arm-none-eabi-size "$elf"
+          ls -l "$uf2"
+          end=$(arm-none-eabi-nm "$elf" | awk '$3=="__flash_binary_end"{print $1}')
+          # Storage = last 4 KiB sector of 2 MiB flash: XIP_BASE + 0x1FF000.
+          storage=$((0x10000000 + 0x1FF000))
+          echo "flash_binary_end=0x$end storage=0x$(printf '%X' $storage)"
+          if [ $((16#$end)) -ge $storage ]; then
+            echo "::error::firmware image overlaps storage sector"; exit 1
+          fi
+
+      - name: Upload UF2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macropad-firmware-uf2
+          path: macropad/firmware/build/macropad_step*.uf2
+          if-no-files-found: error

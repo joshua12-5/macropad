@@ -104,4 +104,11 @@ Flash wear policy: never erase on every auto-switch. Debounce coalesces rapid `S
 - Host `HOST_APP_VERSION` **0.21.0**; matrix in [`VERSIONING.md`](VERSIONING.md)
 - Host smokes CI + [`CHANGELOG.md`](../CHANGELOG.md) / [`RELEASE.md`](RELEASE.md)
 - Connect proto_ver guard + fw feature gates; `smoke_version.py`; [`HARDWARE_TEST.md`](HARDWARE_TEST.md)
-- Next: **Step 21** more polish/testing (release notes / CI stub)
+
+## Step 22 verified build
+
+- First real compile: Pico SDK **2.1.1**, `PICO_BOARD=waveshare_rp2040_zero`, zero warnings (`-Wall -Wextra`)
+- `FW_VERSION_MINOR = 22`, target `macropad_step22`, `bcdDevice` 0x0116; host **0.22.0**
+- Storage erase/program via `flash_safe_execute()`; image staged in static sector buffer (stack fix)
+- CI [`firmware.yml`](../.github/workflows/firmware.yml) builds + uploads the UF2 artifact
+- Next: **Step 23** more polish/testing in the 18–24 block

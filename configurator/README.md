@@ -2,7 +2,7 @@
 
 PySide6 desktop app for editing host-side profile JSON, the macro library (schema v1), and talking to the device over the **USB config protocol** (Steps 15–20: framing, uploads, autoswitch, SAVE_ALL, versioning).
 
-**Steps 10–20** cover the configurator through testing / versioning polish. **Next: Step 21** more polish/testing (e.g. release notes or CI stub).
+**Steps 10–22** cover the configurator through versioning polish, CI, and (Step 22) a verified firmware build. **Next: Step 23** more polish/testing.
 Architecture: [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). Versions: [`../docs/VERSIONING.md`](../docs/VERSIONING.md).
 
 ## Run
@@ -62,7 +62,7 @@ Id rules: non-empty, unique among loaded profiles, pattern `^[a-z][a-z0-9_]*$`.
 | **Save device state** | **Device → Save device state** | `SAVE_ALL` (`0x32`) when connected — immediate flash rewrite. |
 
 Connect / Get info shows **host app**, **fw major.minor**, and **proto_ver**. If `proto_ver` ≠ host `PROTO_VER`, a **warning** dialog appears and upload / autoswitch / SAVE_ALL stay disabled. Firmware too old for a feature disables that action with a tooltip (see `macropad_config/version.py`).
-Help → About lists host **0.21.0**, proto, expected fw, schema versions.
+Help → About lists host **0.22.0**, proto, expected fw, schema versions.
 Tools/Help tip points at `docs/ARCHITECTURE.md` / `docs/VERSIONING.md`.
 
 Protocol details: [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
