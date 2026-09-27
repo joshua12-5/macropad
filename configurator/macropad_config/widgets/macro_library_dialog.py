@@ -1,8 +1,9 @@
-"""Modal dialog for editing the host macro library."""
+"""Macro library editor: the Macros page of the main window (``embedded=True``)
+or a stand-alone dialog (tests, scripts)."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -18,7 +19,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QPushButton,
     QSpinBox,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -37,7 +40,16 @@ from ..models.macro import (
 )
 from ..models.schema import SchemaError
 from ..ui import theme
-from ..ui.widgets import dialog_margins, divider, icon_button, label, polish_table, style_form
+from ..ui.widgets import (
+    EmptyState,
+    dialog_margins,
+    divider,
+    icon_button,
+    label,
+    polish_table,
+    style_form,
+    with_shortcut,
+)
 from .action_editor import COMMON_KEYS, MOD_LABELS, TEXT_LABELS
 
 # Consumer usage presets (label, value).
@@ -54,13 +66,28 @@ CONSUMER_PRESETS: list[tuple[str, int]] = [
 
 
 class MacroLibraryDialog(QDialog):
-    """Edit macros/library.json: list + step table + Save/Cancel."""
+    """Edit macros/library.json: list + step table + Save/Cancel.
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    With ``embedded=True`` it is a plain page widget: Save keeps it open,
+    Cancel becomes Revert (reload from disk), Esc / Enter do nothing special,
+    and :pyattr:`dirtyChanged` / :pyattr:`saved` report state to the window.
+    """
+
+    dirtyChanged = Signal(bool)
+    saved = Signal()
+    currentMacroChanged = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None, *, embedded: bool = False) -> None:
         super().__init__(parent)
+        self._embedded = embedded
+        self.__dirty = False
         self.setWindowTitle("Macro library")
-        self.resize(900, 560)
-        self.setModal(True)
+        if embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
+            self.setObjectName("macrosPage")
+        else:
+            self.resize(900, 560)
+            self.setModal(True)
 
         self._path = default_macros_path()
         self._library: MacroLibrary | None = None
@@ -74,9 +101,30 @@ class MacroLibraryDialog(QDialog):
         self._build_ui()
         self._load_or_empty()
 
+    # --- dirty state -----------------------------------------------------
+    @property
+    def _dirty(self) -> bool:
+        return self.__dirty
+
+    @_dirty.setter
+    def _dirty(self, value: bool) -> None:
+        value = bool(value)
+        if value != self.__dirty:
+            self.__dirty = value
+            self.dirtyChanged.emit(value)
+
+    def is_dirty(self) -> bool:
+        return self.__dirty
+
+    def current_macro_name(self) -> str:
+        m = self._current_macro()
+        return m.name if m is not None else ""
+
     def _build_ui(self) -> None:
         S = theme.SPACE
         root = dialog_margins(QVBoxLayout(self))
+        if self._embedded:
+            root.setContentsMargins(S["lg"], S["md"], S["lg"], S["md"])
 
         body = QHBoxLayout()
         body.setSpacing(S["lg"])
@@ -240,7 +288,21 @@ class MacroLibraryDialog(QDialog):
             "consumer": consumer_wrap,
         }
 
-        body.addLayout(right, stretch=3)
+        editor = QWidget()
+        editor.setLayout(right)
+        right.setContentsMargins(0, 0, 0, 0)
+        self._empty = EmptyState(
+            "list-ordered",
+            "No macros yet",
+            "A macro is a short sequence of taps, delays, text snippets and media keys. "
+            "Create one here, then assign it to a key with the MACRO action.",
+            action_text="New macro",
+        )
+        self._empty.activated.connect(self._new_macro)
+        self._right_stack = QStackedWidget()
+        self._right_stack.addWidget(editor)
+        self._right_stack.addWidget(self._empty)
+        body.addWidget(self._right_stack, stretch=3)
         root.addLayout(body, stretch=1)
 
         self._error = QLabel("")
@@ -255,12 +317,26 @@ class MacroLibraryDialog(QDialog):
         path_label.setToolTip(f"Macro library file: {self._path}")
         path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         footer.addWidget(path_label, 1)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._on_save)
-        buttons.rejected.connect(self.reject)
-        footer.addWidget(buttons)
+        if self._embedded:
+            self._revert_btn = QPushButton("Revert")
+            self._revert_btn.setToolTip("Discard unsaved edits and reload macros/library.json")
+            self._revert_btn.clicked.connect(self.revert)
+            self._save_btn = QPushButton("Save")
+            self._save_btn.setToolTip(with_shortcut("Save the macro library", "Ctrl+S"))
+            theme.set_primary(self._save_btn)
+            self._save_btn.clicked.connect(self._on_save)
+            for b in (self._revert_btn, self._save_btn):
+                b.setAutoDefault(False)
+                footer.addWidget(b)
+            self.dirtyChanged.connect(self._sync_page_buttons)
+            self._sync_page_buttons(False)
+        else:
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+            )
+            buttons.accepted.connect(self._on_save)
+            buttons.rejected.connect(self.reject)
+            footer.addWidget(buttons)
         root.addLayout(footer)
 
         self._set_editor_enabled(False)
@@ -302,11 +378,44 @@ class MacroLibraryDialog(QDialog):
             return
         self._dirty = False
         self._error.hide()
-        if isinstance(self.parent(), QWidget):
-            # Parent MainWindow may refresh ActionEditor labels.
-            pass
-        self.accept()
-        # Store path for callers
+        self.saved.emit()
+        if not self._embedded:
+            self.accept()
+
+    def save(self) -> bool:
+        """Save (page mode / Ctrl+S). Returns True when the library is clean afterwards."""
+        self._on_save()
+        return not self._dirty
+
+    def revert(self, *, confirm: bool = True) -> None:
+        """Reload macros/library.json, discarding edits (asks first when dirty)."""
+        if confirm and self._dirty:
+            reply = QMessageBox.question(
+                self,
+                "Revert macros",
+                "Discard unsaved changes to the macro library and reload it from disk?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Discard:
+                return
+        self._current_id = None
+        self._load_or_empty()
+
+    def _sync_page_buttons(self, dirty: bool) -> None:
+        self._save_btn.setEnabled(dirty)
+        self._revert_btn.setEnabled(dirty)
+
+    # Page mode: never close/hide, and let Esc / Enter reach the focused widget.
+    def done(self, r: int) -> None:
+        if not self._embedded:
+            super().done(r)
+
+    def keyPressEvent(self, ev) -> None:
+        if self._embedded:
+            QWidget.keyPressEvent(self, ev)
+        else:
+            super().keyPressEvent(ev)
 
     def library(self) -> MacroLibrary | None:
         return self._library
@@ -324,6 +433,9 @@ class MacroLibraryDialog(QDialog):
             item.setData(Qt.ItemDataRole.UserRole, macro.id)
             self._list.addItem(item)
         self._list.blockSignals(False)
+        self._right_stack.setCurrentIndex(0 if self._library.macros else 1)
+        if not self._library.macros:
+            self.currentMacroChanged.emit("")
         if keep is not None:
             for row in range(self._list.count()):
                 item = self._list.item(row)
@@ -374,6 +486,7 @@ class MacroLibraryDialog(QDialog):
             self._clear_step_editor()
         self._btn_dup.setEnabled(True)
         self._btn_del.setEnabled(True)
+        self.currentMacroChanged.emit(macro.name)
 
     def _clear_editor(self) -> None:
         self._loading = True
@@ -452,6 +565,7 @@ class MacroLibraryDialog(QDialog):
         item = self._list.item(row)
         if item is not None:
             item.setText(f"{macro.id}: {macro.name}")
+        self.currentMacroChanged.emit(macro.name)
 
     def _sync_name_from_edit(self) -> None:
         macro = self._current_macro()
@@ -714,6 +828,8 @@ class MacroLibraryDialog(QDialog):
         self._table.selectRow(new_idx)
 
     def reject(self) -> None:
+        if self._embedded:
+            return
         if self._dirty:
             reply = QMessageBox.question(
                 self,

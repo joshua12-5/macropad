@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QStyle,
@@ -460,7 +462,10 @@ def _default_device_factory():
 
 
 class AnimationEditorDialog(QDialog):
-    """Idle-animation editor (Tools → Idle animation…)."""
+    """Idle-animation editor: the Idle animation page (``embedded=True``) or a dialog."""
+
+    dirtyChanged = Signal(bool)
+    projectChanged = Signal(str)  # file name ("untitled" when unsaved)
 
     def __init__(
         self,
@@ -468,8 +473,14 @@ class AnimationEditorDialog(QDialog):
         *,
         device_factory: Optional[Callable[[], object]] = None,
         device_info: Optional[dict] = None,
+        embedded: bool = False,
     ) -> None:
         super().__init__(parent)
+        self._embedded = embedded
+        self._dirty = False
+        if embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
+            self.setObjectName("animPage")
         self.setWindowTitle("Idle animation editor")
         self._device_factory = device_factory or _default_device_factory
         self._device_info = device_info
@@ -493,13 +504,68 @@ class AnimationEditorDialog(QDialog):
     # ======================================================================
     # UI
     # ======================================================================
+    @property
+    def dirty(self) -> bool:
+        return self._dirty
+
+    @dirty.setter
+    def dirty(self, value: bool) -> None:
+        value = bool(value)
+        if value != self._dirty:
+            self._dirty = value
+            self.dirtyChanged.emit(value)
+
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def project_name(self) -> str:
+        return self.path.name if self.path else "untitled"
+
+    def set_device_info(self, info: Optional[dict]) -> None:
+        """Latest GET_INFO from the main window (device actions still re-check on use)."""
+        self._device_info = info
+        if info and not app_version.fw_supports_anim(info.get("fw_major"), info.get("fw_minor")):
+            self.dev_status.setText(
+                app_version.feature_disabled_tooltip("Idle animation upload", app_version.MIN_FW_MINOR_ANIM)
+            )
+
+    def _set_zoom(self, z: int) -> None:
+        self._setting_zoom = True
+        try:
+            self.zoom.setValue(int(z))
+        finally:
+            self._setting_zoom = False
+
+    def _on_zoom_changed(self, _z: int) -> None:
+        if not self._setting_zoom:
+            self._zoom_auto = False
+
+    def fit_zoom(self, avail_w: int, avail_h: int) -> None:
+        """Page mode: pick the largest canvas zoom (2–8) that fits *avail* without scrolling."""
+        if not self._zoom_auto:
+            return
+        minh = self.minimumSizeHint()
+        over_w = minh.width() - self._center_layout.minimumSize().width()
+        over_h = minh.height() - self.canvas.height()
+        z = min((avail_w - over_w - 1) // W, (avail_h - over_h - 1) // H)
+        z = max(2, min(8, z))
+        if z != self.zoom.value():
+            self._set_zoom(z)
+
+    def maybe_save(self) -> bool:
+        """Ask to save unsaved edits; False when the user cancels."""
+        return self._maybe_save()
+
     def _build(self) -> None:
         S = theme.SPACE
         root = QVBoxLayout(self)
-        root.setContentsMargins(S["lg"], S["lg"], S["lg"], S["md"])
+        if self._embedded:
+            root.setContentsMargins(S["lg"], S["md"], S["lg"], S["md"])
+        else:
+            root.setContentsMargins(S["lg"], S["lg"], S["lg"], S["md"])
         root.setSpacing(S["md"])
         body = QHBoxLayout()
-        body.setSpacing(S["lg"])
+        body.setSpacing(S["md"] if self._embedded else S["lg"])
         root.addLayout(body, 1)
 
         # ---- frame strip ----------------------------------------------------
@@ -543,8 +609,10 @@ class AnimationEditorDialog(QDialog):
         # ---- canvas + tools --------------------------------------------------
         center = QVBoxLayout()
         center.setSpacing(S["sm"])
+        self._center_layout = center
         tools = QHBoxLayout()
         tools.setSpacing(S["xs"])
+        gap = S["xs"] if self._embedded else S["sm"]
         self.tool_pen = icon_button(
             "pencil", "Draw (P). Right mouse button erases.", text="Pen", checkable=True
         )
@@ -559,24 +627,24 @@ class AnimationEditorDialog(QDialog):
         self.tool_pen.toggled.connect(lambda on: self.canvas.set_draw_mode(on))
         tools.addWidget(self.tool_pen)
         tools.addWidget(self.tool_erase)
-        tools.addSpacing(S["sm"])
+        tools.addSpacing(gap)
         tools.addWidget(label("Brush", "formLabel"))
         self.brush = QSpinBox()
         self.brush.setRange(1, 8)
         self.brush.setSuffix(" px")
         tools.addWidget(self.brush)
-        tools.addSpacing(S["sm"])
+        tools.addSpacing(gap)
         tools.addWidget(divider(vertical=True))
-        tools.addSpacing(S["sm"])
+        tools.addSpacing(gap)
         self.btn_invert = icon_button("contrast", "Invert the frame (I)", text="Invert")
         self.btn_clear = icon_button("x", "Clear the frame", text="Clear")
         self.btn_invert.clicked.connect(self.invert_frame)
         self.btn_clear.clicked.connect(self.clear_frame)
         tools.addWidget(self.btn_invert)
         tools.addWidget(self.btn_clear)
-        tools.addSpacing(S["sm"])
+        tools.addSpacing(gap)
         tools.addWidget(divider(vertical=True))
-        tools.addSpacing(S["sm"])
+        tools.addSpacing(gap)
         tools.addWidget(label("Shift", "formLabel"))
         for name, dx, dy, tip in (
             ("arrow-left", -1, 0, "left"),
@@ -588,6 +656,11 @@ class AnimationEditorDialog(QDialog):
             b.clicked.connect(lambda _=False, a=dx, c=dy: self.shift_frame(a, c))
             tools.addWidget(b)
         tools.addStretch(1)
+        if self._embedded:  # compact tool row as a page (names stay in the tooltips)
+            for b in (self.tool_pen, self.tool_erase, self.btn_invert, self.btn_clear):
+                b.setText("")
+                b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+                b.setProperty("textBeside", False)
         self.btn_undo = icon_button("undo-2", "Undo (Ctrl+Z)")
         self.btn_redo = icon_button("redo-2", "Redo (Ctrl+Y)")
         self.btn_undo.clicked.connect(self.undo)
@@ -626,6 +699,11 @@ class AnimationEditorDialog(QDialog):
         )
         self.brush.valueChanged.connect(self.canvas.set_brush)
         self.zoom.valueChanged.connect(self.canvas.set_zoom)
+        self.zoom.valueChanged.connect(self._on_zoom_changed)
+        self._zoom_auto = self._embedded  # page mode: fit the canvas until the user picks a zoom
+        self._setting_zoom = False
+        if self._embedded:
+            self._set_zoom(4)
         center.addSpacing(S["xs"])
         center.addWidget(self.canvas, 0, Qt.AlignLeft | Qt.AlignTop)
         info_row = QHBoxLayout()
@@ -799,7 +877,18 @@ class AnimationEditorDialog(QDialog):
         rw = QWidget()
         rw.setLayout(right)
         rw.setFixedWidth(W * 2 + 88)
-        body.addWidget(rw)
+        if self._embedded:
+            # As a page the side panel scrolls on its own, so its height never forces the window taller.
+            rscroll = QScrollArea()
+            rscroll.setObjectName("animSidePanel")
+            rscroll.setFrameShape(QFrame.Shape.NoFrame)
+            rscroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            rscroll.setWidgetResizable(True)
+            rscroll.setWidget(rw)
+            rscroll.setFixedWidth(W * 2 + 88 + 12)
+            body.addWidget(rscroll)
+        else:
+            body.addWidget(rw)
 
         # ---- bottom bar -------------------------------------------------------------
         root.addWidget(divider())
@@ -826,17 +915,18 @@ class AnimationEditorDialog(QDialog):
         self.path_label = label("", "caption")
         self.path_label.setMinimumWidth(40)
         bottom.addWidget(self.path_label, 1)
-        close = QPushButton("Close")
-        close.clicked.connect(self.close)
-        bottom.addWidget(close)
+        if not self._embedded:
+            close = QPushButton("Close")
+            close.clicked.connect(self.close)
+            bottom.addWidget(close)
         root.addLayout(bottom)
 
-        # shortcuts
+        # shortcuts (as a page, Ctrl+S is the window's page-aware File → Save)
         for seq, fn in (
             (QKeySequence.Undo, self.undo),
             (QKeySequence.Redo, self.redo),
             (QKeySequence("Ctrl+Y"), self.redo),
-            (QKeySequence.Save, self.save_project),
+            (QKeySequence.Save, None if self._embedded else self.save_project),
             (QKeySequence("Ctrl+D"), self.duplicate_frame),
             (QKeySequence("P"), lambda: self.tool_pen.setChecked(True)),
             (QKeySequence("E"), lambda: self.tool_erase.setChecked(True)),
@@ -845,9 +935,11 @@ class AnimationEditorDialog(QDialog):
             (QKeySequence("]"), lambda: self.select_frame(self.cur + 1)),
             (QKeySequence("Space"), lambda: self.btn_play.toggle()),
         ):
-            QShortcut(seq, self, activated=fn)
+            if fn is not None:
+                QShortcut(seq, self, activated=fn)
         self._preset_changed()
-        self.resize(1320, 880)
+        if not self._embedded:
+            self.resize(1320, 880)
 
     # ======================================================================
     # Model helpers
@@ -896,6 +988,7 @@ class AnimationEditorDialog(QDialog):
     def _update_title(self) -> None:
         name = self.path.name if self.path else "untitled"
         self.setWindowTitle(f"Idle animation editor — {name}{' *' if self.dirty else ''}")
+        self.projectChanged.emit(name)
         self.path_label.setText(str(self.path) if self.path else f"Projects: {animations_dir(create=False)}")
 
     def _snapshot(self) -> tuple:
@@ -1293,6 +1386,10 @@ class AnimationEditorDialog(QDialog):
                 QMessageBox.warning(self, "Export", str(exc))
 
     def closeEvent(self, ev) -> None:
+        if self._embedded:  # the main window asks via maybe_save() on quit
+            self.set_playing(False)
+            ev.accept()
+            return
         if self._maybe_save():
             self.set_playing(False)
             ev.accept()
@@ -1300,7 +1397,23 @@ class AnimationEditorDialog(QDialog):
             ev.ignore()
 
     def reject(self) -> None:  # Esc
-        self.close()
+        if not self._embedded:
+            self.close()
+
+    def done(self, r: int) -> None:
+        if not self._embedded:
+            super().done(r)
+
+    def keyPressEvent(self, ev) -> None:
+        if self._embedded:
+            QWidget.keyPressEvent(self, ev)
+        else:
+            super().keyPressEvent(ev)
+
+    def hideEvent(self, ev) -> None:
+        if self._embedded:  # leaving the page stops the preview
+            self.set_playing(False)
+        super().hideEvent(ev)
 
     # ======================================================================
     # Device

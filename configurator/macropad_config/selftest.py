@@ -51,7 +51,14 @@ MODULES = (
     "macropad_config.widgets.profile_dialog",
     "macropad_config.widgets.profile_list",
     "macropad_config.widgets.anim_editor",
-    "macropad_config.widgets.info_dialogs",
+    "macropad_config.widgets.info_panels",
+    "macropad_config.pages",
+    "macropad_config.pages.common",
+    "macropad_config.pages.nav",
+    "macropad_config.pages.palette",
+    "macropad_config.pages.device_page",
+    "macropad_config.pages.settings_page",
+    "macropad_config.device_backup",
     "macropad_config.ui",
     "macropad_config.ui.theme",
     "macropad_config.ui.widgets",
@@ -212,20 +219,25 @@ def _chk_qt() -> str:
     for _ in range(5):
         app.processEvents()
     title = win.windowTitle()
-    from .widgets.anim_editor import AnimationEditorDialog
+    from .pages.nav import PAGES
 
-    dlg = AnimationEditorDialog(win)
+    for spec in PAGES:  # every page builds and shows
+        win.go_to_page(spec.key)
+        app.processEvents()
+        if win.current_page_key() != spec.key:
+            raise RuntimeError(f"page {spec.key} did not open")
+    win.go_to_page("idle")
+    dlg = win._anim_page
     dlg.load_preset("bounce", confirm=False)
-    dlg.show()
     for _ in range(3):
         app.processEvents()
     anim_frames = len(dlg.frames)
     dlg.dirty = False
-    dlg.close()
     win.close()
     app.processEvents()
     return (
-        f"MainWindow + AnimationEditorDialog ({anim_frames} frames) ok on '{app.platformName()}' ({title}); "
+        f"MainWindow, {len(PAGES)} pages + idle animation page ({anim_frames} frames) ok on "
+        f"'{app.platformName()}' ({title}); "
         f"theme light+dark, {len(icons)} icons"
     )
 

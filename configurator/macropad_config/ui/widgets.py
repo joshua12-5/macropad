@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPainter
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFontMetrics, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFormLayout,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QLayout,
+    QPushButton,
     QTableView,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -170,3 +173,85 @@ class StatusPill(QWidget):
             self._text,
         )
         p.end()
+
+
+def shortcut_text(seq: QKeySequence | str | None) -> str:
+    """Human-readable shortcut for tooltips ("Ctrl+K"), empty when unset."""
+    if seq is None:
+        return ""
+    if isinstance(seq, str):
+        seq = QKeySequence(seq)
+    return seq.toString(QKeySequence.SequenceFormat.NativeText)
+
+
+def with_shortcut(text: str, seq: QKeySequence | str | None) -> str:
+    """Tooltip text with the shortcut appended: ``"Upload  (Ctrl+Shift+U)"``."""
+    sc = shortcut_text(seq)
+    return f"{text}  ({sc})" if sc else text
+
+
+class EmptyState(QWidget):
+    """Centred placeholder for a page with nothing to show yet (icon, title, hint, action)."""
+
+    activated = Signal()
+
+    def __init__(
+        self,
+        icon_name: str,
+        title: str,
+        body: str = "",
+        *,
+        action_text: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("emptyState")
+        self._icon_name = icon_name
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(theme.SPACE["xl"], theme.SPACE["xl"], theme.SPACE["xl"], theme.SPACE["xl"])
+        lay.setSpacing(theme.SPACE["sm"])
+        lay.addStretch(1)
+        self._icon = QLabel()
+        self._icon.setObjectName("emptyStateIcon")
+        self._icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._icon.setFixedSize(56, 56)
+        lay.addWidget(self._icon, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addSpacing(theme.SPACE["xs"])
+        self.title = label(title, "panelTitle")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.title, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.body = label(body, "hintLabel", wrap=True)
+        self.body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Fixed width + a stretch row (not an alignment flag) so the wrapped text gets its
+        # height-for-width and never clips.
+        self.body.setFixedWidth(380)
+        self.body.setVisible(bool(body))
+        body_row = QHBoxLayout()
+        body_row.addStretch(1)
+        body_row.addWidget(self.body)
+        body_row.addStretch(1)
+        lay.addLayout(body_row)
+        self.button: QPushButton | None = None
+        if action_text:
+            lay.addSpacing(theme.SPACE["sm"])
+            self.button = QPushButton(action_text)
+            self.button.setObjectName("emptyStateAction")
+            self.button.setCursor(Qt.CursorShape.PointingHandCursor)
+            theme.set_primary(self.button)
+            self.button.clicked.connect(self.activated.emit)
+            lay.addWidget(self.button, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addStretch(2)
+        theme.manager().changed.connect(lambda _s: self._render_icon())
+        self._render_icon()
+
+    def set_text(self, title: str, body: str = "") -> None:
+        self.title.setText(title)
+        self.body.setText(body)
+        self.body.setVisible(bool(body))
+
+    def _render_icon(self) -> None:
+        try:
+            dpr = self.devicePixelRatioF()
+            self._icon.setPixmap(theme.render_icon(self._icon_name, theme.palette()["text_faint"], 28, dpr))
+        except RuntimeError:  # deleted while the theme changed
+            pass

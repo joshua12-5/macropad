@@ -1,31 +1,39 @@
-"""Main application window."""
+"""Main application window.
+
+Layout: a navigation rail on the left (Keys, Macros, Idle animation,
+Auto-switch, Device, Settings; Ctrl+1…6), a page header (title, breadcrumb
+such as ``CODING › Key 6``, an unsaved-changes badge and the page's main
+actions) and the pages in a stack. Ctrl+K opens the command palette. Modal
+dialogs are only used for confirmations, choices and file pickers.
+"""
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPainter
+from PySide6.QtCore import QRect, QSize, Qt, QUrl
+from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QStyle,
     QStyleOption,
     QTextEdit,
-    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -44,15 +52,40 @@ from .models.profile import (
     suggest_profile_path,
 )
 from .models.schema import SchemaError
+from .pages.device_page import REPO_URL, DevicePage
+from .pages.nav import PAGE_INDEX, PAGES, NavRail, PageHeader
+from .pages.palette import CommandPalette, PaletteItem
+from .pages.settings_page import SettingsPage, open_in_file_manager
 from .ui import theme
-from .ui.widgets import StatusPill, divider, label, style_form
+from .ui.widgets import EmptyState, StatusPill, divider, label, style_form, with_shortcut
 from .widgets.action_editor import INSPECTOR_LABEL_W, ActionEditor
 from .widgets.autoswitch_dialog import AutoswitchDialog
-from .widgets.info_dialogs import AboutDialog, DeviceInfoDialog
 from .widgets.macro_library_dialog import MacroLibraryDialog
-from .widgets.pad_preview import ENCODER_SLOT_LABELS, PadPreview, action_summary
+from .widgets.pad_preview import ENCODER_SLOT_LABELS, ENCODER_SLOTS, PadPreview, action_summary
 from .widgets.profile_dialog import ProfileNameIdDialog
 from .widgets.profile_list import ProfileListWidget
+
+ARCHITECTURE_URL = f"{REPO_URL}/blob/main/docs/ARCHITECTURE.md"
+USER_GUIDE_URL = f"{REPO_URL}/blob/main/docs/USER_GUIDE.md"
+
+
+class _FitScroll(QScrollArea):
+    """Scroll wrapper for a big page; asks it to fit its content to the viewport on resize."""
+
+    def __init__(self, page: QWidget) -> None:
+        super().__init__()
+        self.setObjectName("pageScroll")
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setWidget(page)
+        self._page = page
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        fit = getattr(self._page, "fit_zoom", None)
+        if fit is not None:
+            vp = self.viewport().size()
+            fit(vp.width(), vp.height())
 
 
 class _StatusBar(QStatusBar):
@@ -86,7 +119,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Macropad Configurator")
-        self.resize(1200, 760)
+        self.resize(1280, 800)
         theme.ensure_theme(QApplication.instance())
 
         self._profiles_dir = default_profiles_dir()
@@ -96,39 +129,47 @@ class MainWindow(QMainWindow):
         self._meta_loading = False
         self._applying = False
         self._last_device_info: dict | None = None
-        self._anim_dialog = None
         self._autoswitch = None
         self._autoswitch_connected = False
         self._slot_by_id: dict[str, int] = dict(BUILTIN_SLOTS)
+        # hid module for ConfigDevice / connect_and_info (None = real hidapi; tests inject a mock)
+        self._hid_module = None
+        self._page_actions: list[QAction] = []
 
         self._build_menus()
-        self._build_toolbar()
         self._build_ui()
         self._build_status_bar()
         self.reload_profiles()
+        self.go_to_page("keys")
 
+    # ======================================================================
+    # Menus
+    # ======================================================================
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
 
-        open_act = QAction("Open profiles &folder…", self)
+        open_act = QAction("Open profiles &folder", self)
         open_act.setShortcut(QKeySequence("Ctrl+O"))
         open_act.triggered.connect(self._open_profiles_folder)
         file_menu.addAction(open_act)
+        self._open_folder_act = open_act
 
-        reload_act = QAction("&Reload", self)
+        reload_act = QAction("&Reload profiles", self)
         reload_act.setShortcut(QKeySequence("Ctrl+R"))
         reload_act.triggered.connect(self._reload_with_prompt)
         file_menu.addAction(reload_act)
+        self._reload_act = reload_act
 
         file_menu.addSeparator()
 
         self._save_act = QAction("&Save", self)
         self._save_act.setShortcut(QKeySequence.StandardKey.Save)
-        self._save_act.triggered.connect(self._save_current)
+        self._save_act.setStatusTip("Save the current page (profile, macro library, animation or rules)")
+        self._save_act.triggered.connect(self._save_page)
         self._save_act.setEnabled(False)
         file_menu.addAction(self._save_act)
 
-        self._save_all_act = QAction("Save &All", self)
+        self._save_all_act = QAction("Save &all profiles", self)
         self._save_all_act.setShortcut(QKeySequence("Ctrl+Shift+S"))
         self._save_all_act.triggered.connect(self._save_all)
         self._save_all_act.setEnabled(False)
@@ -159,7 +200,21 @@ class MainWindow(QMainWindow):
 
         profile_menu.addSeparator()
 
-        self._macro_lib_act = QAction("Macro &library…", self)
+        self._next_profile_act = QAction("Ne&xt profile", self)
+        self._next_profile_act.setShortcut(QKeySequence("Ctrl+Tab"))
+        self._next_profile_act.triggered.connect(lambda: self._cycle_profile(1))
+        profile_menu.addAction(self._next_profile_act)
+
+        self._prev_profile_act = QAction("P&revious profile", self)
+        self._prev_profile_act.setShortcut(QKeySequence("Ctrl+Shift+Tab"))
+        self._prev_profile_act.triggered.connect(lambda: self._cycle_profile(-1))
+        profile_menu.addAction(self._prev_profile_act)
+
+        profile_menu.addSeparator()
+
+        self._macro_lib_act = QAction("Macro &library", self)
+        self._macro_lib_act.setShortcut(QKeySequence("Ctrl+2"))
+        self._macro_lib_act.setStatusTip("Go to the Macros page")
         self._macro_lib_act.triggered.connect(self._open_macro_library)
         profile_menu.addAction(self._macro_lib_act)
 
@@ -169,7 +224,7 @@ class MainWindow(QMainWindow):
 
         self._connect_act = QAction("&Connect / Get device info", self)
         self._connect_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
-        self._connect_act.setStatusTip("PING + GET_INFO over vendor HID")
+        self._connect_act.setStatusTip("PING + GET_INFO over vendor HID; shows the result on the Device page")
         self._connect_act.triggered.connect(self._device_connect_info)
         device_menu.addAction(self._connect_act)
 
@@ -195,6 +250,18 @@ class MainWindow(QMainWindow):
 
         device_menu.addSeparator()
 
+        self._backup_act = QAction("&Back up device…", self)
+        self._backup_act.setStatusTip("Read all profile slots, macros and idle settings into a backup file")
+        self._backup_act.triggered.connect(self._device_backup)
+        device_menu.addAction(self._backup_act)
+
+        self._restore_act = QAction("&Restore backup…", self)
+        self._restore_act.setStatusTip("Write a backup file to the connected macropad")
+        self._restore_act.triggered.connect(self._device_restore)
+        device_menu.addAction(self._restore_act)
+
+        device_menu.addSeparator()
+
         self._autoswitch_act = QAction("Auto-switch &enabled", self)
         self._autoswitch_act.setCheckable(True)
         self._autoswitch_act.setChecked(False)
@@ -206,36 +273,72 @@ class MainWindow(QMainWindow):
         device_menu.addAction(self._autoswitch_act)
 
         tools_menu = self.menuBar().addMenu("&Tools")
-        self._autoswitch_dlg_act = QAction("&Auto-switch…", self)
-        self._autoswitch_dlg_act.setStatusTip("Edit auto-switch rules (host → device)")
+        self._autoswitch_dlg_act = QAction("&Auto-switch rules", self)
+        self._autoswitch_dlg_act.setShortcut(QKeySequence("Ctrl+4"))
+        self._autoswitch_dlg_act.setStatusTip("Go to the Auto-switch page (rules: host → device)")
         self._autoswitch_dlg_act.triggered.connect(self._open_autoswitch_dialog)
         tools_menu.addAction(self._autoswitch_dlg_act)
 
         # OLED idle animation editor (authoring works offline; device
         # actions inside are gated on GET_INFO flag bit3 / fw 0.25+).
-        self._anim_act = QAction("&Idle animation…", self)
+        self._anim_act = QAction("&Idle animation", self)
+        self._anim_act.setShortcut(QKeySequence("Ctrl+3"))
         self._anim_act.setStatusTip(
-            "Design OLED idle animations, import GIFs, upload to the macropad (fw 0.25+)"
+            "Go to the Idle animation page: design, import GIFs, upload to the macropad (fw 0.25+)"
         )
         self._anim_act.triggered.connect(self._open_anim_editor)
         tools_menu.addAction(self._anim_act)
 
-        arch_tip_act = QAction("Architecture &overview…", self)
-        arch_tip_act.setStatusTip("Stack layers & data flow: docs/ARCHITECTURE.md in the repo")
-        arch_tip_act.triggered.connect(self._show_architecture_tip)
-        tools_menu.addAction(arch_tip_act)
-
         help_menu = self.menuBar().addMenu("&Help")
-        about_act = QAction("&About", self)
-        about_act.triggered.connect(self._show_about)
-        help_menu.addAction(about_act)
+        self._guide_act = QAction("&User guide", self)
+        self._guide_act.setShortcut(QKeySequence("F1"))
+        self._guide_act.setStatusTip(f"Open {USER_GUIDE_URL}")
+        self._guide_act.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(USER_GUIDE_URL)))
+        help_menu.addAction(self._guide_act)
         arch_help = QAction("&Architecture doc", self)
-        arch_help.setStatusTip("See docs/ARCHITECTURE.md — layers, flash vs RAM, protocol links")
+        arch_help.setStatusTip(f"Open {ARCHITECTURE_URL} (layers, flash vs RAM, protocol)")
         arch_help.triggered.connect(self._show_architecture_tip)
         help_menu.addAction(arch_help)
+        help_menu.addSeparator()
+        self._about_act = QAction("&About", self)
+        self._about_act.setStatusTip("Settings page → About")
+        self._about_act.triggered.connect(self._show_about)
+        help_menu.addAction(self._about_act)
+
+        self._palette_menus = {
+            "File": file_menu,
+            "Profile": profile_menu,
+            "Device": device_menu,
+            "Tools": tools_menu,
+            "Help": help_menu,
+        }
 
     def _build_view_menu(self) -> None:
         view_menu = self.menuBar().addMenu("&View")
+        go_menu = QMenu("&Go to", self)
+        view_menu.addMenu(go_menu)
+        self._go_menu = go_menu
+        self._page_acts: list[QAction] = []
+        for i, spec in enumerate(PAGES):
+            act = QAction(f"&{i + 1}  {spec.title}", self)
+            act.setShortcut(QKeySequence(spec.shortcut))
+            act.setStatusTip(spec.hint)
+            act.setData(spec.key)
+            act.triggered.connect(lambda _c=False, k=spec.key: self.go_to_page(k))
+            go_menu.addAction(act)
+            self._page_acts.append(act)
+        # The Tools / Profile page actions carry Ctrl+2/3/4 in their menus; keep one owner per key.
+        for key in ("macros", "idle", "autoswitch"):
+            self._page_acts[PAGE_INDEX[key]].setShortcut(QKeySequence())
+            self._page_acts[PAGE_INDEX[key]].setText(
+                self._page_acts[PAGE_INDEX[key]].text() + "\t" + PAGES[PAGE_INDEX[key]].shortcut
+            )
+        self._palette_act = QAction("&Command palette…", self)
+        self._palette_act.setShortcut(QKeySequence("Ctrl+K"))
+        self._palette_act.setStatusTip("Search pages, profiles, keys and actions")
+        self._palette_act.triggered.connect(self.open_palette)
+        view_menu.addAction(self._palette_act)
+        view_menu.addSeparator()
         theme_menu = QMenu("&Theme", self)
         view_menu.addMenu(theme_menu)
         self._theme_menu = theme_menu
@@ -250,11 +353,11 @@ class MainWindow(QMainWindow):
             group.addAction(act)
             theme_menu.addAction(act)
             self._theme_acts[mode] = act
-        view_menu.addSeparator()
         self._toggle_theme_act = QAction("Toggle &dark / light", self)
         self._toggle_theme_act.setShortcut(QKeySequence("Ctrl+Shift+L"))
         self._toggle_theme_act.triggered.connect(self._toggle_theme)
         view_menu.addAction(self._toggle_theme_act)
+        self._view_menu = view_menu
         theme.manager().changed.connect(self._on_theme_changed)
         self._sync_theme_actions()
 
@@ -274,87 +377,154 @@ class MainWindow(QMainWindow):
         btn = getattr(self, "_theme_btn", None)
         if btn is not None:
             btn.setIcon(theme.icon("sun" if scheme == "dark" else "moon", "text_muted", mode=scheme))
-            btn.setToolTip("Switch to light theme" if scheme == "dark" else "Switch to dark theme")
-        self._sync_theme_actions()
-
-    def _build_toolbar(self) -> None:
-        tb = QToolBar("Main toolbar", self)
-        tb.setObjectName("mainToolbar")
-        tb.setMovable(False)
-        tb.setFloatable(False)
-        tb.setIconSize(QSize(18, 18))
-        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        tb.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
-        self._toolbar = tb
-
-        theme.bind_icon(self._save_act, "save")
-        self._save_act.setIconText("Save")
-        theme.bind_icon(self._macro_lib_act, "list-ordered")
-        self._macro_lib_act.setIconText("Macros")
-        theme.bind_icon(self._anim_act, "film")
-        self._anim_act.setIconText("Idle animation")
-        theme.bind_icon(self._autoswitch_dlg_act, "repeat")
-        self._autoswitch_dlg_act.setIconText("Auto-switch rules")
-        theme.bind_icon(self._connect_act, "plug")
-        self._connect_act.setIconText("Connect")
-        theme.bind_icon(self._upload_act, "upload", "accent_text")
-        self._upload_act.setIconText("Upload")
-
-        tb.addAction(self._save_act)
-        tb.addSeparator()
-        tb.addAction(self._macro_lib_act)
-        tb.addAction(self._anim_act)
-        tb.addAction(self._autoswitch_dlg_act)
-        for act in (self._save_act, self._macro_lib_act, self._anim_act, self._autoswitch_dlg_act):
-            w = tb.widgetForAction(act)
-            if w is not None:
-                w.setToolTip(
-                    act.text().replace("&", "").rstrip("…")
-                    + (f"  ({act.shortcut().toString()})" if not act.shortcut().isEmpty() else "")
+            btn.setToolTip(
+                with_shortcut(
+                    "Switch to light theme" if scheme == "dark" else "Switch to dark theme", "Ctrl+Shift+L"
                 )
-                w.setCursor(Qt.CursorShape.PointingHandCursor)
+            )
+        self._sync_theme_actions()
+        settings = getattr(self, "_settings_page", None)
+        if settings is not None:
+            settings.sync_theme()
 
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        spacer.setStyleSheet("background: transparent;")
-        tb.addWidget(spacer)
+    # ======================================================================
+    # Layout: rail | header + pages
+    # ======================================================================
+    def _build_ui(self) -> None:
+        central = QWidget()
+        central.setObjectName("appShell")
+        shell = QHBoxLayout(central)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+        self.setCentralWidget(central)
 
+        self._rail = NavRail()
+        self._rail.pageRequested.connect(self.go_to_page)
+        shell.addWidget(self._rail)
+        # quick theme toggle just above Settings at the bottom of the rail
         self._theme_btn = QToolButton()
         self._theme_btn.setObjectName("themeToggle")
         self._theme_btn.setAutoRaise(True)
         self._theme_btn.setIconSize(QSize(18, 18))
         self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._theme_btn.clicked.connect(self._toggle_theme)
-        tb.addWidget(self._theme_btn)
+        rail_lay = self._rail.layout()
+        rail_lay.insertWidget(
+            rail_lay.indexOf(self._rail.buttons[PAGE_INDEX["settings"]]),
+            self._theme_btn,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
         self._on_theme_changed(theme.manager().scheme)
-        tb.addSeparator()
 
-        connect_btn = QToolButton()
-        connect_btn.setDefaultAction(self._connect_act)
-        connect_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        connect_btn.setProperty("textBeside", True)
-        connect_btn.setIconSize(QSize(16, 16))
-        connect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        connect_btn.setToolTip("Connect and read device info (Ctrl+Shift+I)")
-        tb.addWidget(connect_btn)
-        self._connect_btn = connect_btn
+        column = QWidget()
+        column.setObjectName("pageColumn")
+        col = QVBoxLayout(column)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        self._header = PageHeader()
+        col.addWidget(self._header)
+        col.addWidget(divider())
+        self._stack = QStackedWidget()
+        self._stack.setObjectName("pageStack")
+        col.addWidget(self._stack, 1)
+        shell.addWidget(column, 1)
+        self._build_header_actions()
 
-        upload_btn = QToolButton()
-        upload_btn.setObjectName("primaryAction")
-        upload_btn.setDefaultAction(self._upload_act)
-        upload_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        upload_btn.setIconSize(QSize(16, 16))
-        upload_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        tb.addWidget(upload_btn)
-        self._upload_btn = upload_btn
+        self._keys_page = self._build_keys_page()
+        self._macros_page = MacroLibraryDialog(embedded=True)
+        self._macros_page.dirtyChanged.connect(lambda _d: self._refresh_dirty_ui())
+        self._macros_page.currentMacroChanged.connect(lambda _n: self._update_header())
+        self._macros_page.saved.connect(self._on_macros_saved)
+        self._anim_page = self._build_anim_page()
+        self._autoswitch_page = self._build_autoswitch_page()
+        self._device_page = DevicePage(
+            {
+                "connect": self._connect_act,
+                "upload": self._upload_act,
+                "upload_macros": self._upload_macros_act,
+                "save_device": self._save_device_act,
+                "autoswitch": self._autoswitch_act,
+            }
+        )
+        self._device_page.backupRequested.connect(self._device_backup)
+        self._device_page.restoreRequested.connect(self._device_restore)
+        self._settings_page = self._build_settings_page()
+        self._pages = {
+            "keys": self._keys_page,
+            "macros": self._macros_page,
+            "idle": self._anim_page,
+            "autoswitch": self._autoswitch_page,
+            "device": self._device_page,
+            "settings": self._settings_page,
+        }
+        for spec in PAGES:
+            page = self._pages[spec.key]
+            self._stack.addWidget(_FitScroll(page) if spec.key == "idle" else page)
+        self._apply_device_feature_gates(None)
 
-    def _build_ui(self) -> None:
+    def _build_header_actions(self) -> None:
+        acts = self._header.actions_layout
+        self._palette_btn = QPushButton("Search…")
+        self._palette_btn.setObjectName("paletteButton")
+        theme.bind_icon(self._palette_btn, "search", "text_faint")
+        self._palette_btn.setIconSize(QSize(14, 14))
+        self._palette_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._palette_btn.setToolTip(with_shortcut("Search pages, profiles, keys and actions", "Ctrl+K"))
+        self._palette_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._palette_btn.clicked.connect(self.open_palette)
+        hint = QLabel("Ctrl+K")
+        hint.setObjectName("paletteHint")
+        hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        hint_lay = QHBoxLayout(self._palette_btn)
+        hint_lay.setContentsMargins(0, 0, 8, 0)
+        hint_lay.addStretch(1)
+        hint_lay.addWidget(hint, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._palette_hint = hint
+        acts.addWidget(self._palette_btn)
+
+        theme.bind_icon(self._save_act, "save")
+        theme.bind_icon(self._macro_lib_act, "list-ordered")
+        theme.bind_icon(self._anim_act, "film")
+        theme.bind_icon(self._autoswitch_dlg_act, "repeat")
+        theme.bind_icon(self._connect_act, "plug")
+        theme.bind_icon(self._upload_act, "upload", "accent_text")
+        theme.bind_icon(self._upload_macros_act, "upload")
+        theme.bind_icon(self._backup_act, "download")
+        theme.bind_icon(self._palette_act, "search")
+        theme.bind_icon(self._guide_act, "external-link")
+
+        def tool(act: QAction, text: str, *, primary: bool = False) -> QToolButton:
+            btn = QToolButton()
+            btn.setDefaultAction(act)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            btn.setIconSize(QSize(16, 16))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if primary:
+                btn.setObjectName("primaryAction")
+            else:
+                btn.setProperty("textBeside", True)
+
+            def sync() -> None:
+                btn.setText(text)
+                btn.setToolTip(with_shortcut(act.toolTip(), act.shortcut()))
+
+            act.changed.connect(sync)
+            sync()
+            acts.addWidget(btn)
+            return btn
+
+        self._save_btn = tool(self._save_act, "Save")
+        self._connect_btn = tool(self._connect_act, "Connect")
+        self._upload_btn = tool(self._upload_act, "Upload", primary=True)
+        self._upload_macros_btn = tool(self._upload_macros_act, "Upload macros", primary=True)
+        theme.bind_icon(self._upload_macros_act, "upload", "accent_text")
+
+    def _build_keys_page(self) -> QWidget:
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("mainSplitter")
         splitter.setHandleWidth(1)
         splitter.setChildrenCollapsible(False)
-        self.setCentralWidget(splitter)
 
         # Left: profiles
         sidebar = QWidget()
@@ -372,7 +542,7 @@ class MainWindow(QMainWindow):
         sidebar.setMinimumWidth(200)
         splitter.addWidget(sidebar)
 
-        # Center: the device
+        # Center: the device (or an empty state when there are no profiles)
         canvas = QWidget()
         canvas.setObjectName("canvasArea")
         canvas.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -381,8 +551,27 @@ class MainWindow(QMainWindow):
             theme.SPACE["lg"], theme.SPACE["lg"], theme.SPACE["lg"], theme.SPACE["lg"]
         )
         self._pad = PadPreview()
+        self._pad.setToolTip("")
         self._pad.selection_changed.connect(self._on_selection_changed)
-        canvas_layout.addWidget(self._pad, 1)
+        self._keys_empty = EmptyState(
+            "keyboard",
+            "No profiles yet",
+            "A profile holds the 12 key actions and the encoder's turn / press actions. "
+            "Create one, or put profile JSON files in the profiles folder and reload (Ctrl+R).",
+            action_text="New profile",
+        )
+        self._keys_empty.setObjectName("keysEmptyState")
+        self._keys_empty.activated.connect(self._new_profile)
+        self._canvas_stack = QStackedWidget()
+        self._canvas_stack.addWidget(self._pad)
+        self._canvas_stack.addWidget(self._keys_empty)
+        canvas_layout.addWidget(self._canvas_stack, 1)
+        self._pad_hint = label(
+            "Click a key or encoder slot · arrow keys move · Ctrl+Tab next profile · Ctrl+K search",
+            "caption",
+        )
+        self._pad_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        canvas_layout.addWidget(self._pad_hint)
         splitter.addWidget(canvas)
 
         # Right: inspector
@@ -456,6 +645,63 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
         splitter.setSizes([240, 600, 360])
+        splitter.setObjectName("keysPage")
+        return splitter
+
+    def _build_anim_page(self):
+        from .widgets.anim_editor import AnimationEditorDialog
+
+        page = AnimationEditorDialog(
+            device_factory=self._make_device, device_info=self._last_device_info, embedded=True
+        )
+        page.dirtyChanged.connect(lambda _d: self._refresh_dirty_ui())
+        page.projectChanged.connect(lambda _n: self._update_header())
+        return page
+
+    def _build_autoswitch_page(self) -> AutoswitchDialog:
+        rules = self._load_autoswitch_rules()
+        page = AutoswitchDialog(rules, profile_ids=None, embedded=True)
+        page.dirtyChanged.connect(lambda _d: self._refresh_dirty_ui())
+        page.saved.connect(self._on_autoswitch_saved)
+        return page
+
+    def _build_settings_page(self) -> SettingsPage:
+        from .animation.project import animations_dir
+        from .autoswitch.rules import default_rules_path
+        from .models.macro import default_macros_path
+
+        paths = [
+            ("Profiles", default_profiles_dir()),
+            ("Macro library", default_macros_path()),
+            ("Auto-switch rules", default_rules_path()),
+            ("Animation projects", animations_dir(create=False)),
+        ]
+        return SettingsPage(set_theme=self._set_theme_mode, data_paths=paths, shortcuts=self.shortcut_list())
+
+    def shortcut_list(self) -> list[tuple[str, str]]:
+        """(keys, description) rows for Settings → Keyboard shortcuts."""
+        rows = [
+            ("Ctrl+K", "Command palette"),
+            ("Ctrl+1 … Ctrl+6", "Go to page (Keys … Settings)"),
+            ("Ctrl+Tab", "Next profile"),
+            ("Ctrl+Shift+Tab", "Previous profile"),
+            ("Arrow keys", "Move around the device view"),
+        ]
+        for act, text in (
+            (self._save_act, "Save the current page"),
+            (self._save_all_act, "Save all profiles"),
+            (self._new_profile_act, "New profile"),
+            (self._dup_profile_act, "Duplicate profile"),
+            (self._reload_act, "Reload profiles"),
+            (self._open_folder_act, "Open profiles folder"),
+            (self._connect_act, "Connect / device info"),
+            (self._upload_act, "Upload profile"),
+            (self._upload_macros_act, "Upload macros"),
+            (self._toggle_theme_act, "Toggle dark / light"),
+            (self._guide_act, "User guide"),
+        ):
+            rows.append((act.shortcut().toString(QKeySequence.SequenceFormat.NativeText), text))
+        return rows
 
     def _fit_json_height(self) -> None:
         """Size the JSON panel to its content (96–280 px) instead of a fixed box."""
@@ -471,7 +717,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(sb)
         sb.setSizeGripEnabled(False)
         self._conn_pill = StatusPill("Not connected", "neutral")
-        self._conn_pill.setToolTip("Device → Connect / Get device info (Ctrl+Shift+I)")
+        self._conn_pill.setToolTip(with_shortcut("Device page", "Ctrl+5"))
+        self._conn_pill.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._conn_pill.mousePressEvent = lambda _ev: self.go_to_page("device")
         self._fw_label = QLabel("Firmware —")
         self._fw_label.setObjectName("statusMeta")
         self._proto_label = QLabel(f"Protocol v{app_version.PROTO_VER} (host)")
@@ -487,12 +735,262 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(spacer)
         sb.showMessage("Ready")
 
+    # ======================================================================
+    # Pages, header, unsaved markers
+    # ======================================================================
+    def current_page_key(self) -> str:
+        return PAGES[self._stack.currentIndex()].key
+
+    def page_widget(self, key: str) -> QWidget:
+        return self._pages[key]
+
+    def go_to_page(self, page: str | int) -> None:
+        idx = PAGE_INDEX[page] if isinstance(page, str) else int(page)
+        if not 0 <= idx < len(PAGES):
+            return
+        self._stack.setCurrentIndex(idx)
+        self._rail.set_current(idx)
+        key = PAGES[idx].key
+        on_keys = key == "keys"
+        # Ctrl+D duplicates a profile on the Keys page and a frame on the Idle animation page.
+        self._dup_profile_act.setShortcut(QKeySequence("Ctrl+D") if key != "idle" else QKeySequence())
+        self._save_btn.setVisible(on_keys)
+        self._upload_btn.setVisible(on_keys)
+        self._upload_macros_btn.setVisible(key == "macros")
+        self._connect_btn.setVisible(key != "device")
+        for i, act in enumerate(self._page_acts):
+            act.setCheckable(True)
+            act.setChecked(i == idx)
+        if key == "autoswitch" and not self._autoswitch_page.is_dirty():
+            # refresh the fallback-profile choices with the profiles loaded now
+            ids = [p.id for p in self._profile_list.profiles()]
+            self._autoswitch_page.set_rules(self._autoswitch_page.result_rules(), ids or None)
+        self._refresh_dirty_ui()
+        focus = {"keys": self._pad, "macros": self._macros_page._list}.get(key)
+        if focus is not None and focus.isVisible():
+            focus.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _page_dirty(self, key: str) -> bool:
+        if key == "keys":
+            return bool(self._dirty_ids)
+        if key == "macros":
+            return self._macros_page.is_dirty()
+        if key == "idle":
+            return self._anim_page.is_dirty()
+        if key == "autoswitch":
+            return self._autoswitch_page.is_dirty()
+        return False
+
+    def dirty_pages(self) -> list[str]:
+        return [spec.key for spec in PAGES if self._page_dirty(spec.key)]
+
+    def _refresh_dirty_ui(self) -> None:
+        if not hasattr(self, "_pages"):
+            return
+        for i, spec in enumerate(PAGES):
+            self._rail.set_dirty(i, self._page_dirty(spec.key))
+        self._profile_list.set_dirty_ids(self._dirty_ids)
+        self._update_save_actions()
+        self._update_header()
+
+    def breadcrumb_parts(self) -> list[str]:
+        key = self.current_page_key()
+        if key == "keys":
+            if self._current is None:
+                return ["No profile"]
+            parts = [self._current.oled_title or self._current.name]
+            if self._selection is not None:
+                kind, sid = self._selection
+                if kind == "key":
+                    parts.append(f"Key {sid}")
+                else:
+                    parts.append(f"Encoder · {ENCODER_SLOT_LABELS.get(str(sid), str(sid))}")
+            return parts
+        if key == "macros":
+            name = self._macros_page.current_macro_name()
+            return ["Library", name] if name else ["Library"]
+        if key == "idle":
+            return [self._anim_page.project_name()]
+        if key == "autoswitch":
+            n = self._autoswitch_page.rule_count()
+            state = "running" if self._autoswitch_act.isChecked() else "off"
+            return [f"{n} rule{'s' if n != 1 else ''}", f"auto-switch {state}"]
+        if key == "device":
+            info = self._last_device_info
+            if info is None:
+                return ["Not connected"]
+            return [
+                str(info.get("product_tag") or "Macropad"),
+                f"fw {info.get('fw_major', '?')}.{info.get('fw_minor', '?')}",
+            ]
+        return ["Appearance, data, shortcuts, about"]
+
+    def breadcrumb(self) -> str:
+        return self._header.breadcrumb()
+
+    def _update_header(self) -> None:
+        if not hasattr(self, "_pages"):
+            return
+        key = self.current_page_key()
+        spec = PAGES[PAGE_INDEX[key]]
+        dirty = self._page_dirty(key)
+        if key == "keys":  # the badge is about the profile being shown
+            dirty = bool(self._current and self._current.id in self._dirty_ids)
+        self._header.set_location(spec.title, self.breadcrumb_parts(), dirty)
+
+    def _cycle_profile(self, delta: int) -> None:
+        prof = self._profile_list.select_offset(delta)
+        if prof is None:
+            return
+        if self.current_page_key() != "keys":
+            self.go_to_page("keys")
+        self.statusBar().showMessage(f"Profile: {prof.name} ({prof.id})", 4000)
+
+    def _save_page(self) -> None:
+        """File → Save / Ctrl+S: save whatever the current page edits."""
+        key = self.current_page_key()
+        if key == "macros":
+            self._macros_page.save()
+        elif key == "idle":
+            self._anim_page.save_project()
+        elif key == "autoswitch":
+            self._autoswitch_page.save()
+        else:
+            self._save_current()
+        self._refresh_dirty_ui()
+
+    def _on_macros_saved(self) -> None:
+        self._pad.reload_macro_names()
+        self._update_selection_header()
+        self.statusBar().showMessage("Macro library saved", 5000)
+        self._refresh_dirty_ui()
+
+    # ======================================================================
+    # Command palette
+    # ======================================================================
+    def open_palette(self, query: str = "") -> CommandPalette:
+        pal = getattr(self, "_palette", None)
+        if pal is None:
+            pal = CommandPalette(self)
+            pal.executed.connect(lambda t: self.statusBar().showMessage(f"Ran: {t}", 3000))
+            self._palette = pal
+        pal.open_with(self.palette_items(), query if isinstance(query, str) else "")
+        return pal
+
+    def palette_items(self) -> list[PaletteItem]:
+        items: list[PaletteItem] = []
+        cur = self.current_page_key()
+        for spec in PAGES:
+            items.append(
+                PaletteItem(
+                    title=f"Go to {spec.title}",
+                    category="Page",
+                    run=lambda k=spec.key: self.go_to_page(k),
+                    subtitle=spec.hint + (" (current)" if spec.key == cur else ""),
+                    shortcut=spec.shortcut,
+                    keywords=f"{spec.title} page {spec.key}",
+                )
+            )
+        for prof in self._profile_list.profiles():
+            slot = self._slot_by_id.get(prof.id)
+            sub = prof.id + (f" · slot {slot}" if slot is not None else "")
+            if prof.id in self._dirty_ids:
+                sub += " · unsaved"
+            items.append(
+                PaletteItem(
+                    title=prof.oled_title or prof.name,
+                    category="Profile",
+                    run=lambda pid=prof.id: self._palette_select_profile(pid),
+                    subtitle=sub,
+                    keywords=f"{prof.name} {prof.id} profile",
+                )
+            )
+        macros = self._pad._macros
+        for num in range(1, 13):
+            act = self._current.action_for_key(num) if self._current else None
+            items.append(
+                PaletteItem(
+                    title=f"Key {num}",
+                    category="Key",
+                    run=lambda n=num: self._palette_select("key", n),
+                    subtitle=action_summary(act, macros) if self._current else "",
+                    enabled=self._current is not None,
+                    disabled_reason="Select a profile first",
+                    keywords=f"key{num} k{num}",
+                )
+            )
+        for slot in ENCODER_SLOTS:
+            act = self._current.action_for_encoder(slot) if self._current else None
+            items.append(
+                PaletteItem(
+                    title=f"Encoder · {ENCODER_SLOT_LABELS[slot]}",
+                    category="Key",
+                    run=lambda s=slot: self._palette_select("encoder", s),
+                    subtitle=action_summary(act, macros) if self._current else "",
+                    enabled=self._current is not None,
+                    disabled_reason="Select a profile first",
+                    keywords="knob encoder",
+                )
+            )
+        seen: set[int] = set()
+        for menu_name, menu in self._palette_menus.items():
+            for act in self._walk_actions(menu):
+                if id(act) in seen or act.isSeparator() or act.menu() is not None:
+                    continue
+                seen.add(id(act))
+                title = act.text().replace("&", "").split("\t")[0]
+                if act is self._save_act:
+                    title = f"Save ({PAGES[PAGE_INDEX[cur]].title})"
+                items.append(
+                    PaletteItem(
+                        title=title,
+                        category="Action",
+                        run=act.trigger,
+                        subtitle=menu_name,
+                        shortcut=act.shortcut().toString(QKeySequence.SequenceFormat.NativeText),
+                        enabled=act.isEnabled(),
+                        disabled_reason=act.toolTip() if not act.isEnabled() else "",
+                        keywords=act.statusTip(),
+                    )
+                )
+        items.append(
+            PaletteItem(
+                title="Toggle dark / light theme",
+                category="Action",
+                run=self._toggle_theme,
+                subtitle="View",
+                shortcut="Ctrl+Shift+L",
+                keywords="theme dark light appearance",
+            )
+        )
+        return items
+
+    @staticmethod
+    def _walk_actions(menu: QMenu):
+        for act in menu.actions():
+            if act.menu() is not None:
+                yield from MainWindow._walk_actions(act.menu())
+            else:
+                yield act
+
+    def _palette_select_profile(self, pid: str) -> None:
+        self.go_to_page("keys")
+        self._profile_list.select_by_id(pid)
+
+    def _palette_select(self, kind: str, sid: object) -> None:
+        self.go_to_page("keys")
+        self._pad.select(kind, sid)
+        self._pad.setFocus(Qt.FocusReason.OtherFocusReason)
+
     def _set_device_status(self, info: dict | None, *, failed: bool = False) -> None:
-        """Status-bar pill + firmware/protocol text (display only)."""
+        """Status-bar pill + firmware/protocol text, Device page and slot badges."""
         if info is None:
             self._conn_pill.set_state(
                 "No device" if failed else "Not connected", "danger" if failed else "neutral"
             )
+            if hasattr(self, "_device_page") and self._last_device_info is None:
+                self._device_page.set_info(None, failed=failed)
+            self._update_header()
             return
         fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
         proto = info.get("proto_ver", "?")
@@ -506,6 +1004,9 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             active = None
         self._profile_list.set_active_slot(active)
+        self._device_page.set_info(info, ok)
+        self._anim_page.set_device_info(info)
+        self._update_header()
 
     def _update_selection_header(self) -> None:
         sel = self._selection
@@ -514,6 +1015,7 @@ class MainWindow(QMainWindow):
             self._selection_hint.setText(
                 "Select a key or the encoder to edit its action." if self._current else "No profile selected."
             )
+            self._update_header()
             return
         kind, sid = sel
         if kind == "key":
@@ -523,6 +1025,7 @@ class MainWindow(QMainWindow):
             self._selection_title.setText(f"Encoder · {ENCODER_SLOT_LABELS.get(str(sid), str(sid))}")
             action = self._current.action_for_encoder(str(sid))
         self._selection_hint.setText(action_summary(action, self._pad._macros))
+        self._update_header()
 
     # --- dirty tracking -------------------------------------------------
 
@@ -531,7 +1034,7 @@ class MainWindow(QMainWindow):
         if profile is None:
             return
         self._dirty_ids.add(profile.id)
-        self._update_save_actions()
+        self._refresh_dirty_ui()
         self.statusBar().showMessage(f"Modified: {profile.name} ({profile.id})")
 
     def _clear_dirty(self, profile_id: str | None = None) -> None:
@@ -539,14 +1042,19 @@ class MainWindow(QMainWindow):
             self._dirty_ids.clear()
         else:
             self._dirty_ids.discard(profile_id)
-        self._update_save_actions()
+        self._refresh_dirty_ui()
 
     def _update_save_actions(self) -> None:
         cur_dirty = bool(self._current and self._current.id in self._dirty_ids)
-        self._save_act.setEnabled(cur_dirty)
+        if hasattr(self, "_pages"):
+            key = self.current_page_key()
+            page_dirty = cur_dirty if key == "keys" else self._page_dirty(key)
+            self._save_act.setEnabled(page_dirty)
+        else:
+            self._save_act.setEnabled(cur_dirty)
         self._save_all_act.setEnabled(bool(self._dirty_ids))
         title = "Macropad Configurator"
-        if self._dirty_ids:
+        if self._dirty_ids or (hasattr(self, "_pages") and self.dirty_pages()):
             title += " *"
         self.setWindowTitle(title)
 
@@ -564,7 +1072,6 @@ class MainWindow(QMainWindow):
         return reply == QMessageBox.StandardButton.Discard
 
     # --- load / save ----------------------------------------------------
-
     def _reload_with_prompt(self) -> None:
         if not self._confirm_discard_dirty("Reload will discard unsaved edits."):
             return
@@ -631,6 +1138,9 @@ class MainWindow(QMainWindow):
         self._selection = None
         self._pad.set_profile(profile)
         self._pad.clear_selection()
+        has_profiles = bool(self._profile_list.profiles())
+        self._canvas_stack.setCurrentIndex(0 if has_profiles else 1)
+        self._pad_hint.setVisible(has_profiles)
         self._meta_loading = True
         try:
             if profile is None:
@@ -655,6 +1165,9 @@ class MainWindow(QMainWindow):
         has = profile is not None
         self._dup_profile_act.setEnabled(has)
         self._del_profile_act.setEnabled(has)
+        many = len(self._profile_list.profiles()) > 1
+        self._next_profile_act.setEnabled(many)
+        self._prev_profile_act.setEnabled(many)
         self._update_selection_header()
 
     def _on_selection_changed(self, kind: str, selection_id: object) -> None:
@@ -740,7 +1253,6 @@ class MainWindow(QMainWindow):
         self._refresh_action_json(label)
 
     # --- profile CRUD -----------------------------------------
-
     def _new_profile(self) -> None:
         existing = self._profile_list.existing_ids()
         dlg = ProfileNameIdDialog(
@@ -836,47 +1348,67 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Profiles folder", f"Not found:\n{path}")
             return
         try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(path)])
-            elif sys.platform.startswith("win"):
-                subprocess.Popen(["explorer", str(path)])
-            else:
-                subprocess.Popen(["xdg-open", str(path)])
+            open_in_file_manager(path)
             self.statusBar().showMessage(f"Opened {path}")
         except OSError as exc:
-            QMessageBox.information(
-                self,
-                "Profiles folder",
-                f"Profiles directory:\n{path}\n\n(Could not open file manager: {exc})",
+            self.statusBar().showMessage(
+                f"Profiles folder: {path} (could not open file manager: {exc})", 10000
             )
 
     def closeEvent(self, event) -> None:
-        if not self._confirm_discard_dirty("Quit with unsaved changes?"):
-            event.ignore()
-            return
+        pending = []
+        if self._dirty_ids:
+            pending.append("Profiles: " + ", ".join(sorted(self._dirty_ids)))
+        if self._macros_page.is_dirty():
+            pending.append("Macro library")
+        if self._autoswitch_page.is_dirty():
+            pending.append("Auto-switch rules")
+        if self._anim_page.is_dirty():
+            pending.append(f"Idle animation ({self._anim_page.project_name()})")
+        if pending:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved changes",
+                "Quit with unsaved changes?\n\n" + "\n".join(pending) + "\n\nDiscard them?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Discard:
+                event.ignore()
+                return
+        self._anim_page.set_playing(False)
         event.accept()
 
+    # --- pages that used to be dialogs (menu actions keep working) ------
+
     def _open_macro_library(self) -> None:
-        dlg = MacroLibraryDialog(parent=self)
-        dlg.exec()
-        self._pad.reload_macro_names()
-        self._update_selection_header()
+        self.go_to_page("macros")
 
     def _open_anim_editor(self) -> None:
-        from .widgets.anim_editor import AnimationEditorDialog
+        self.go_to_page("idle")
 
-        dlg = AnimationEditorDialog(self, device_info=self._last_device_info)
-        info = self._last_device_info
-        if info and not app_version.fw_supports_anim(info.get("fw_major"), info.get("fw_minor")):
-            dlg.dev_status.setText(
-                app_version.feature_disabled_tooltip("Idle animation upload", app_version.MIN_FW_MINOR_ANIM)
-            )
-        self._anim_dialog = dlg
-        dlg.exec()
-        self._anim_dialog = None
+    def _open_autoswitch_dialog(self) -> None:
+        self.go_to_page("autoswitch")
+
+    def _show_about(self) -> None:
+        self.go_to_page("settings")
+        page = self._settings_page
+        page.ensureWidgetVisible(page.about, 0, 0)
+
+    def _show_architecture_tip(self) -> None:
+        QDesktopServices.openUrl(QUrl(ARCHITECTURE_URL))
+        self.statusBar().showMessage(f"Architecture: {ARCHITECTURE_URL}", 12000)
+
+    # ======================================================================
+    # Device
+    # ======================================================================
+    def _make_device(self, timeout_ms: int | None = None):
+        from .protocol.device import DEFAULT_TIMEOUT_MS, ConfigDevice
+
+        return ConfigDevice(timeout_ms=timeout_ms or DEFAULT_TIMEOUT_MS, hid_module=self._hid_module)
 
     def _apply_device_feature_gates(self, info: dict | None) -> None:
-        """Enable/disable upload / autoswitch / SAVE_ALL from GET_INFO fw."""
+        """Enable/disable upload / autoswitch / SAVE_ALL / backup from GET_INFO fw."""
         if not info:
             tip_u = app_version.feature_disabled_tooltip("Upload profile", app_version.MIN_FW_MINOR_UPLOAD)
             tip_m = app_version.feature_disabled_tooltip(
@@ -886,11 +1418,16 @@ class MainWindow(QMainWindow):
             tip_s = app_version.feature_disabled_tooltip(
                 "Save device state", app_version.MIN_FW_MINOR_SAVE_ALL
             )
+            tip_b = app_version.feature_disabled_tooltip(
+                "Backup / restore", app_version.MIN_FW_MINOR_READBACK
+            )
             for act, tip in (
                 (self._upload_act, tip_u),
                 (self._upload_macros_act, tip_m),
                 (self._autoswitch_act, tip_a),
                 (self._save_device_act, tip_s),
+                (self._backup_act, tip_b),
+                (self._restore_act, tip_b),
             ):
                 act.setEnabled(False)
                 act.setToolTip(tip)
@@ -903,7 +1440,7 @@ class MainWindow(QMainWindow):
         def gate(act, supported: bool, feature: str, min_minor: int, base_tip: str) -> None:
             if proto_ok and supported:
                 act.setEnabled(True)
-                act.setToolTip("")
+                act.setToolTip(base_tip)
                 act.setStatusTip(base_tip)
             else:
                 act.setEnabled(False)
@@ -935,10 +1472,9 @@ class MainWindow(QMainWindow):
         as_ok = proto_ok and app_version.fw_supports_autoswitch(major, minor)
         if as_ok and self._autoswitch_connected:
             self._autoswitch_act.setEnabled(True)
-            self._autoswitch_act.setToolTip("")
-            self._autoswitch_act.setStatusTip(
-                "Poll foreground app and SET_ACTIVE on the device (needs connection)"
-            )
+            tip = "Poll foreground app and SET_ACTIVE on the device (needs connection)"
+            self._autoswitch_act.setToolTip(tip)
+            self._autoswitch_act.setStatusTip(tip)
         else:
             self._autoswitch_act.setEnabled(False)
             if self._autoswitch_act.isChecked():
@@ -964,6 +1500,17 @@ class MainWindow(QMainWindow):
             app_version.MIN_FW_MINOR_SAVE_ALL,
             "SAVE_ALL (0x32): rewrite flash with current RAM profiles+macros+active",
         )
+        for act, base in (
+            (self._backup_act, "Read all profile slots, macros and idle settings into a backup file"),
+            (self._restore_act, "Write a backup file to the connected macropad"),
+        ):
+            gate(
+                act,
+                app_version.fw_supports_readback(major, minor),
+                "Backup / restore",
+                app_version.MIN_FW_MINOR_READBACK,
+                base,
+            )
 
     def _warn_proto_if_needed(self, info: dict) -> bool:
         """Warn on proto mismatch. Returns True if proto matches."""
@@ -985,39 +1532,34 @@ class MainWindow(QMainWindow):
         return False
 
     def _device_connect_info(self) -> None:
-        """Open vendor HID, PING + GET_INFO, show result."""
+        """Open vendor HID, PING + GET_INFO; show the result on the Device page."""
         try:
             from .protocol.device import DeviceError, connect_and_info
         except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Device",
-                f"Protocol module unavailable:\n{exc}",
-            )
+            QMessageBox.warning(self, "Device", f"Protocol module unavailable:\n{exc}")
             return
 
         self.statusBar().showMessage("Connecting to device…")
         try:
-            info = connect_and_info()
+            info = connect_and_info(hid_module=self._hid_module)
         except DeviceError as exc:
-            self.statusBar().showMessage("No device / connect failed", 8000)
+            self._last_device_info = None
+            self.statusBar().showMessage(f"No device / connect failed: {exc}", 10000)
             self._set_device_status(None, failed=True)
-            QMessageBox.information(
-                self,
-                "Device",
-                f"Could not talk to the macropad.\n\n{exc}",
-            )
+            self.go_to_page("device")
             return
         except Exception as exc:
-            self.statusBar().showMessage("Device error", 8000)
-            QMessageBox.warning(self, "Device", str(exc))
+            self.statusBar().showMessage(f"Device error: {exc}", 10000)
+            self._set_device_status(None, failed=True)
+            self.go_to_page("device")
             return
 
         self._last_device_info = info
         self._autoswitch_connected = True
         self._set_device_status(info)
-        proto_ok = self._warn_proto_if_needed(info)
         self._apply_device_feature_gates(info)
+        self.go_to_page("device")
+        proto_ok = self._warn_proto_if_needed(info)
 
         fw = f"{info.get('fw_major', '?')}.{info.get('fw_minor', '?')}"
         proto = info.get("proto_ver", "?")
@@ -1028,22 +1570,12 @@ class MainWindow(QMainWindow):
             f"host {app_version.HOST_APP_VERSION}"
         )
         self.statusBar().showMessage(status, 15000)
-        DeviceInfoDialog(info, proto_ok, self).exec()
 
     def _device_upload_profile(self) -> None:
         """Pack the selected profile and upload into a chosen device slot."""
         if self._current is None:
-            QMessageBox.information(self, "Upload", "Select a profile to upload.")
-            return
-
-        try:
-            from .protocol.device import ConfigDevice, DeviceError
-            from .protocol.profile_blob import (
-                PROFILE_BLOB_V1_SIZE,
-                pack_profile,
-            )
-        except Exception as exc:
-            QMessageBox.warning(self, "Upload", f"Protocol module unavailable:\n{exc}")
+            self.go_to_page("keys")
+            self.statusBar().showMessage("Select a profile to upload.", 6000)
             return
 
         default_slot = 0
@@ -1066,36 +1598,40 @@ class MainWindow(QMainWindow):
         )
         if not ok:
             return
+        self.upload_profile_to_slot(slot)
 
+    def upload_profile_to_slot(self, slot: int) -> bool:
+        """Upload the current profile into *slot* (no prompts on success)."""
+        from .protocol.device import DeviceError
+        from .protocol.profile_blob import PROFILE_BLOB_V1_SIZE, pack_profile
+
+        if self._current is None:
+            return False
         try:
             blob = pack_profile(self._current)
         except Exception as exc:
             QMessageBox.critical(self, "Upload", f"Pack failed:\n{exc}")
-            return
+            return False
         if len(blob) != PROFILE_BLOB_V1_SIZE:
             QMessageBox.critical(
                 self,
                 "Upload",
                 f"Unexpected blob size {len(blob)} (expected {PROFILE_BLOB_V1_SIZE})",
             )
-            return
+            return False
 
         self.statusBar().showMessage(f"Uploading {self._current.id} → slot {slot}…")
         try:
-            with ConfigDevice(timeout_ms=2000) as dev:
+            with self._make_device(2000) as dev:
                 try:
                     self._last_device_info = dev.get_info()
                 except DeviceError:
                     pass
                 dev.upload_profile(slot, blob)
-        except DeviceError as exc:
-            self.statusBar().showMessage("Upload failed", 8000)
-            QMessageBox.warning(self, "Upload failed", str(exc))
-            return
         except Exception as exc:
             self.statusBar().showMessage("Upload failed", 8000)
             QMessageBox.warning(self, "Upload failed", str(exc))
-            return
+            return False
 
         msg = f"Uploaded {self._current.name} ({self._current.id}) into device slot {slot}."
         self.statusBar().showMessage(msg, 15000)
@@ -1105,47 +1641,24 @@ class MainWindow(QMainWindow):
         self._profile_list.set_slot_map(self._slot_by_id)
         if self._last_device_info is not None:
             self._set_device_status(self._last_device_info)
-        QMessageBox.information(self, "Upload", msg)
-
-    def _show_about(self) -> None:
-        AboutDialog(self).exec()
-
-    def _show_architecture_tip(self) -> None:
-        self.statusBar().showMessage(
-            "Architecture: docs/ARCHITECTURE.md (layers, flash vs RAM, protocol links)",
-            12000,
-        )
-        QMessageBox.information(
-            self,
-            "Architecture",
-            (
-                "Stack overview lives in the repo at:\n\n"
-                "    docs/ARCHITECTURE.md\n\n"
-                "It covers layers (pins → matrix → actions → USB/config → "
-                "flash v2 → host), data flows, and flash vs RAM."
-            ),
-        )
+        return True
 
     def _device_save_all(self) -> None:
         """SAVE_ALL (0x32) — immediate device flash rewrite."""
         try:
-            from .protocol.device import ConfigDevice, DeviceError
+            from .protocol.device import DeviceError
         except Exception as exc:
             QMessageBox.warning(self, "Save device state", f"Protocol module unavailable:\n{exc}")
             return
 
         self.statusBar().showMessage("Saving device state (SAVE_ALL)…")
         try:
-            with ConfigDevice(timeout_ms=3000) as dev:
+            with self._make_device(3000) as dev:
                 try:
                     self._last_device_info = dev.get_info()
                 except DeviceError:
                     pass
                 dev.save_all()
-        except DeviceError as exc:
-            self.statusBar().showMessage("Save device state failed", 8000)
-            QMessageBox.warning(self, "Save device state failed", str(exc))
-            return
         except Exception as exc:
             self.statusBar().showMessage("Save device state failed", 8000)
             QMessageBox.warning(self, "Save device state failed", str(exc))
@@ -1154,14 +1667,106 @@ class MainWindow(QMainWindow):
         self._autoswitch_connected = True
         if self._last_device_info is not None:
             self._apply_device_feature_gates(self._last_device_info)
+            self._set_device_status(self._last_device_info)
         else:
             self._autoswitch_act.setEnabled(True)
             self._save_device_act.setEnabled(True)
-        if self._last_device_info is not None:
-            self._set_device_status(self._last_device_info)
-        msg = "Device state saved (profiles + macros + active_slot)."
-        self.statusBar().showMessage(msg, 10000)
-        QMessageBox.information(self, "Save device state", msg)
+        self.statusBar().showMessage("Device state saved (profiles + macros + active_slot).", 10000)
+
+    # --- backup / restore ------------------------------------------------
+
+    def _device_backup(self) -> None:
+        from .device_backup import BACKUP_SUFFIX
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        start = Path.home() / f"macropad-backup-{stamp}{BACKUP_SUFFIX}"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Back up device", str(start), f"Macropad backup (*{BACKUP_SUFFIX});;JSON (*.json)"
+        )
+        if path:
+            self.backup_to(path)
+
+    def backup_to(self, path: str | Path) -> dict | None:
+        """Read the connected device into a backup file. Returns the backup dict."""
+        from .device_backup import BackupError, read_backup, write_backup_file
+
+        self.statusBar().showMessage("Reading device for backup…")
+        try:
+            with self._make_device(2000) as dev:
+                info = dev.get_info()
+                data = read_backup(dev, info)
+            write_backup_file(data, path)
+        except (BackupError, OSError) as exc:
+            self.statusBar().showMessage("Backup failed", 8000)
+            QMessageBox.warning(self, "Backup failed", str(exc))
+            return None
+        except Exception as exc:
+            self.statusBar().showMessage("Backup failed", 8000)
+            QMessageBox.warning(self, "Backup failed", str(exc))
+            return None
+        self._last_device_info = info
+        self._set_device_status(info)
+        self.statusBar().showMessage(
+            f"Backed up {len(data['profiles'])} profile slots and {len(data['macros'])} macros to {path}",
+            15000,
+        )
+        return data
+
+    def _device_restore(self) -> None:
+        from .device_backup import BACKUP_SUFFIX, BackupError, load_backup_file
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Restore backup", str(Path.home()), f"Macropad backup (*{BACKUP_SUFFIX} *.json)"
+        )
+        if not path:
+            return
+        try:
+            data = load_backup_file(path)
+        except BackupError as exc:
+            QMessageBox.warning(self, "Restore backup", str(exc))
+            return
+        what = f"{len(data['profiles'])} profile slots, {len(data['macros'])} macros"
+        if data.get("idle"):
+            what += ", idle settings"
+        reply = QMessageBox.question(
+            self,
+            "Restore backup",
+            f"Overwrite {what} and the active slot on the connected macropad with this backup?\n\n"
+            f"{Path(path).name}\nCreated {data.get('created', '?')} from firmware {data.get('firmware', '?')}.\n\n"
+            "The device saves it to flash right away. This cannot be undone "
+            "(back up first if unsure).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.restore_from(data)
+
+    def restore_from(self, data: dict) -> list[str] | None:
+        """Write a validated backup to the device (no confirmation; see _device_restore)."""
+        from .device_backup import BackupError, restore_backup
+
+        self.statusBar().showMessage("Restoring backup…")
+        try:
+            with self._make_device(3000) as dev:
+                info = dev.get_info()
+                done = restore_backup(dev, info, data)
+                info = dev.get_info()
+        except BackupError as exc:
+            self.statusBar().showMessage("Restore failed", 8000)
+            QMessageBox.warning(self, "Restore failed", str(exc))
+            return None
+        except Exception as exc:
+            self.statusBar().showMessage("Restore failed", 8000)
+            QMessageBox.warning(self, "Restore failed", str(exc))
+            return None
+        self._last_device_info = info
+        self._autoswitch_connected = True
+        self._apply_device_feature_gates(info)
+        self._set_device_status(info)
+        self.statusBar().showMessage("Restored: " + ", ".join(done), 15000)
+        return done
+
+    # --- auto-switch -----------------------------------------------------
 
     def _ensure_autoswitch(self):
         if self._autoswitch is not None:
@@ -1187,7 +1792,7 @@ class MainWindow(QMainWindow):
         self._autoswitch = svc
         return svc
 
-    def _open_autoswitch_dialog(self) -> None:
+    def _load_autoswitch_rules(self):
         svc = self._ensure_autoswitch()
         try:
             rules = svc.rules
@@ -1197,46 +1802,42 @@ class MainWindow(QMainWindow):
                 rules = load_rules()
                 svc.set_rules(rules)
         except Exception as exc:
-            QMessageBox.warning(self, "Auto-switch", f"Could not load rules:\n{exc}")
-            return
-        profile_ids = []
-        try:
-            profile_ids = [p.id for p in self._profile_list.profiles()]
-        except Exception:
-            profile_ids = ["default", "gaming", "coding", "browser", "photoshop"]
-        dlg = AutoswitchDialog(rules, parent=self, profile_ids=profile_ids or None)
-        if dlg.exec():
-            updated = dlg.result_rules()
-            svc.set_rules(updated)
-            # Sync checkable menu with saved enabled flag only if connected
-            if self._autoswitch_connected and updated.enabled:
-                self._autoswitch_act.blockSignals(True)
-                self._autoswitch_act.setChecked(True)
-                self._autoswitch_act.blockSignals(False)
-                svc.set_enabled(True)
-            elif not updated.enabled:
-                self._autoswitch_act.blockSignals(True)
-                self._autoswitch_act.setChecked(False)
-                self._autoswitch_act.blockSignals(False)
-                svc.set_enabled(False)
-            self.statusBar().showMessage("Auto-switch rules saved", 5000)
+            print(f"[autoswitch] could not load rules: {exc}")
+            from .autoswitch.rules import validate_rules
+
+            rules = validate_rules({"schema_version": 1, "enabled": False, "rules": []})
+        return rules
+
+    def _on_autoswitch_saved(self, updated) -> None:
+        svc = self._ensure_autoswitch()
+        svc.set_rules(updated)
+        # Sync checkable menu with saved enabled flag only if connected
+        if self._autoswitch_connected and updated.enabled:
+            self._autoswitch_act.blockSignals(True)
+            self._autoswitch_act.setChecked(True)
+            self._autoswitch_act.blockSignals(False)
+            svc.set_enabled(True)
+        elif not updated.enabled:
+            self._autoswitch_act.blockSignals(True)
+            self._autoswitch_act.setChecked(False)
+            self._autoswitch_act.blockSignals(False)
+            svc.set_enabled(False)
+        self.statusBar().showMessage("Auto-switch rules saved", 5000)
+        self._refresh_dirty_ui()
 
     def _on_autoswitch_stopped(self) -> None:
         """Menu sync when service stops after device disconnect."""
         self._autoswitch_act.blockSignals(True)
         self._autoswitch_act.setChecked(False)
         self._autoswitch_act.blockSignals(False)
+        self._update_header()
 
     def _on_autoswitch_toggled(self, checked: bool) -> None:
         if checked and not self._autoswitch_connected:
             self._autoswitch_act.blockSignals(True)
             self._autoswitch_act.setChecked(False)
             self._autoswitch_act.blockSignals(False)
-            QMessageBox.information(
-                self,
-                "Auto-switch",
-                "Connect to the device first (Device → Connect / Get device info).",
-            )
+            self.statusBar().showMessage("Auto-switch: connect to the device first (Ctrl+Shift+I).", 8000)
             return
         svc = self._ensure_autoswitch()
         # Keep rules.enabled in sync when toggling from menu
@@ -1244,17 +1845,34 @@ class MainWindow(QMainWindow):
         rules.enabled = bool(checked)
         svc.set_rules(rules)
         svc.set_enabled(bool(checked))
+        self._autoswitch_page.set_enabled_checked(bool(checked))
+        self._update_header()
 
     def _device_upload_macros(self) -> None:
         """Upload host macro library ids 0–4 to the device."""
         try:
             from .models.macro import load_library
-            from .protocol.device import ConfigDevice, DeviceError
+            from .protocol.device import DeviceError
             from .protocol.macro_blob import MACRO_BLOB_V1_SIZE, pack_macro
         except Exception as exc:
             QMessageBox.warning(self, "Upload macros", f"Module unavailable:\n{exc}")
             return
 
+        if self._macros_page.is_dirty():
+            reply = QMessageBox.question(
+                self,
+                "Upload macros",
+                "The macro library has unsaved changes. Uploads use the saved library.\n\n"
+                "Save the library first?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Ignore
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            if reply == QMessageBox.StandardButton.Save and not self._macros_page.save():
+                return
         try:
             library = load_library()
         except Exception as exc:
@@ -1264,7 +1882,7 @@ class MainWindow(QMainWindow):
         by_id = {m.id: m for m in library.macros}
         to_upload = [(i, by_id[i]) for i in range(5) if i in by_id]
         if not to_upload:
-            QMessageBox.information(self, "Upload macros", "No macros with ids 0–4 in the library.")
+            self.statusBar().showMessage("Upload macros: no macros with ids 0–4 in the library.", 8000)
             return
 
         reply = QMessageBox.question(
@@ -1278,7 +1896,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Uploading macros…")
         uploaded = 0
         try:
-            with ConfigDevice(timeout_ms=2000) as dev:
+            with self._make_device(2000) as dev:
                 try:
                     self._last_device_info = dev.get_info()
                     self._autoswitch_connected = True
@@ -1303,6 +1921,4 @@ class MainWindow(QMainWindow):
 
         if self._last_device_info is not None:
             self._set_device_status(self._last_device_info)
-        msg = f"Uploaded {uploaded} macro(s) to device."
-        self.statusBar().showMessage(msg, 15000)
-        QMessageBox.information(self, "Upload macros", msg)
+        self.statusBar().showMessage(f"Uploaded {uploaded} macro(s) to device.", 15000)

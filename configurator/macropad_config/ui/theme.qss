@@ -325,3 +325,63 @@ QMessageBox QLabel#qt_msgbox_informativelabel { color: {{text_muted}}; }
 QListView#frameStrip { background: {{window}}; }
 QListView#frameStrip::item { padding: 0; margin: 0; border-radius: 0; background: transparent; }
 QLabel#imagePreview { background: {{window}}; border: 1px solid {{border}}; border-radius: 6px; }
+
+/* ---- navigation: rail, page header, command palette ------------------------------------ */
+QWidget#navRail { background: {{panel}}; border-right: 1px solid {{border}}; }
+QToolButton#railButton {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 2px 4px 2px;
+    color: {{text_muted}};
+    font-size: 11px;
+}
+QToolButton#railButton:hover { background: {{hover}}; color: {{text}}; }
+QToolButton#railButton:checked { background: {{accent_soft}}; color: {{text}}; font-weight: 600; }
+QToolButton#railButton:focus { border: 1px solid {{accent_line}}; }
+QToolButton#themeToggle { margin-bottom: 4px; }
+
+QWidget#pageHeader { background: {{window}}; }
+QLabel#breadcrumb { color: {{text_muted}}; font-size: 13px; }
+QWidget#unsavedDot { background: {{accent}}; border-radius: 3px; }
+QLabel#unsavedLabel { color: {{accent}}; font-size: 12px; font-weight: 600; }
+
+QPushButton#paletteButton {
+    background: {{raised}};
+    border: 1px solid {{border_strong}};
+    border-radius: 6px;
+    color: {{text_faint}};
+    text-align: left;
+    padding: 5px 64px 5px 10px;
+    min-width: 150px;
+}
+QPushButton#paletteButton:hover { border-color: {{border_hover}}; color: {{text_muted}}; }
+QLabel#paletteHint {
+    color: {{text_faint}};
+    font-family: "{{mono}}";
+    font-size: 11px;
+    border: 1px solid {{border_strong}};
+    border-radius: 4px;
+    padding: 0 5px;
+    background: transparent;
+}
+
+QToolButton[outlined="true"] { border: 1px solid {{border_strong}}; background: {{raised}}; color: {{text}}; }
+QToolButton[outlined="true"]:hover { background: {{hover}}; border-color: {{border_hover}}; }
+QToolButton[outlined="true"]:checked { background: {{accent_soft}}; border-color: {{accent_line}}; }
+QToolButton[outlined="true"]:disabled { background: transparent; border-color: {{border}}; color: {{text_faint}}; }
+
+QFrame#commandPalette {
+    background: {{panel}};
+    border: 1px solid {{border_strong}};
+    border-radius: 10px;
+}
+QLineEdit#paletteInput { font-size: 14px; min-height: 26px; padding-left: 4px; }
+QListWidget#paletteList { background: transparent; border: none; }
+QListWidget#paletteList::item { padding: 0; margin: 0; border-radius: 0; background: transparent; }
+
+QWidget#pageBody { background: {{window}}; }
+QLabel#emptyStateIcon { background: {{raised}}; border: 1px solid {{border}}; border-radius: 28px; }
+QLabel#shortcutKeys { font-family: "{{mono}}"; font-size: 12px; color: {{text}}; }
+QWidget#deviceEmptyState { background: {{panel}}; border: 1px solid {{border}}; border-radius: 8px; }
+QWidget#deviceEmptyState QLabel { background: transparent; }
+QWidget#deviceEmptyState QLabel#emptyStateIcon { background: {{raised}}; }

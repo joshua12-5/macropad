@@ -3,8 +3,12 @@
 Each keycap shows its action's short legend; the four encoder slots sit in a
 strip under the device. Clicking a cap, the knob or a slot selects it and
 emits :pyattr:`PadPreview.selection_changed` (``"key", 1..12`` or
-``"encoder", "cw" | "ccw" | "press" | "long_press"``). Arrow keys move the
-selection. Purely presentational: the profile is only read.
+``"encoder", "ccw" | "cw" | "press"``). Arrow keys move the selection.
+Purely presentational: the profile is only read.
+
+The profile format still has an ``encoder.long_press`` slot, but holding the
+knob opens the on-device menu (firmware 0.26+), so the slot is reserved and
+not shown here.
 """
 
 from __future__ import annotations
@@ -22,9 +26,14 @@ from ..models.profile import Profile
 from ..ui import theme
 from .action_editor import MOD_LABELS, TEXT_LABELS
 
-ENCODER_SLOTS = ("ccw", "cw", "press", "long_press")
-ENCODER_SLOT_LABELS = {"ccw": "Turn left", "cw": "Turn right", "press": "Press", "long_press": "Hold"}
-ENCODER_SLOT_ICONS = {"ccw": "rotate-ccw", "cw": "rotate-cw", "press": "circle-dot", "long_press": "timer"}
+# Editable encoder slots, left to right in the strip under the device. ``long_press``
+# stays in the profile / blob format but is reserved (hold = on-device menu).
+ENCODER_SLOTS = ("ccw", "cw", "press")
+ENCODER_SLOT_LABELS = {"ccw": "Turn left", "cw": "Turn right", "press": "Press"}
+ENCODER_SLOT_ICONS = {"ccw": "rotate-ccw", "cw": "rotate-cw", "press": "circle-dot"}
+# Keycap column under/over each encoder chip for arrow-key navigation.
+_CHIP_COL = {"ccw": 0, "cw": 1, "press": 3}
+_COL_CHIP = ("ccw", "cw", "cw", "press")
 
 _KEY_NAMES = {
     "ENTER": "Enter",
@@ -220,6 +229,15 @@ class PadPreview(QWidget):
         self.update()
         self.selection_changed.emit("", None)
 
+    def select(self, kind: str, sid: object) -> None:
+        """Select ``("key", 1..12)`` or ``("encoder", slot)`` (command palette, tests)."""
+        if kind == "key":
+            self._select_key(int(sid))
+        elif kind == "encoder" and str(sid) in ENCODER_SLOTS:
+            self._select_encoder(str(sid))
+        else:
+            self.clear_selection()
+
     def _select_key(self, num: int) -> None:
         self._selected = ("key", int(num))
         self.update()
@@ -267,8 +285,9 @@ class PadPreview(QWidget):
 
     def _chip_rect(self, slot: str) -> QRectF:
         i = ENCODER_SLOTS.index(slot)
+        n = len(ENCODER_SLOTS)
         gap = 8.0
-        w = (_BODY_W - 3 * gap) / 4
+        w = (_BODY_W - (n - 1) * gap) / n
         return self._r(i * (w + gap), _BODY_H + _STRIP_GAP, w, _CHIP_H)
 
     def _hit(self, pos: QPointF) -> tuple[str, object] | None:
@@ -350,7 +369,7 @@ class PadPreview(QWidget):
                 self._select_encoder("press" if col == 3 else "ccw")
                 return
             if row == 2 and dr == 1:
-                self._select_encoder(ENCODER_SLOTS[col])
+                self._select_encoder(_COL_CHIP[col])
                 return
             row = min(2, max(0, row + dr))
             col = min(3, max(0, col + dc))
@@ -358,9 +377,9 @@ class PadPreview(QWidget):
         else:
             i = ENCODER_SLOTS.index(str(cur[1]))
             if dc:
-                self._select_encoder(ENCODER_SLOTS[min(3, max(0, i + dc))])
+                self._select_encoder(ENCODER_SLOTS[min(len(ENCODER_SLOTS) - 1, max(0, i + dc))])
             elif dr == -1:
-                self._select_key(9 + i)
+                self._select_key(9 + _CHIP_COL[ENCODER_SLOTS[i]])
 
     def event(self, ev) -> bool:
         if ev.type() == ev.Type.ToolTip:

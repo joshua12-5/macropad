@@ -31,6 +31,9 @@ SMOKES = [
     "smoke_anim_device.py",
     "smoke_packaging.py",
     "smoke_theme.py",
+    "smoke_oled_menu.py",
+    "smoke_nav.py",
+    "smoke_palette.py",
 ]
 
 

@@ -166,7 +166,7 @@ def main() -> int:
     from macropad_config.autoswitch.rules import load_rules
     from macropad_config.widgets.anim_editor import AnimationEditorDialog
     from macropad_config.widgets.autoswitch_dialog import AutoswitchDialog
-    from macropad_config.widgets.info_dialogs import AboutDialog, DeviceInfoDialog
+    from macropad_config.widgets.info_panels import AboutPanel, DeviceInfoPanel
     from macropad_config.widgets.macro_library_dialog import MacroLibraryDialog
     from macropad_config.widgets.profile_dialog import ProfileNameIdDialog
 
@@ -185,9 +185,10 @@ def main() -> int:
         MacroLibraryDialog(parent=win),
         AutoswitchDialog(load_rules(), parent=win),
         ProfileNameIdDialog(title="New profile", existing_ids=set(), parent=win),
-        AboutDialog(win),
-        DeviceInfoDialog(info, True, win),
+        AboutPanel(),
+        DeviceInfoPanel(),
     ]
+    dialogs[-1].set_info(info, True)
     anim = dialogs[0]
     anim.set_playing(True)
     anim.set_playing(False)
@@ -200,6 +201,14 @@ def main() -> int:
         if hasattr(d, "_dirty"):
             d._dirty = False
         d.close()
+    # every page of the window renders in both modes (records the icons they request)
+    for mode in ("dark", "light"):
+        theme.apply_theme(app, mode)
+        for key in ("keys", "macros", "idle", "autoswitch", "device", "settings"):
+            win.go_to_page(key)
+            app.processEvents()
+            expect(not win.grab().toImage().isNull(), f"{mode}: {key} page renders")
+    win.open_palette().close()
     win._dirty_ids.clear()
     win.close()
 

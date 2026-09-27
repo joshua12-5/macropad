@@ -22,6 +22,7 @@ from ..ui.widgets import icon_button, label
 _ROLE_ID = Qt.ItemDataRole.UserRole
 _ROLE_SLOT = Qt.ItemDataRole.UserRole + 1
 _ROLE_ACTIVE = Qt.ItemDataRole.UserRole + 2
+_ROLE_DIRTY = Qt.ItemDataRole.UserRole + 3
 _ROW_H = 48
 
 
@@ -50,6 +51,7 @@ class _ProfileDelegate(QStyledItemDelegate):
         pid = str(index.data(_ROLE_ID) or "")
         slot = index.data(_ROLE_SLOT)
         active = bool(index.data(_ROLE_ACTIVE))
+        dirty = bool(index.data(_ROLE_DIRTY))
 
         base = QFont(option.font)
         base.setPixelSize(theme.FONT_PX["body"])
@@ -85,11 +87,15 @@ class _ProfileDelegate(QStyledItemDelegate):
         p.setFont(f_name)
         p.setPen(c["text"])
         fm = QFontMetrics(f_name)
-        p.drawText(
-            QRectF(left, r.top() + 6, width, r.height() / 2 - 4),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            fm.elidedText(name, Qt.TextElideMode.ElideRight, int(width)),
-        )
+        dot_w = 14 if dirty else 0
+        shown = fm.elidedText(name, Qt.TextElideMode.ElideRight, int(width - dot_w))
+        name_rect = QRectF(left, r.top() + 6, width, r.height() / 2 - 4)
+        p.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, shown)
+        if dirty:  # unsaved-changes dot right after the name
+            x = left + fm.horizontalAdvance(shown) + 7
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(c["accent"])
+            p.drawEllipse(QRectF(x, name_rect.center().y() - 3, 6, 6))
         p.setFont(f_id)
         p.setPen(c["text_faint"])
         fm2 = QFontMetrics(f_id)
@@ -114,6 +120,7 @@ class ProfileListWidget(QWidget):
         self._profiles: list[Profile] = []
         self._slot_map: dict[str, int] = {}
         self._active_slot: int | None = None
+        self._dirty_ids: set[str] = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, theme.SPACE["md"], 0, theme.SPACE["sm"])
@@ -159,6 +166,22 @@ class ProfileListWidget(QWidget):
     def set_active_slot(self, slot: int | None) -> None:
         self._active_slot = slot
         self.refresh_labels()
+
+    def set_dirty_ids(self, ids: set[str]) -> None:
+        """Profiles with unsaved edits (drawn with a dot after the name)."""
+        ids = set(ids)
+        if ids != self._dirty_ids:
+            self._dirty_ids = ids
+            self.refresh_labels()
+
+    def select_offset(self, delta: int) -> Profile | None:
+        """Select the next (+1) / previous (-1) profile, wrapping; returns it."""
+        if not self._profiles:
+            return None
+        row = self._list.currentRow()
+        row = 0 if row < 0 else (row + delta) % len(self._profiles)
+        self._list.setCurrentRow(row)
+        return self._profiles[row]
 
     def slot_for(self, profile_id: str) -> int | None:
         return self._slot_map.get(profile_id)
@@ -248,7 +271,11 @@ class ProfileListWidget(QWidget):
         item.setData(_ROLE_ID, profile.id)
         item.setData(_ROLE_SLOT, slot)
         item.setData(_ROLE_ACTIVE, active)
+        dirty = profile.id in self._dirty_ids
+        item.setData(_ROLE_DIRTY, dirty)
         tip = [self._label_for(profile), str(profile.source_path) if profile.source_path else "(unsaved)"]
+        if dirty:
+            tip.append("Unsaved changes (Ctrl+S saves)")
         if slot is not None:
             tip.append(f"Device slot {slot}" + (" (active on the device)" if active else ""))
         item.setToolTip("\n".join(tip))
